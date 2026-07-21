@@ -53,15 +53,15 @@ beforeEach(() => {
 })
 
 describe('SEARCHABLE_ATTRIBUTES allowlist', () => {
-  it('matches the five attributes the segment evaluator can usefully suggest values for', () => {
+  it('matches the attributes the segment evaluator can usefully suggest values for', () => {
     expect(SEARCHABLE_ATTRIBUTES).toEqual(
-      new Set(['country', 'locale', 'name', 'email', 'signup_source'])
+      new Set(['country', 'locale', 'name', 'email', 'signup_source', 'google_workspace'])
     )
   })
 })
 
 describe('getAttributeValueSuggestions — universal predicates', () => {
-  it.each(['country', 'locale', 'name', 'email', 'signup_source'] as const)(
+  it.each(['country', 'locale', 'name', 'email', 'signup_source', 'google_workspace'] as const)(
     'scopes %s to portal-user principals (matches evaluator audience)',
     async (attribute) => {
       await getAttributeValueSuggestions(attribute, '', 20)
@@ -71,7 +71,7 @@ describe('getAttributeValueSuggestions — universal predicates', () => {
     }
   )
 
-  it.each(['country', 'locale', 'name', 'email', 'signup_source'] as const)(
+  it.each(['country', 'locale', 'name', 'email', 'signup_source', 'google_workspace'] as const)(
     'orders %s by count DESC so most-common values surface first',
     async (attribute) => {
       await getAttributeValueSuggestions(attribute, '', 20)
@@ -79,7 +79,7 @@ describe('getAttributeValueSuggestions — universal predicates', () => {
     }
   )
 
-  it.each(['country', 'locale', 'name', 'email', 'signup_source'] as const)(
+  it.each(['country', 'locale', 'name', 'email', 'signup_source', 'google_workspace'] as const)(
     'caps %s row count via LIMIT',
     async (attribute) => {
       await getAttributeValueSuggestions(attribute, '', 20)

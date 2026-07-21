@@ -37,7 +37,14 @@ import { fetchSegmentAttributeValuesFn } from '@/lib/server/functions/admin'
 // Attributes with DB-backed value typeahead. Matches SEARCHABLE_ATTRIBUTES
 // in segment-attribute-values.ts; kept duplicated here to avoid pulling
 // a server-only module into the client bundle.
-const SEARCHABLE_VALUE_ATTRIBUTES = new Set(['country', 'locale', 'name', 'email', 'signup_source'])
+const SEARCHABLE_VALUE_ATTRIBUTES = new Set([
+  'country',
+  'locale',
+  'name',
+  'email',
+  'signup_source',
+  'google_workspace',
+])
 
 export const CUSTOM_ATTR_PREFIX = '__custom__'
 
@@ -310,7 +317,8 @@ function RuleConditionRow({
                   | 'locale'
                   | 'name'
                   | 'email'
-                  | 'signup_source',
+                  | 'signup_source'
+                  | 'google_workspace',
                 query,
                 limit: 20,
               },

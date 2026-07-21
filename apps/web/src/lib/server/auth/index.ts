@@ -361,6 +361,25 @@ async function createAuth() {
           },
         },
       },
+      // Google Workspace capture: the account row carries the Google ID
+      // token on first sign-in (create) and on every token refresh
+      // (update). Extract the verified `hd` claim into user metadata and
+      // re-evaluate the principal's dynamic segments. Non-Google accounts
+      // no-op inside the sync; failures are swallowed there too.
+      account: {
+        create: {
+          after: async (account) => {
+            const { syncGoogleWorkspaceFromAccount } = await import('./google-workspace-sync')
+            await syncGoogleWorkspaceFromAccount(account)
+          },
+        },
+        update: {
+          after: async (account) => {
+            const { syncGoogleWorkspaceFromAccount } = await import('./google-workspace-sync')
+            await syncGoogleWorkspaceFromAccount(account)
+          },
+        },
+      },
     },
 
     plugins: [

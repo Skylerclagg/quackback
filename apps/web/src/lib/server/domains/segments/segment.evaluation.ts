@@ -1,6 +1,6 @@
 import { db, eq, and, inArray, isNull, sql, segments, userSegments } from '@/lib/server/db'
 import type { SegmentId, PrincipalId } from '@quackback/ids'
-import { fromUuid } from '@quackback/ids'
+import { fromUuid, toUuid } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import type { EvaluationResult } from './segment.types'
 import type { SegmentRules, SegmentCondition } from '@/lib/server/db'
@@ -87,6 +87,10 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
       // so it's always set — mirror principal_type / name semantics.
       case 'signup_source':
         return isSet ? sql`TRUE` : sql`FALSE`
+      case 'google_workspace':
+        return isSet
+          ? sql`(u.metadata::jsonb->>'googleWorkspaceDomain') IS NOT NULL`
+          : sql`(u.metadata::jsonb->>'googleWorkspaceDomain') IS NULL`
       // principal.type is always set — is_set is always true, is_not_set is never true
       case 'principal_type':
         return isSet ? sql`TRUE` : sql`FALSE`
@@ -128,6 +132,10 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
         return sql`COALESCE((SELECT a.provider_id FROM account a WHERE a.user_id = u.id ORDER BY a.created_at ASC LIMIT 1), 'email') IN (${placeholders})`
       case 'principal_type':
         return sql`p.type IN (${placeholders})`
+      case 'google_workspace': {
+        const domains = values.map((v) => sql`${String(v).toLowerCase()}`)
+        return sql`LOWER(u.metadata::jsonb->>'googleWorkspaceDomain') IN (${sql.join(domains, sql`, `)})`
+      }
       default:
         return null
     }
@@ -272,9 +280,38 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
       return sql`p.type ${sql.raw(sqlOp)} ${String(value)}`
     }
 
+    case 'google_workspace': {
+      // Stored lowercased by the sign-in capture, but LOWER both sides so
+      // hand-typed rules ("Acme.com") and any legacy rows still match.
+      const field = sql`LOWER(u.metadata::jsonb->>'googleWorkspaceDomain')`
+      const lowered = String(value).toLowerCase()
+      const sqlOp = OPERATOR_SQL[operator]
+      if (!sqlOp) return null
+      // NULL-safe neq: see 'locale' note above. Users with no workspace
+      // captured satisfy "workspace is not X".
+      if (operator === 'neq') {
+        return sql`((u.metadata::jsonb->>'googleWorkspaceDomain') IS NULL OR ${field} != ${lowered})`
+      }
+      return sql`${field} ${sql.raw(sqlOp)} ${lowered}`
+    }
+
     default:
       return null
   }
+}
+
+/**
+ * Combine a rule set's conditions into a single WHERE fragment, or null
+ * when no condition translates to SQL (rule-less segments match nobody).
+ */
+function combineConditions(rules: SegmentRules): ReturnType<typeof sql> | null {
+  const conditionSqls = (rules.conditions ?? [])
+    .map(buildConditionSql)
+    .filter((c): c is NonNullable<typeof c> => c !== null)
+  if (conditionSqls.length === 0) return null
+  return rules.match === 'all'
+    ? conditionSqls.reduce((acc, c) => sql`${acc} AND ${c}`)
+    : conditionSqls.reduce((acc, c) => sql`${acc} OR ${c}`)
 }
 
 /**
@@ -282,16 +319,8 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
  * Translates rules to SQL — does not load users into memory.
  */
 async function resolveMatchingPrincipals(rules: SegmentRules): Promise<string[]> {
-  const conditionSqls = rules.conditions
-    .map(buildConditionSql)
-    .filter((c): c is NonNullable<typeof c> => c !== null)
-
-  if (conditionSqls.length === 0) return []
-
-  const combinedWhere =
-    rules.match === 'all'
-      ? conditionSqls.reduce((acc, c) => sql`${acc} AND ${c}`)
-      : conditionSqls.reduce((acc, c) => sql`${acc} OR ${c}`)
+  const combinedWhere = combineConditions(rules)
+  if (!combinedWhere) return []
 
   const rows = await db.execute(sql`
     SELECT p.id
@@ -408,6 +437,81 @@ export async function evaluateAllDynamicSegments(): Promise<EvaluationResult[]> 
     results.push(result)
   }
   return results
+}
+
+/**
+ * Evaluate a single principal against every active dynamic segment and
+ * sync their 'dynamic'-sourced memberships.
+ *
+ * Used at sign-in (e.g. after the Google Workspace domain is captured)
+ * so rule-based memberships apply immediately instead of waiting for
+ * the next scheduled sweep. Mirrors evaluateDynamicSegment's contract:
+ * only rows with addedBy='dynamic' are ever added or removed, so
+ * manual / sso / widget / api memberships are never touched.
+ */
+export async function evaluatePrincipalDynamicSegments(principalId: PrincipalId): Promise<void> {
+  const dynamicSegments = await db
+    .select({ id: segments.id, name: segments.name, rules: segments.rules })
+    .from(segments)
+    .where(and(eq(segments.type, 'dynamic'), isNull(segments.deletedAt)))
+  if (dynamicSegments.length === 0) return
+
+  const existing = await db
+    .select({ segmentId: userSegments.segmentId })
+    .from(userSegments)
+    .where(and(eq(userSegments.principalId, principalId), eq(userSegments.addedBy, 'dynamic')))
+  const existingIds = new Set<string>(existing.map((r) => String(r.segmentId)))
+  const principalUuid = toUuid(principalId)
+
+  for (const seg of dynamicSegments) {
+    // Rule-less dynamic segments match nobody — same as the full sweep,
+    // which clears all dynamic rows for such segments.
+    const combinedWhere = seg.rules ? combineConditions(seg.rules) : null
+    let matches = false
+    if (combinedWhere) {
+      const rows = await db.execute(sql`
+        SELECT 1
+        FROM principal p
+        INNER JOIN "user" u ON u.id = p.user_id
+        WHERE p.id = ${principalUuid}::uuid
+          AND p.role = 'user'
+          AND p.user_id IS NOT NULL
+          AND (${combinedWhere})
+        LIMIT 1
+      `)
+      matches = (rows as unknown as unknown[]).length > 0
+    }
+
+    const segId = seg.id as SegmentId
+    if (matches === existingIds.has(String(segId))) continue
+
+    if (matches) {
+      await db
+        .insert(userSegments)
+        .values({ principalId, segmentId: segId, addedBy: 'dynamic' })
+        .onConflictDoNothing()
+    } else {
+      await db
+        .delete(userSegments)
+        .where(
+          and(
+            eq(userSegments.principalId, principalId),
+            eq(userSegments.segmentId, segId),
+            eq(userSegments.addedBy, 'dynamic')
+          )
+        )
+    }
+
+    import('@/lib/server/integrations/user-sync-notify')
+      .then(({ notifyUserSyncIntegrations }) =>
+        notifyUserSyncIntegrations(
+          seg.name,
+          matches ? [principalId] : [],
+          matches ? [] : [principalId]
+        )
+      )
+      .catch((err) => log.error({ err }, 'user sync notify failed'))
+  }
 }
 
 /**

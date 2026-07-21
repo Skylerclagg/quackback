@@ -13,7 +13,13 @@
 import { db, sql } from '@/lib/server/db'
 import { ANON_EMAIL_DOMAIN } from '@/lib/shared/anonymous-email'
 
-export type SearchableAttribute = 'country' | 'locale' | 'name' | 'email' | 'signup_source'
+export type SearchableAttribute =
+  | 'country'
+  | 'locale'
+  | 'name'
+  | 'email'
+  | 'signup_source'
+  | 'google_workspace'
 
 export const SEARCHABLE_ATTRIBUTES: ReadonlySet<SearchableAttribute> = new Set([
   'country',
@@ -21,6 +27,7 @@ export const SEARCHABLE_ATTRIBUTES: ReadonlySet<SearchableAttribute> = new Set([
   'name',
   'email',
   'signup_source',
+  'google_workspace',
 ])
 
 export interface AttributeValue {
@@ -105,6 +112,20 @@ function queryForAttribute(
         SELECT ${sourceExpr} AS value, COUNT(*)::int AS count
         ${baseJoin}
         ${prefixFilter(sourceExpr, query)}
+        GROUP BY value
+        ORDER BY count DESC, value ASC
+        LIMIT ${limit}
+      `
+    }
+    case 'google_workspace': {
+      // Captured lowercased from the Google `hd` claim by
+      // google-workspace-sync — see the `google_workspace` evaluator case.
+      const domainExpr = sql`(u.metadata::jsonb->>'googleWorkspaceDomain')`
+      return sql`
+        SELECT ${domainExpr} AS value, COUNT(*)::int AS count
+        ${baseJoin}
+        AND ${domainExpr} IS NOT NULL
+        ${prefixFilter(domainExpr, query.toLowerCase())}
         GROUP BY value
         ORDER BY count DESC, value ASC
         LIMIT ${limit}

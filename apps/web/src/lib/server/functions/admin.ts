@@ -1193,6 +1193,7 @@ export const segmentConditionSchema = z.object({
     'last_active_days_ago',
     'signup_source',
     'principal_type',
+    'google_workspace',
   ]),
   operator: z.enum([
     'eq',
@@ -1275,7 +1276,7 @@ const assignUsersSchema = z.object({
  * values are actually present in their workspace as they type.
  */
 const fetchSegmentAttributeValuesSchema = z.object({
-  attribute: z.enum(['country', 'locale', 'name', 'email', 'signup_source']),
+  attribute: z.enum(['country', 'locale', 'name', 'email', 'signup_source', 'google_workspace']),
   query: z.string().max(200).default(''),
   limit: z.number().int().min(1).max(50).default(20),
 })

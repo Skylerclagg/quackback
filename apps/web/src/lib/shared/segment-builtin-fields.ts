@@ -205,6 +205,21 @@ export const BUILTIN_FIELDS = [
     ],
   },
   {
+    key: 'google_workspace',
+    label: 'Google Workspace',
+    type: 'string',
+    group: 'account',
+    description:
+      "Google Workspace domain from the verified `hd` claim on Google sign-in (e.g. 'acme.com'). Google only sets it for Workspace accounts — consumer Gmail never matches. Captured on every Google sign-in.",
+    // evaluator: eq/neq/in via OPERATOR_SQL (lowercased both sides) + is_set/is_not_set
+    operators: [
+      { value: 'eq', label: 'equals' },
+      { value: 'neq', label: 'not equals' },
+      { value: 'is_set', label: 'is set' },
+      { value: 'is_not_set', label: 'is not set' },
+    ],
+  },
+  {
     key: 'post_count',
     label: 'Post Count',
     type: 'number',

@@ -47,6 +47,7 @@ export type SegmentRuleAttribute =
   | 'last_active_days_ago'
   | 'signup_source'
   | 'principal_type'
+  | 'google_workspace'
 
 export interface SegmentCondition {
   attribute: SegmentRuleAttribute
