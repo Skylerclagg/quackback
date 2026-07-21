@@ -13,6 +13,10 @@ export interface CreateRoadmapInput {
   slug: string
   description?: string
   isPublic?: boolean
+  /** Segments whose members may view the roadmap while private. */
+  allowedSegmentIds?: string[]
+  /** Member-role principals who may view the roadmap while private (admins always can). */
+  allowedTeamPrincipalIds?: string[]
 }
 
 /**
@@ -22,6 +26,10 @@ export interface UpdateRoadmapInput {
   name?: string
   description?: string
   isPublic?: boolean
+  /** Segments whose members may view the roadmap while private — [] clears. */
+  allowedSegmentIds?: string[]
+  /** Member-role principals who may view the roadmap while private — [] clears. */
+  allowedTeamPrincipalIds?: string[]
 }
 
 /**

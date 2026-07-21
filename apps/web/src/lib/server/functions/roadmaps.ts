@@ -12,7 +12,7 @@ import {
   type TagId,
   type SegmentId,
 } from '@quackback/ids'
-import { requireAuth } from './auth-helpers'
+import { requireAuth, type AuthContext } from './auth-helpers'
 import {
   addPostToRoadmap,
   createRoadmap,
@@ -24,9 +24,48 @@ import {
   updateRoadmap,
 } from '@/lib/server/domains/roadmaps/roadmap.service'
 import { getRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
+import { canViewRoadmap, isAllowed, type Actor } from '@/lib/server/policy'
+import { NotFoundError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'roadmaps' })
+
+/**
+ * Team-side actor for roadmap access checks. The admin/member policy
+ * branches never consult segment memberships, so skip resolving them.
+ */
+function teamActor(auth: AuthContext): Actor {
+  return {
+    principalId: auth.principal.id,
+    role: auth.principal.role,
+    principalType: 'user',
+    segmentIds: new Set(),
+  }
+}
+
+/**
+ * Load a roadmap and 404 unless the caller may view it. Admins always
+ * pass; members need the roadmap public or their principal id in its
+ * team allowlist. 404 (not 403) so restricted roadmaps stay
+ * indistinguishable from missing ones.
+ */
+async function requireRoadmapAccess(auth: AuthContext, id: RoadmapId) {
+  const roadmap = await getRoadmap(id)
+  if (!isAllowed(canViewRoadmap(teamActor(auth), roadmap))) {
+    throw new NotFoundError('ROADMAP_NOT_FOUND', `Roadmap with ID ${id} not found`)
+  }
+  return roadmap
+}
+
+/**
+ * A member configuring a private roadmap's team list is always kept on
+ * it — otherwise saving would lock them out of the roadmap they're
+ * editing. Admins are never auto-added (they bypass the list).
+ */
+function withSelfIfMember(auth: AuthContext, ids: string[] | undefined): string[] | undefined {
+  if (ids === undefined || auth.principal.role !== 'member') return ids
+  return ids.includes(String(auth.principal.id)) ? ids : [...ids, String(auth.principal.id)]
+}
 
 // ============================================
 // Schemas
@@ -37,6 +76,8 @@ const createRoadmapSchema = z.object({
   slug: z.string().min(1).max(100),
   description: z.string().optional(),
   isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
 })
 
 const getRoadmapSchema = z.object({
@@ -48,6 +89,8 @@ const updateRoadmapSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().optional(),
   isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
 })
 
 const deleteRoadmapSchema = z.object({
@@ -103,9 +146,12 @@ export type GetRoadmapPostsInput = z.infer<typeof getRoadmapPostsSchema>
 export const fetchRoadmaps = createServerFn({ method: 'GET' }).handler(async () => {
   log.debug('list roadmaps')
   try {
-    await requireAuth({ roles: ['admin', 'member'] })
+    const auth = await requireAuth({ roles: ['admin', 'member'] })
 
-    const roadmaps = await listRoadmaps()
+    // Members only see public roadmaps plus private ones they're
+    // allowlisted on; admins see everything.
+    const actor = teamActor(auth)
+    const roadmaps = (await listRoadmaps()).filter((r) => isAllowed(canViewRoadmap(actor, r)))
     // Serialize branded types to plain strings for turbo-stream
     return roadmaps.map((roadmap) => ({
       id: String(roadmap.id),
@@ -113,6 +159,8 @@ export const fetchRoadmaps = createServerFn({ method: 'GET' }).handler(async () 
       slug: roadmap.slug,
       description: roadmap.description,
       isPublic: roadmap.isPublic,
+      allowedSegmentIds: roadmap.allowedSegmentIds,
+      allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
       position: roadmap.position,
       createdAt: roadmap.createdAt.toISOString(),
       updatedAt: roadmap.updatedAt.toISOString(),
@@ -131,9 +179,9 @@ export const fetchRoadmap = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     log.debug({ roadmap_id: data.id }, 'get roadmap')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
 
-      const roadmap = await getRoadmap(data.id as RoadmapId)
+      const roadmap = await requireRoadmapAccess(auth, data.id as RoadmapId)
       // Serialize branded types to plain strings for turbo-stream
       return {
         id: String(roadmap.id),
@@ -141,6 +189,8 @@ export const fetchRoadmap = createServerFn({ method: 'GET' })
         slug: roadmap.slug,
         description: roadmap.description,
         isPublic: roadmap.isPublic,
+        allowedSegmentIds: roadmap.allowedSegmentIds,
+        allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
         position: roadmap.position,
         createdAt: roadmap.createdAt.toISOString(),
         updatedAt: roadmap.updatedAt.toISOString(),
@@ -163,13 +213,19 @@ export const createRoadmapFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     log.debug({ name: data.name, slug: data.slug }, 'create roadmap')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
 
       const roadmap = await createRoadmap({
         name: data.name,
         slug: data.slug,
         description: data.description,
         isPublic: data.isPublic,
+        allowedSegmentIds: data.allowedSegmentIds,
+        // A member creating a private roadmap must stay able to see it.
+        allowedTeamPrincipalIds:
+          data.isPublic === false
+            ? withSelfIfMember(auth, data.allowedTeamPrincipalIds ?? [])
+            : data.allowedTeamPrincipalIds,
       })
       // Serialize branded types to plain strings for turbo-stream
       return {
@@ -178,6 +234,8 @@ export const createRoadmapFn = createServerFn({ method: 'POST' })
         slug: roadmap.slug,
         description: roadmap.description,
         isPublic: roadmap.isPublic,
+        allowedSegmentIds: roadmap.allowedSegmentIds,
+        allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
         position: roadmap.position,
         createdAt: roadmap.createdAt.toISOString(),
         updatedAt: roadmap.updatedAt.toISOString(),
@@ -196,12 +254,15 @@ export const updateRoadmapFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     log.debug({ roadmap_id: data.id }, 'update roadmap')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireRoadmapAccess(auth, data.id as RoadmapId)
 
       const roadmap = await updateRoadmap(data.id as RoadmapId, {
         name: data.name,
         description: data.description,
         isPublic: data.isPublic,
+        allowedSegmentIds: data.allowedSegmentIds,
+        allowedTeamPrincipalIds: withSelfIfMember(auth, data.allowedTeamPrincipalIds),
       })
       // Serialize branded types to plain strings for turbo-stream
       return {
@@ -210,6 +271,8 @@ export const updateRoadmapFn = createServerFn({ method: 'POST' })
         slug: roadmap.slug,
         description: roadmap.description,
         isPublic: roadmap.isPublic,
+        allowedSegmentIds: roadmap.allowedSegmentIds,
+        allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
         position: roadmap.position,
         createdAt: roadmap.createdAt.toISOString(),
         updatedAt: roadmap.updatedAt.toISOString(),
@@ -228,7 +291,8 @@ export const deleteRoadmapFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     log.debug({ roadmap_id: data.id }, 'delete roadmap')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireRoadmapAccess(auth, data.id as RoadmapId)
 
       await deleteRoadmap(data.id as RoadmapId)
       return { id: String(data.id) }
@@ -247,6 +311,7 @@ export const addPostToRoadmapFn = createServerFn({ method: 'POST' })
     log.debug({ roadmap_id: data.roadmapId, post_id: data.postId }, 'add post to roadmap')
     try {
       const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireRoadmapAccess(auth, data.roadmapId as RoadmapId)
 
       await addPostToRoadmap(
         {
@@ -271,6 +336,7 @@ export const removePostFromRoadmapFn = createServerFn({ method: 'POST' })
     log.debug({ roadmap_id: data.roadmapId, post_id: data.postId }, 'remove post from roadmap')
     try {
       const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireRoadmapAccess(auth, data.roadmapId as RoadmapId)
 
       await removePostFromRoadmap(
         data.postId as PostId,
@@ -292,9 +358,19 @@ export const reorderRoadmapsFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     log.debug({ count: data.roadmapIds.length }, 'reorder roadmaps')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
 
-      await reorderRoadmaps(data.roadmapIds as RoadmapId[])
+      // Members can only reorder roadmaps they can see — silently drop
+      // ids outside their view instead of failing the whole request.
+      const actor = teamActor(auth)
+      const visible = new Set(
+        (await listRoadmaps())
+          .filter((r) => isAllowed(canViewRoadmap(actor, r)))
+          .map((r) => String(r.id))
+      )
+      const roadmapIds = data.roadmapIds.filter((id) => visible.has(id)) as RoadmapId[]
+
+      await reorderRoadmaps(roadmapIds)
       return { success: true }
     } catch (error) {
       log.error({ err: error }, 'reorder roadmaps failed')
@@ -313,7 +389,8 @@ export const getRoadmapPostsFn = createServerFn({ method: 'GET' })
       'get roadmap posts'
     )
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireRoadmapAccess(auth, data.roadmapId as RoadmapId)
 
       const result = await getRoadmapPosts(data.roadmapId as RoadmapId, {
         statusId: data.statusId as StatusId | undefined,

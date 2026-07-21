@@ -34,6 +34,16 @@ export const roadmaps = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     isPublic: boolean('is_public').default(true).notNull(),
+    // Access lists for private roadmaps (both ignored while isPublic).
+    // Segments grant portal users access; the team list grants
+    // non-admin team members access (admins always see every roadmap).
+    // Empty lists = admins only. Stored as plain strings like
+    // BoardAccess.segments.
+    allowedSegmentIds: jsonb('allowed_segment_ids').$type<string[]>().default([]).notNull(),
+    allowedTeamPrincipalIds: jsonb('allowed_team_principal_ids')
+      .$type<string[]>()
+      .default([])
+      .notNull(),
     position: integer('position').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

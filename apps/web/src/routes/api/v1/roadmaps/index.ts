@@ -18,6 +18,8 @@ const createRoadmapSchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
   description: z.string().max(500).optional(),
   isPublic: z.boolean().optional().default(true),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
 })
 
 export const Route = createFileRoute('/api/v1/roadmaps/')({
@@ -43,6 +45,8 @@ export const Route = createFileRoute('/api/v1/roadmaps/')({
               slug: roadmap.slug,
               description: roadmap.description,
               isPublic: roadmap.isPublic,
+              allowedSegmentIds: roadmap.allowedSegmentIds,
+              allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
               position: roadmap.position,
               createdAt: roadmap.createdAt.toISOString(),
             }))
@@ -78,6 +82,8 @@ export const Route = createFileRoute('/api/v1/roadmaps/')({
             slug: parsed.data.slug,
             description: parsed.data.description,
             isPublic: parsed.data.isPublic,
+            allowedSegmentIds: parsed.data.allowedSegmentIds,
+            allowedTeamPrincipalIds: parsed.data.allowedTeamPrincipalIds,
           })
 
           return createdResponse({
@@ -86,6 +92,8 @@ export const Route = createFileRoute('/api/v1/roadmaps/')({
             slug: roadmap.slug,
             description: roadmap.description,
             isPublic: roadmap.isPublic,
+            allowedSegmentIds: roadmap.allowedSegmentIds,
+            allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
             position: roadmap.position,
             createdAt: roadmap.createdAt.toISOString(),
           })

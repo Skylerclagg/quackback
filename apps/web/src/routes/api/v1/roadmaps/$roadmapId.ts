@@ -15,6 +15,8 @@ const updateRoadmapSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
   isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
 })
 
 export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
@@ -40,6 +42,8 @@ export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
             slug: roadmap.slug,
             description: roadmap.description,
             isPublic: roadmap.isPublic,
+            allowedSegmentIds: roadmap.allowedSegmentIds,
+            allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
             position: roadmap.position,
             createdAt: roadmap.createdAt.toISOString(),
           })
@@ -73,6 +77,8 @@ export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
             name: parsed.data.name,
             description: parsed.data.description,
             isPublic: parsed.data.isPublic,
+            allowedSegmentIds: parsed.data.allowedSegmentIds,
+            allowedTeamPrincipalIds: parsed.data.allowedTeamPrincipalIds,
           })
 
           return successResponse({
@@ -81,6 +87,8 @@ export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
             slug: roadmap.slug,
             description: roadmap.description,
             isPublic: roadmap.isPublic,
+            allowedSegmentIds: roadmap.allowedSegmentIds,
+            allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
             position: roadmap.position,
             createdAt: roadmap.createdAt.toISOString(),
           })

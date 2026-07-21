@@ -536,7 +536,12 @@ export const fetchPublicRoadmaps = createServerFn({ method: 'GET' }).handler(asy
       return []
     }
 
-    const roadmaps = await listPublicRoadmaps()
+    // Resolve the actor so private roadmaps only surface for team
+    // actors and members of an allowed segment.
+    const auth = hasAuthCredentials() ? await getOptionalAuth() : null
+    const actor = await policyActorFromAuth(auth)
+
+    const roadmaps = await listPublicRoadmaps(actor)
     return roadmaps.map((r) => ({
       id: r.id,
       name: r.name,

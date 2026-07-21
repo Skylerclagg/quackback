@@ -24,12 +24,16 @@ interface CreateRoadmapInput {
   slug: string
   description?: string
   isPublic?: boolean
+  allowedSegmentIds?: string[]
+  allowedTeamPrincipalIds?: string[]
 }
 
 interface UpdateRoadmapInput {
   name?: string
   description?: string
   isPublic?: boolean
+  allowedSegmentIds?: string[]
+  allowedTeamPrincipalIds?: string[]
 }
 
 // ============================================================================
@@ -50,6 +54,8 @@ export function useCreateRoadmap() {
           slug: input.slug,
           description: input.description,
           isPublic: input.isPublic,
+          allowedSegmentIds: input.allowedSegmentIds,
+          allowedTeamPrincipalIds: input.allowedTeamPrincipalIds,
         },
       }) as unknown as Promise<Roadmap>,
     onSuccess: () => {
@@ -72,6 +78,8 @@ export function useUpdateRoadmap() {
           name: input.name,
           description: input.description,
           isPublic: input.isPublic,
+          allowedSegmentIds: input.allowedSegmentIds,
+          allowedTeamPrincipalIds: input.allowedTeamPrincipalIds,
         },
       }) as unknown as Promise<Roadmap>,
     onSuccess: () => {

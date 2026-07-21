@@ -103,3 +103,68 @@ describe('getPublicRoadmapPosts — board audience filter', () => {
     expect(firstCall[0]).toBe(ANONYMOUS_ACTOR)
   })
 })
+
+describe('getPublicRoadmapPosts — private roadmap segment gate', () => {
+  const userInSegment = {
+    principalId: 'principal_1',
+    role: 'user' as const,
+    principalType: 'user' as const,
+    segmentIds: new Set(['segment_alpha']),
+  }
+
+  it('404s a private roadmap for anonymous viewers', async () => {
+    mockRoadmapFindFirst.mockResolvedValue({
+      id: 'rm_1' as RoadmapId,
+      isPublic: false,
+      allowedSegmentIds: ['segment_alpha'],
+    })
+    const { getPublicRoadmapPosts } = await import('../roadmap.query')
+
+    await expect(
+      getPublicRoadmapPosts('rm_1' as RoadmapId, { limit: 20, offset: 0 })
+    ).rejects.toThrow('not found')
+  })
+
+  it('404s a private roadmap for a user outside the allowlist', async () => {
+    mockRoadmapFindFirst.mockResolvedValue({
+      id: 'rm_1' as RoadmapId,
+      isPublic: false,
+      allowedSegmentIds: ['segment_beta'],
+    })
+    const { getPublicRoadmapPosts } = await import('../roadmap.query')
+
+    await expect(
+      getPublicRoadmapPosts('rm_1' as RoadmapId, { limit: 20, offset: 0 }, userInSegment as never)
+    ).rejects.toThrow('not found')
+  })
+
+  it('serves a private roadmap to a user in an allowed segment', async () => {
+    mockRoadmapFindFirst.mockResolvedValue({
+      id: 'rm_1' as RoadmapId,
+      isPublic: false,
+      allowedSegmentIds: ['segment_alpha'],
+    })
+    const { getPublicRoadmapPosts } = await import('../roadmap.query')
+
+    const result = await getPublicRoadmapPosts(
+      'rm_1' as RoadmapId,
+      { limit: 20, offset: 0 },
+      userInSegment as never
+    )
+    expect(result.items).toEqual([])
+  })
+
+  it('404s a soft-deleted roadmap even when public', async () => {
+    mockRoadmapFindFirst.mockResolvedValue({
+      id: 'rm_1' as RoadmapId,
+      isPublic: true,
+      allowedSegmentIds: [],
+      deletedAt: new Date('2026-01-01T00:00:00Z'),
+    })
+    const { getPublicRoadmapPosts } = await import('../roadmap.query')
+
+    await expect(
+      getPublicRoadmapPosts('rm_1' as RoadmapId, { limit: 20, offset: 0 })
+    ).rejects.toThrow('not found')
+  })
+})

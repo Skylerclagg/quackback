@@ -25,6 +25,8 @@ const RoadmapSchema = z.object({
   slug: SlugSchema.meta({ example: 'product-roadmap' }),
   description: z.string().nullable().meta({ example: 'Our product development roadmap' }),
   isPublic: z.boolean().meta({ description: 'Whether the roadmap is publicly visible' }),
+  allowedSegmentIds: z.array(TypeIdSchema),
+  allowedTeamPrincipalIds: z.array(TypeIdSchema),
   position: z.number().meta({ description: 'Display order' }),
   createdAt: TimestampSchema,
 })
@@ -44,13 +46,17 @@ const RoadmapPostSchema = z.object({
 })
 
 // Request body schemas
+const AllowedSegmentIdsInputSchema = z.array(TypeIdSchema).optional().meta({
+  description: 'Segments whose members may view this roadmap while it is private',
+})
+
+const AllowedTeamIdsInputSchema = z.array(TypeIdSchema).optional().meta({
+  description: 'Members who may view this roadmap while private (admins always can)',
+})
+
 const CreateRoadmapSchema = z
   .object({
-    name: z
-      .string()
-      .min(1)
-      .max(100)
-      .meta({ description: 'Roadmap name', example: 'Product Roadmap' }),
+    name: z.string().min(1).max(100).meta({ description: 'Roadmap name' }),
     slug: z
       .string()
       .min(1)
@@ -59,6 +65,8 @@ const CreateRoadmapSchema = z
       .meta({ description: 'URL-friendly slug', example: 'product-roadmap' }),
     description: z.string().max(500).optional().meta({ description: 'Roadmap description' }),
     isPublic: z.boolean().optional().meta({ description: 'Make roadmap public', default: true }),
+    allowedSegmentIds: AllowedSegmentIdsInputSchema,
+    allowedTeamPrincipalIds: AllowedTeamIdsInputSchema,
   })
   .meta({ description: 'Create roadmap request body' })
 
@@ -67,6 +75,8 @@ const UpdateRoadmapSchema = z
     name: z.string().min(1).max(100).optional(),
     description: z.string().max(500).nullable().optional(),
     isPublic: z.boolean().optional(),
+    allowedSegmentIds: AllowedSegmentIdsInputSchema,
+    allowedTeamPrincipalIds: AllowedTeamIdsInputSchema,
   })
   .meta({ description: 'Update roadmap request body' })
 
