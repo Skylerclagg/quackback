@@ -15,12 +15,16 @@ export const Route = createFileRoute('/changelog/feed')({
           { publicChangelogConditions },
           { getSettingsBrandingData },
           { resolvePortalAccessForRequest },
+          { changelogAudienceFilter },
+          { getOptionalAuth, hasAuthCredentials, policyActorFromAuth },
         ] = await Promise.all([
           import('@/lib/server/config'),
           import('@/lib/server/db'),
           import('@/lib/server/domains/changelog/changelog.public'),
           import('@/lib/server/settings-utils'),
           import('@/lib/server/functions/portal-access'),
+          import('@/lib/server/policy'),
+          import('@/lib/server/functions/auth-helpers'),
         ])
 
         const effectiveDisplayDate = sql<Date>`coalesce(${changelogEntries.displayDate}, ${changelogEntries.publishedAt})`
@@ -35,11 +39,17 @@ export const Route = createFileRoute('/changelog/feed')({
         // Mirror sitemap.xml: a denied caller gets a valid but empty feed.
         const access = await resolvePortalAccessForRequest()
 
+        // Per-entry audience gate: restricted entries only appear in the
+        // feed of a signed-in caller who may view them (the Vary: Cookie
+        // + private cache below already keys responses per caller).
+        const auth = hasAuthCredentials() ? await getOptionalAuth() : null
+        const actor = await policyActorFromAuth(auth)
+
         const entries = access.granted
           ? await db
               .select()
               .from(changelogEntries)
-              .where(and(...publicChangelogConditions(new Date())))
+              .where(and(...publicChangelogConditions(new Date()), changelogAudienceFilter(actor)))
               .orderBy(desc(effectiveDisplayDate))
               .limit(50)
           : []

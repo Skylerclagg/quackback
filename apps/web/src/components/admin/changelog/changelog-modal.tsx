@@ -41,6 +41,9 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
   const [displayDateTouched, setDisplayDateTouched] = useState(false)
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false)
   const [hasInitialized, setHasInitialized] = useState(false)
+  const [isPublic, setIsPublic] = useState(true)
+  const [allowedSegmentIds, setAllowedSegmentIds] = useState<string[]>([])
+  const [allowedTeamPrincipalIds, setAllowedTeamPrincipalIds] = useState<string[]>([])
 
   const updateChangelogMutation = useUpdateChangelog()
 
@@ -70,6 +73,9 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
       setPublishState(toPublishState(entry.status, entry.publishedAt))
       setDisplayDateOverride(entry.displayDate ? new Date(entry.displayDate) : undefined)
       setDisplayDateTouched(false)
+      setIsPublic(entry.isPublic ?? true)
+      setAllowedSegmentIds(entry.allowedSegmentIds ?? [])
+      setAllowedTeamPrincipalIds(entry.allowedTeamPrincipalIds ?? [])
       setHasInitialized(true)
     }
   }, [entry, form, hasInitialized])
@@ -110,6 +116,9 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         linkedPostIds,
         publishState,
         ...(displayDatePayload !== undefined && { displayDate: displayDatePayload }),
+        isPublic,
+        allowedSegmentIds: isPublic ? [] : allowedSegmentIds,
+        allowedTeamPrincipalIds: isPublic ? [] : allowedTeamPrincipalIds,
       },
       {
         onSuccess: () => {
@@ -179,6 +188,12 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
             displayDateValue={displayDateOverride}
             onDisplayDateChange={handleDisplayDateChange}
             onDisplayDateClear={handleDisplayDateClear}
+            isPublic={isPublic}
+            onIsPublicChange={setIsPublic}
+            allowedSegmentIds={allowedSegmentIds}
+            onAllowedSegmentIdsChange={setAllowedSegmentIds}
+            allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+            onAllowedTeamPrincipalIdsChange={setAllowedTeamPrincipalIds}
           />
         </div>
 
@@ -211,6 +226,12 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
                   displayDateValue={displayDateOverride}
                   onDisplayDateChange={handleDisplayDateChange}
                   onDisplayDateClear={handleDisplayDateClear}
+                  isPublic={isPublic}
+                  onIsPublicChange={setIsPublic}
+                  allowedSegmentIds={allowedSegmentIds}
+                  onAllowedSegmentIdsChange={setAllowedSegmentIds}
+                  allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+                  onAllowedTeamPrincipalIdsChange={setAllowedTeamPrincipalIds}
                 />
               </div>
             </SheetContent>

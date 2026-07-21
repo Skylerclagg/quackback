@@ -82,6 +82,7 @@ describe('getPublicChangelogById — view tracking', () => {
       content: '',
       contentJson: null,
       publishedAt: new Date('2026-01-01'),
+      isPublic: true,
     })
     const { getPublicChangelogById } = await import('../changelog.public')
 

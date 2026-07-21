@@ -15,6 +15,12 @@ interface ChangelogMetadataSidebarProps {
   displayDateValue?: Date
   onDisplayDateChange?: (value: Date | undefined) => void
   onDisplayDateClear?: () => void
+  isPublic: boolean
+  onIsPublicChange: (next: boolean) => void
+  allowedSegmentIds: string[]
+  onAllowedSegmentIdsChange: (next: string[]) => void
+  allowedTeamPrincipalIds: string[]
+  onAllowedTeamPrincipalIdsChange: (next: string[]) => void
 }
 
 export function ChangelogMetadataSidebar({
@@ -27,6 +33,12 @@ export function ChangelogMetadataSidebar({
   displayDateValue,
   onDisplayDateChange,
   onDisplayDateClear,
+  isPublic,
+  onIsPublicChange,
+  allowedSegmentIds,
+  onAllowedSegmentIdsChange,
+  allowedTeamPrincipalIds,
+  onAllowedTeamPrincipalIdsChange,
 }: ChangelogMetadataSidebarProps) {
   return (
     <SidebarContainer className="overflow-y-auto">
@@ -40,6 +52,12 @@ export function ChangelogMetadataSidebar({
         displayDateValue={displayDateValue}
         onDisplayDateChange={onDisplayDateChange}
         onDisplayDateClear={onDisplayDateClear}
+        isPublic={isPublic}
+        onIsPublicChange={onIsPublicChange}
+        allowedSegmentIds={allowedSegmentIds}
+        onAllowedSegmentIdsChange={onAllowedSegmentIdsChange}
+        allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+        onAllowedTeamPrincipalIdsChange={onAllowedTeamPrincipalIdsChange}
       />
     </SidebarContainer>
   )

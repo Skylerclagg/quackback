@@ -9,7 +9,16 @@ import type { BoardId, ChangelogId, PostId } from '@quackback/ids'
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { NotFoundError } from '@/lib/shared/errors'
-import { requireAuth } from './auth-helpers'
+import {
+  getOptionalAuth,
+  hasAuthCredentials,
+  policyActorFromAuth,
+  requireAuth,
+  teamActorFromAuth,
+  withSelfIfMember,
+  type AuthContext,
+} from './auth-helpers'
+import { canViewChangelogEntry, isAllowed } from '@/lib/server/policy'
 import { resolvePortalAccessForRequest } from './portal-access'
 import {
   createChangelog,
@@ -37,6 +46,20 @@ import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'changelog' })
 
+/**
+ * Load a changelog entry and 404 unless the caller may view it. Admins
+ * always pass; members need the entry public or their principal id in
+ * its team allowlist. 404 (not 403) so restricted entries stay
+ * indistinguishable from missing ones.
+ */
+async function requireChangelogAccess(auth: AuthContext, id: ChangelogId) {
+  const entry = await getChangelogById(id)
+  if (!isAllowed(canViewChangelogEntry(teamActorFromAuth(auth), entry))) {
+    throw new NotFoundError('CHANGELOG_NOT_FOUND', `Changelog entry with ID ${id} not found`)
+  }
+  return entry
+}
+
 // ============================================================================
 // Admin Server Functions (Require Auth)
 // ============================================================================
@@ -62,6 +85,13 @@ export const createChangelogFn = createServerFn({ method: 'POST' })
           linkedPostIds: (data.linkedPostIds ?? []) as PostId[],
           publishState: data.publishState as PublishState,
           ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
+          isPublic: data.isPublic,
+          allowedSegmentIds: data.allowedSegmentIds,
+          // A member creating a private entry must stay able to see it.
+          allowedTeamPrincipalIds:
+            data.isPublic === false
+              ? withSelfIfMember(auth, data.allowedTeamPrincipalIds ?? [])
+              : data.allowedTeamPrincipalIds,
         },
         {
           principalId: auth.principal.id,
@@ -90,7 +120,8 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     log.debug({ changelog_id: data.id }, 'update changelog')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireChangelogAccess(auth, data.id as ChangelogId)
 
       const entry = await updateChangelog(data.id as ChangelogId, {
         title: data.title,
@@ -99,6 +130,9 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
         linkedPostIds: data.linkedPostIds as PostId[] | undefined,
         publishState: data.publishState as PublishState | undefined,
         ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
+        isPublic: data.isPublic,
+        allowedSegmentIds: data.allowedSegmentIds,
+        allowedTeamPrincipalIds: withSelfIfMember(auth, data.allowedTeamPrincipalIds),
       })
 
       return {
@@ -123,7 +157,8 @@ export const deleteChangelogFn = createServerFn({ method: 'POST' })
     log.debug({ changelog_id: data.id }, 'delete changelog')
     try {
       // Soft delete (sets deletedAt) — safe for members to perform.
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireChangelogAccess(auth, data.id as ChangelogId)
 
       await deleteChangelog(data.id as ChangelogId)
 
@@ -142,9 +177,9 @@ export const getChangelogFn = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     log.debug({ changelog_id: data.id }, 'get changelog')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
 
-      const entry = await getChangelogById(data.id as ChangelogId)
+      const entry = await requireChangelogAccess(auth, data.id as ChangelogId)
 
       return {
         ...entry,
@@ -167,13 +202,17 @@ export const listChangelogsFn = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     log.debug({ status: data.status, limit: data.limit }, 'list changelogs')
     try {
-      await requireAuth({ roles: ['admin', 'member'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
 
-      const result = await listChangelogs({
-        status: data.status,
-        cursor: data.cursor,
-        limit: data.limit,
-      })
+      // Members only page through entries they may see; admins see all.
+      const result = await listChangelogs(
+        {
+          status: data.status,
+          cursor: data.cursor,
+          limit: data.limit,
+        },
+        teamActorFromAuth(auth)
+      )
 
       return {
         ...result,
@@ -216,7 +255,12 @@ export const getPublicChangelogFn = createServerFn({ method: 'GET' })
         )
       }
 
-      const entry = await getPublicChangelogById(data.id as ChangelogId)
+      // Resolve the actor so audience-restricted entries only surface
+      // for admins, allowlisted members, and allowed-segment users.
+      const auth = hasAuthCredentials() ? await getOptionalAuth() : null
+      const actor = await policyActorFromAuth(auth)
+
+      const entry = await getPublicChangelogById(data.id as ChangelogId, actor)
 
       return {
         ...entry,
@@ -243,10 +287,18 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
         return { items: [], nextCursor: null, hasMore: false }
       }
 
-      const result = await listPublicChangelogs({
-        cursor: data.cursor,
-        limit: data.limit,
-      })
+      // Resolve the actor so audience-restricted entries only surface
+      // for admins, allowlisted members, and allowed-segment users.
+      const auth = hasAuthCredentials() ? await getOptionalAuth() : null
+      const actor = await policyActorFromAuth(auth)
+
+      const result = await listPublicChangelogs(
+        {
+          cursor: data.cursor,
+          limit: data.limit,
+        },
+        actor
+      )
 
       return {
         ...result,

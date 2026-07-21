@@ -19,19 +19,15 @@ import {
   roadmaps,
   posts,
   postRoadmaps,
-  segments,
-  principal,
   type Roadmap,
 } from '@/lib/server/db'
-import {
-  toUuid,
-  type RoadmapId,
-  type PostId,
-  type PrincipalId,
-  type SegmentId,
-} from '@quackback/ids'
+import { toUuid, type RoadmapId, type PostId, type PrincipalId } from '@quackback/ids'
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/shared/errors'
 import { ANONYMOUS_ACTOR, canViewRoadmap, isAllowed, type Actor } from '@/lib/server/policy'
+import {
+  normalizeAllowedSegmentIds,
+  normalizeAllowedTeamPrincipalIds,
+} from '@/lib/server/domains/segments/allowlists'
 import { createActivity } from '@/lib/server/domains/activity/activity.service'
 import { logger } from '@/lib/server/logger'
 
@@ -46,44 +42,6 @@ import type {
 // ==========================================================================
 // ROADMAP CRUD
 // ==========================================================================
-
-/**
- * Validate a segment allowlist against the segments table: dedupe and
- * drop unknown / soft-deleted ids. Without this an admin could store
- * garbage strings that never match a membership but re-display in the
- * UI on every load (same rationale as updatePortalAccessFn).
- */
-async function normalizeAllowedSegmentIds(ids: string[]): Promise<string[]> {
-  if (ids.length === 0) return []
-  const requested = Array.from(new Set(ids))
-  const found = await db
-    .select({ id: segments.id })
-    .from(segments)
-    .where(and(inArray(segments.id, requested as SegmentId[]), isNull(segments.deletedAt)))
-  const valid = new Set(found.map((r) => String(r.id)))
-  return requested.filter((id) => valid.has(id))
-}
-
-/**
- * Validate a team allowlist against the principal table: dedupe and
- * keep only admin/member-role principals. Admins in the list are
- * redundant (they always see every roadmap) but harmless.
- */
-async function normalizeAllowedTeamPrincipalIds(ids: string[]): Promise<string[]> {
-  if (ids.length === 0) return []
-  const requested = Array.from(new Set(ids))
-  const found = await db
-    .select({ id: principal.id })
-    .from(principal)
-    .where(
-      and(
-        inArray(principal.id, requested as PrincipalId[]),
-        inArray(principal.role, ['admin', 'member'])
-      )
-    )
-  const valid = new Set(found.map((r) => String(r.id)))
-  return requested.filter((id) => valid.has(id))
-}
 
 /**
  * Create a new roadmap

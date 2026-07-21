@@ -24,6 +24,12 @@ export interface CreateChangelogInput {
   /** Publish state */
   publishState: PublishState
   displayDate?: Date | null
+  /** Audience — false restricts the entry to admins + allowlists. */
+  isPublic?: boolean
+  /** Segments whose members may view the entry while private. */
+  allowedSegmentIds?: string[]
+  /** Member-role principals who may view the entry while private (admins always can). */
+  allowedTeamPrincipalIds?: string[]
 }
 
 /**
@@ -38,6 +44,12 @@ export interface UpdateChangelogInput {
   /** Publish state (if changing) */
   publishState?: PublishState
   displayDate?: Date | null
+  /** Audience — false restricts the entry to admins + allowlists. */
+  isPublic?: boolean
+  /** Segments whose members may view the entry while private — [] clears. */
+  allowedSegmentIds?: string[]
+  /** Member-role principals who may view the entry while private — [] clears. */
+  allowedTeamPrincipalIds?: string[]
 }
 
 /**
@@ -69,6 +81,10 @@ export interface ChangelogEntryWithDetails {
   displayDate: Date | null
   createdAt: Date
   updatedAt: Date
+  /** Audience controls (see policy/audience.ts) */
+  isPublic: boolean
+  allowedSegmentIds: string[]
+  allowedTeamPrincipalIds: string[]
   /** Author information - only shown in admin views */
   author: ChangelogAuthor | null
   /** Linked posts */

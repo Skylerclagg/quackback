@@ -26,6 +26,9 @@ export const createChangelogSchema = z.object({
   linkedPostIds: z.array(z.string()).optional(),
   publishState: publishStateSchema,
   displayDate: z.coerce.date().nullable().optional(),
+  isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
 })
 
 /**
@@ -39,6 +42,9 @@ export const updateChangelogSchema = z.object({
   linkedPostIds: z.array(z.string()).optional(),
   publishState: publishStateSchema.optional(),
   displayDate: z.coerce.date().nullable().optional(),
+  isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
 })
 
 /**

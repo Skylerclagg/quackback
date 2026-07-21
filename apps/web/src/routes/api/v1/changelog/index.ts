@@ -20,6 +20,9 @@ const createChangelogSchema = z.object({
   content: z.string().min(1, 'Content is required'),
   publishedAt: z.string().datetime().optional(),
   linkedPostIds: z.array(z.string()).optional(),
+  isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
 })
 
 export const Route = createFileRoute('/api/v1/changelog/')({
@@ -56,6 +59,9 @@ export const Route = createFileRoute('/api/v1/changelog/')({
               content: contentJsonToMarkdown(entry.contentJson, entry.content),
               publishedAt: entry.publishedAt?.toISOString() || null,
               displayDate: entry.displayDate?.toISOString() || null,
+              isPublic: entry.isPublic,
+              allowedSegmentIds: entry.allowedSegmentIds,
+              allowedTeamPrincipalIds: entry.allowedTeamPrincipalIds,
               createdAt: entry.createdAt.toISOString(),
               updatedAt: entry.updatedAt.toISOString(),
             })),
@@ -104,6 +110,9 @@ export const Route = createFileRoute('/api/v1/changelog/')({
               content: parsed.data.content,
               publishState,
               linkedPostIds: parsed.data.linkedPostIds as PostId[] | undefined,
+              isPublic: parsed.data.isPublic,
+              allowedSegmentIds: parsed.data.allowedSegmentIds,
+              allowedTeamPrincipalIds: parsed.data.allowedTeamPrincipalIds,
             },
             {
               principalId: authResult.principalId,
@@ -117,6 +126,9 @@ export const Route = createFileRoute('/api/v1/changelog/')({
             content: contentJsonToMarkdown(entry.contentJson, entry.content),
             publishedAt: entry.publishedAt?.toISOString() || null,
             displayDate: entry.displayDate?.toISOString() || null,
+            isPublic: entry.isPublic,
+            allowedSegmentIds: entry.allowedSegmentIds,
+            allowedTeamPrincipalIds: entry.allowedTeamPrincipalIds,
             createdAt: entry.createdAt.toISOString(),
             updatedAt: entry.updatedAt.toISOString(),
           })

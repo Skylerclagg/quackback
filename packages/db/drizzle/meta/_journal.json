@@ -897,6 +897,13 @@
       "when": 1784592000000,
       "tag": "0127_roadmap_team_allowlist",
       "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1784678400000,
+      "tag": "0128_changelog_audience",
+      "breakpoints": true
     }
   ]
 }

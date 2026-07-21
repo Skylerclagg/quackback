@@ -26,6 +26,7 @@ import {
   type StatusOption,
 } from '@/components/shared/sidebar-primitives'
 import { cn } from '@/lib/shared/utils'
+import { AudienceFields } from '@/components/admin/audience-fields'
 import type { PostId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 
@@ -39,6 +40,12 @@ interface ChangelogMetadataSidebarContentProps {
   displayDateValue?: Date
   onDisplayDateChange?: (value: Date | undefined) => void
   onDisplayDateClear?: () => void
+  isPublic: boolean
+  onIsPublicChange: (next: boolean) => void
+  allowedSegmentIds: string[]
+  onAllowedSegmentIdsChange: (next: string[]) => void
+  allowedTeamPrincipalIds: string[]
+  onAllowedTeamPrincipalIdsChange: (next: string[]) => void
 }
 
 const PUBLISH_STATUS_OPTIONS: readonly StatusOption[] = [
@@ -57,6 +64,12 @@ export function ChangelogMetadataSidebarContent({
   displayDateValue,
   onDisplayDateChange = () => {},
   onDisplayDateClear = () => {},
+  isPublic,
+  onIsPublicChange,
+  allowedSegmentIds,
+  onAllowedSegmentIdsChange,
+  allowedTeamPrincipalIds,
+  onAllowedTeamPrincipalIdsChange,
 }: ChangelogMetadataSidebarContentProps) {
   const [postsOpen, setPostsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -191,6 +204,20 @@ export function ChangelogMetadataSidebarContent({
           />
         </div>
       )}
+
+      {/* Audience — public switch + private-entry allowlists */}
+      <div className="space-y-3 border-t border-border/50 pt-4">
+        <AudienceFields
+          idPrefix="changelog"
+          entityLabel="entry"
+          isPublic={isPublic}
+          onIsPublicChange={onIsPublicChange}
+          segmentIds={allowedSegmentIds}
+          onSegmentIdsChange={onAllowedSegmentIdsChange}
+          teamPrincipalIds={allowedTeamPrincipalIds}
+          onTeamPrincipalIdsChange={onAllowedTeamPrincipalIdsChange}
+        />
+      </div>
 
       {/* Linked Posts - single unified section */}
       <div className="space-y-2">

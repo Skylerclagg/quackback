@@ -193,6 +193,7 @@ describe('getPublicChangelogById — effective display date', () => {
       contentJson: null,
       publishedAt,
       displayDate: displayOverride,
+      isPublic: true,
     })
     mockSelect.mockReturnValueOnce(chainResolving([]))
 
@@ -210,6 +211,7 @@ describe('getPublicChangelogById — moderation state filter', () => {
       content: '',
       contentJson: null,
       publishedAt: new Date('2026-01-01'),
+      isPublic: true,
     })
     const candidates = [
       candidateRow({ id: 'post_pub', moderationState: 'published' }),
@@ -234,6 +236,7 @@ describe('getPublicChangelogById — moderation state filter', () => {
       content: '',
       contentJson: null,
       publishedAt: new Date('2026-01-01'),
+      isPublic: true,
     })
     const candidates = [
       candidateRow({ id: 'post_live', moderationState: 'published' }),
@@ -261,6 +264,7 @@ describe('listPublicChangelogs — moderation state filter', () => {
           content: '',
           contentJson: null,
           publishedAt: new Date('2026-01-02'),
+          isPublic: true,
         },
         {
           id: 'cl_2' as ChangelogId,
@@ -268,6 +272,7 @@ describe('listPublicChangelogs — moderation state filter', () => {
           content: '',
           contentJson: null,
           publishedAt: new Date('2026-01-01'),
+          isPublic: true,
         },
       ])
     )
@@ -302,6 +307,7 @@ describe('public changelog — board audience filter', () => {
       content: '',
       contentJson: null,
       publishedAt: new Date('2026-01-01'),
+      isPublic: true,
     })
     const candidates = [
       candidateRow({ id: 'post_pub', moderationState: 'published' }),
@@ -337,6 +343,7 @@ describe('public changelog — board audience filter', () => {
           content: '',
           contentJson: null,
           publishedAt: new Date('2026-01-02'),
+          isPublic: true,
         },
       ])
     )

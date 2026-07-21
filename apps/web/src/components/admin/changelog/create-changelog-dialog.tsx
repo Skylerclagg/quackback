@@ -31,6 +31,9 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
   const [publishState, setPublishState] = useState<PublishState>({ type: 'draft' })
   const [displayDateOverride, setDisplayDateOverride] = useState<Date | undefined>(undefined)
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false)
+  const [isPublic, setIsPublic] = useState(true)
+  const [allowedSegmentIds, setAllowedSegmentIds] = useState<string[]>([])
+  const [allowedTeamPrincipalIds, setAllowedTeamPrincipalIds] = useState<string[]>([])
   const createChangelogMutation = useCreateChangelog()
 
   const form = useForm({
@@ -74,6 +77,9 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
     setLinkedPostIds([])
     setPublishState({ type: 'draft' })
     setDisplayDateOverride(undefined)
+    setIsPublic(true)
+    setAllowedSegmentIds([])
+    setAllowedTeamPrincipalIds([])
     createChangelogMutation.reset()
   }
 
@@ -87,6 +93,9 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
         publishState,
         ...(publishState.type === 'published' &&
           displayDateOverride !== undefined && { displayDate: displayDateOverride }),
+        isPublic,
+        allowedSegmentIds: isPublic ? [] : allowedSegmentIds,
+        allowedTeamPrincipalIds: isPublic ? [] : allowedTeamPrincipalIds,
       },
       {
         onSuccess: () => {
@@ -163,6 +172,12 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
                 displayDateValue={displayDateOverride}
                 onDisplayDateChange={handleDisplayDateChange}
                 onDisplayDateClear={handleDisplayDateClear}
+                isPublic={isPublic}
+                onIsPublicChange={setIsPublic}
+                allowedSegmentIds={allowedSegmentIds}
+                onAllowedSegmentIdsChange={setAllowedSegmentIds}
+                allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+                onAllowedTeamPrincipalIdsChange={setAllowedTeamPrincipalIds}
               />
             </div>
 
@@ -193,6 +208,12 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
                       displayDateValue={displayDateOverride}
                       onDisplayDateChange={handleDisplayDateChange}
                       onDisplayDateClear={handleDisplayDateClear}
+                      isPublic={isPublic}
+                      onIsPublicChange={setIsPublic}
+                      allowedSegmentIds={allowedSegmentIds}
+                      onAllowedSegmentIdsChange={setAllowedSegmentIds}
+                      allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+                      onAllowedTeamPrincipalIdsChange={setAllowedTeamPrincipalIds}
                     />
                   </div>
                 </SheetContent>

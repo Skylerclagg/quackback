@@ -249,3 +249,32 @@ export async function policyActorFromAuth(auth: AuthContext | null): Promise<Act
     segmentIds,
   }
 }
+
+/**
+ * Team-side actor for audience checks on admin surfaces. The
+ * admin/member policy branches never consult segment memberships, so
+ * this skips the segmentIdsForPrincipal round-trip that
+ * policyActorFromAuth pays. Only use where the caller is known to be
+ * team (requireAuth roles admin/member).
+ */
+export function teamActorFromAuth(auth: AuthContext): Actor {
+  return {
+    principalId: auth.principal.id,
+    role: auth.principal.role,
+    principalType: 'user',
+    segmentIds: new Set(),
+  }
+}
+
+/**
+ * A member configuring a private resource's team allowlist is always
+ * kept on it — otherwise saving would lock them out of the thing
+ * they're editing. Admins are never auto-added (they bypass the list).
+ */
+export function withSelfIfMember(
+  auth: AuthContext,
+  ids: string[] | undefined
+): string[] | undefined {
+  if (ids === undefined || auth.principal.role !== 'member') return ids
+  return ids.includes(String(auth.principal.id)) ? ids : [...ids, String(auth.principal.id)]
+}

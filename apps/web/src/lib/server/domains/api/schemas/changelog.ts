@@ -24,8 +24,19 @@ const ChangelogEntrySchema = z.object({
   displayDate: NullableTimestampSchema.meta({
     description: 'Optional portal display override (null uses publishedAt for display)',
   }),
+  isPublic: z.boolean().meta({ description: 'False restricts the entry to its allowlists' }),
+  allowedSegmentIds: z.array(TypeIdSchema),
+  allowedTeamPrincipalIds: z.array(TypeIdSchema),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
+})
+
+// Audience allowlists shared by create/update request bodies.
+const AudienceSegmentIdsSchema = z.array(TypeIdSchema).optional().meta({
+  description: 'Segments whose members may view the entry while it is private',
+})
+const AudienceTeamIdsSchema = z.array(TypeIdSchema).optional().meta({
+  description: 'Members who may view the entry while private (admins always can)',
 })
 
 // Request body schemas
@@ -42,6 +53,12 @@ const CreateChangelogEntrySchema = z
       .datetime()
       .optional()
       .meta({ description: 'Publish date (omit to save as draft)' }),
+    isPublic: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Entry visible to everyone', default: true }),
+    allowedSegmentIds: AudienceSegmentIdsSchema,
+    allowedTeamPrincipalIds: AudienceTeamIdsSchema,
   })
   .meta({ description: 'Create changelog entry request body' })
 
@@ -59,6 +76,9 @@ const UpdateChangelogEntrySchema = z
       description:
         'Portal display override for published entries. Null clears override. Must not be in the future.',
     }),
+    isPublic: z.boolean().optional(),
+    allowedSegmentIds: AudienceSegmentIdsSchema,
+    allowedTeamPrincipalIds: AudienceTeamIdsSchema,
   })
   .meta({ description: 'Update changelog entry request body' })
 

@@ -33,6 +33,10 @@ import {
   type EventActor,
 } from '@/lib/server/events/dispatch'
 import { scheduleDispatch, cancelScheduledDispatch } from '@/lib/server/events/scheduler'
+import {
+  normalizeAllowedSegmentIds,
+  normalizeAllowedTeamPrincipalIds,
+} from '@/lib/server/domains/segments/allowlists'
 import { logger } from '@/lib/server/logger'
 
 import { isSameDay } from 'date-fns'
@@ -111,6 +115,13 @@ export async function createChangelog(
       contentJson,
       principalId: author.principalId,
       publishedAt,
+      isPublic: input.isPublic ?? true,
+      allowedSegmentIds: input.allowedSegmentIds
+        ? await normalizeAllowedSegmentIds(input.allowedSegmentIds)
+        : [],
+      allowedTeamPrincipalIds: input.allowedTeamPrincipalIds
+        ? await normalizeAllowedTeamPrincipalIds(input.allowedTeamPrincipalIds)
+        : [],
       ...(displayDate != null && { displayDate }),
     })
     .returning()
@@ -211,6 +222,17 @@ export async function updateChangelog(
   // Handle publish state change
   if (input.publishState !== undefined) {
     updateData.publishedAt = getPublishedAtFromState(input.publishState)
+  }
+
+  // Audience changes
+  if (input.isPublic !== undefined) updateData.isPublic = input.isPublic
+  if (input.allowedSegmentIds !== undefined) {
+    updateData.allowedSegmentIds = await normalizeAllowedSegmentIds(input.allowedSegmentIds)
+  }
+  if (input.allowedTeamPrincipalIds !== undefined) {
+    updateData.allowedTeamPrincipalIds = await normalizeAllowedTeamPrincipalIds(
+      input.allowedTeamPrincipalIds
+    )
   }
 
   // Update the entry
@@ -371,6 +393,9 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     displayDate: entry.displayDate,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
+    isPublic: entry.isPublic,
+    allowedSegmentIds: entry.allowedSegmentIds,
+    allowedTeamPrincipalIds: entry.allowedTeamPrincipalIds,
     author,
     linkedPosts,
     status: computeStatus(entry.publishedAt),

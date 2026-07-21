@@ -117,6 +117,7 @@ describe('getPublicChangelogById', () => {
       content: '',
       contentJson: null,
       publishedAt: new Date('2026-01-01'),
+      isPublic: true,
     })
 
     await getPublicChangelogById('cl_1' as ChangelogId)
@@ -145,6 +146,7 @@ describe('listPublicChangelogs', () => {
     // preserves it precisely so pagination has an anchor.
     mockEntryFindFirst.mockResolvedValueOnce({
       publishedAt: new Date('2026-01-01'),
+      isPublic: true,
       displayDate: null,
     })
     mockSelect.mockReturnValueOnce(entriesListChain([]))

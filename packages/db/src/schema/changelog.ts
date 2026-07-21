@@ -1,4 +1,13 @@
-import { pgTable, text, timestamp, integer, index, uniqueIndex, jsonb } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  index,
+  uniqueIndex,
+  jsonb,
+  boolean,
+} from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { typeIdWithDefault, typeIdColumn, typeIdColumnNullable } from '@quackback/ids/drizzle'
 import { principal } from './auth'
@@ -19,6 +28,17 @@ export const changelogEntries = pgTable(
     }),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     displayDate: timestamp('display_date', { withTimezone: true }),
+    // Audience controls, mirroring roadmaps (boards.ts). Both lists are
+    // ignored while isPublic. A private entry is visible to admins,
+    // member-role principals in allowedTeamPrincipalIds, and portal
+    // users in at least one allowedSegmentIds segment. Publication
+    // state (publishedAt) gates independently of audience.
+    isPublic: boolean('is_public').default(true).notNull(),
+    allowedSegmentIds: jsonb('allowed_segment_ids').$type<string[]>().default([]).notNull(),
+    allowedTeamPrincipalIds: jsonb('allowed_team_principal_ids')
+      .$type<string[]>()
+      .default([])
+      .notNull(),
     // Timestamp the publish notification was sent; null until dispatched.
     notifiedAt: timestamp('notified_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

@@ -12,7 +12,7 @@ import {
   type TagId,
   type SegmentId,
 } from '@quackback/ids'
-import { requireAuth, type AuthContext } from './auth-helpers'
+import { requireAuth, teamActorFromAuth, withSelfIfMember, type AuthContext } from './auth-helpers'
 import {
   addPostToRoadmap,
   createRoadmap,
@@ -24,24 +24,11 @@ import {
   updateRoadmap,
 } from '@/lib/server/domains/roadmaps/roadmap.service'
 import { getRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
-import { canViewRoadmap, isAllowed, type Actor } from '@/lib/server/policy'
+import { canViewRoadmap, isAllowed } from '@/lib/server/policy'
 import { NotFoundError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'roadmaps' })
-
-/**
- * Team-side actor for roadmap access checks. The admin/member policy
- * branches never consult segment memberships, so skip resolving them.
- */
-function teamActor(auth: AuthContext): Actor {
-  return {
-    principalId: auth.principal.id,
-    role: auth.principal.role,
-    principalType: 'user',
-    segmentIds: new Set(),
-  }
-}
 
 /**
  * Load a roadmap and 404 unless the caller may view it. Admins always
@@ -51,20 +38,10 @@ function teamActor(auth: AuthContext): Actor {
  */
 async function requireRoadmapAccess(auth: AuthContext, id: RoadmapId) {
   const roadmap = await getRoadmap(id)
-  if (!isAllowed(canViewRoadmap(teamActor(auth), roadmap))) {
+  if (!isAllowed(canViewRoadmap(teamActorFromAuth(auth), roadmap))) {
     throw new NotFoundError('ROADMAP_NOT_FOUND', `Roadmap with ID ${id} not found`)
   }
   return roadmap
-}
-
-/**
- * A member configuring a private roadmap's team list is always kept on
- * it — otherwise saving would lock them out of the roadmap they're
- * editing. Admins are never auto-added (they bypass the list).
- */
-function withSelfIfMember(auth: AuthContext, ids: string[] | undefined): string[] | undefined {
-  if (ids === undefined || auth.principal.role !== 'member') return ids
-  return ids.includes(String(auth.principal.id)) ? ids : [...ids, String(auth.principal.id)]
 }
 
 // ============================================
@@ -150,7 +127,7 @@ export const fetchRoadmaps = createServerFn({ method: 'GET' }).handler(async () 
 
     // Members only see public roadmaps plus private ones they're
     // allowlisted on; admins see everything.
-    const actor = teamActor(auth)
+    const actor = teamActorFromAuth(auth)
     const roadmaps = (await listRoadmaps()).filter((r) => isAllowed(canViewRoadmap(actor, r)))
     // Serialize branded types to plain strings for turbo-stream
     return roadmaps.map((roadmap) => ({
@@ -362,7 +339,7 @@ export const reorderRoadmapsFn = createServerFn({ method: 'POST' })
 
       // Members can only reorder roadmaps they can see — silently drop
       // ids outside their view instead of failing the whole request.
-      const actor = teamActor(auth)
+      const actor = teamActorFromAuth(auth)
       const visible = new Set(
         (await listRoadmaps())
           .filter((r) => isAllowed(canViewRoadmap(actor, r)))

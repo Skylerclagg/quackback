@@ -317,7 +317,10 @@ async function getIntegrationTargets(
         const secrets = decryptSecrets<{ accessToken?: string }>(m.secrets)
         accessToken = secrets.accessToken
       } catch (error) {
-        log.error({ err: error, integration_type: m.integrationType }, 'failed to decrypt integration secrets')
+        log.error(
+          { err: error, integration_type: m.integrationType },
+          'failed to decrypt integration secrets'
+        )
         continue
       }
     }
@@ -731,6 +734,56 @@ async function getMentionTargets(event: EventData, context: HookContext): Promis
 // ============================================================================
 
 /**
+ * Filter subscribers to those inside a restricted changelog entry's
+ * audience (see policy/audience.ts). Resolves each subscriber's role
+ * and segment memberships in two batch queries, then applies the same
+ * canViewChangelogEntry predicate the read paths use — a subscriber
+ * who can't open the entry must not be emailed its content.
+ */
+async function filterSubscribersByChangelogAudience(
+  subscribers: Subscriber[],
+  entry: {
+    isPublic: boolean
+    allowedSegmentIds: string[]
+    allowedTeamPrincipalIds: string[]
+    deletedAt: Date | null
+  }
+): Promise<Subscriber[]> {
+  if (entry.isPublic) return subscribers
+  const { canViewChangelogEntry, isAllowed } = await import('@/lib/server/policy')
+  const ids = subscribers.map((s) => s.principalId as PrincipalId)
+  const [principals, memberships] = await Promise.all([
+    db.query.principal.findMany({
+      where: inArray(principal.id, ids),
+      columns: { id: true, role: true, type: true },
+    }),
+    db
+      .select({ principalId: userSegments.principalId, segmentId: userSegments.segmentId })
+      .from(userSegments)
+      .where(inArray(userSegments.principalId, ids)),
+  ])
+  const principalMap = new Map(principals.map((p) => [String(p.id), p]))
+  const segmentMap = new Map<string, Set<SegmentId>>()
+  for (const m of memberships) {
+    const key = String(m.principalId)
+    if (!segmentMap.has(key)) segmentMap.set(key, new Set())
+    segmentMap.get(key)!.add(m.segmentId as SegmentId)
+  }
+  return subscribers.filter((s) => {
+    const p = principalMap.get(String(s.principalId))
+    if (!p) return false
+    const actor: Actor = {
+      principalId: s.principalId as PrincipalId,
+      role: p.role as Actor['role'],
+      principalType:
+        p.type === 'anonymous' ? 'anonymous' : p.type === 'service' ? 'service' : 'user',
+      segmentIds: segmentMap.get(String(s.principalId)) ?? new Set(),
+    }
+    return isAllowed(canViewChangelogEntry(actor, entry))
+  })
+}
+
+/**
  * Get subscriber targets for changelog.published events.
  * Looks up all posts linked to the changelog, gets their subscribers,
  * and deduplicates across posts.
@@ -745,7 +798,20 @@ async function getChangelogSubscriberTargets(
   if (!changelogId) return []
 
   // Look up linked posts
-  const { changelogEntryPosts, eq: eqOp } = await import('@/lib/server/db')
+  const { changelogEntryPosts, changelogEntries, eq: eqOp } = await import('@/lib/server/db')
+
+  // Audience gate: a restricted entry must not be announced outside
+  // its audience, so its own audience fields drive recipient filtering.
+  const entry = await db.query.changelogEntries.findFirst({
+    where: eqOp(changelogEntries.id, changelogId as import('@quackback/ids').ChangelogId),
+    columns: {
+      isPublic: true,
+      allowedSegmentIds: true,
+      allowedTeamPrincipalIds: true,
+      deletedAt: true,
+    },
+  })
+  if (!entry || entry.deletedAt) return []
   const linkedPosts = await db.query.changelogEntryPosts.findMany({
     where: eqOp(
       changelogEntryPosts.changelogEntryId,
@@ -776,9 +842,10 @@ async function getChangelogSubscriberTargets(
   )
   if (subscribers.length === 0) return []
 
-  // Filter out the actor
-  const nonActorSubscribers = subscribers.filter(
-    (subscriber) => !isActorSubscriber(subscriber, event.actor)
+  // Filter out the actor, then anyone outside the entry's audience.
+  const nonActorSubscribers = await filterSubscribersByChangelogAudience(
+    subscribers.filter((subscriber) => !isActorSubscriber(subscriber, event.actor)),
+    entry
   )
   if (nonActorSubscribers.length === 0) return []
 

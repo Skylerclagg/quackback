@@ -20,6 +20,7 @@ import {
   sql,
 } from '@/lib/server/db'
 import type { BoardId, ChangelogId, PrincipalId, PostId, StatusId } from '@quackback/ids'
+import { changelogAudienceFilter, type Actor } from '@/lib/server/policy'
 import { computeStatus } from './changelog.service'
 import type {
   ListChangelogParams,
@@ -34,12 +35,22 @@ import type {
  * @param params - List parameters
  * @returns Paginated list of changelog entries
  */
-export async function listChangelogs(params: ListChangelogParams): Promise<ChangelogListResult> {
+export async function listChangelogs(
+  params: ListChangelogParams,
+  actor?: Actor
+): Promise<ChangelogListResult> {
   const { status = 'all', cursor, limit = 20 } = params
   const now = new Date()
 
-  // Build where conditions - always exclude soft-deleted entries
+  // Build where conditions - always exclude soft-deleted entries.
+  // When an actor is supplied (the admin server fn passes the caller),
+  // audience-restricted entries are filtered in SQL so member-role
+  // callers only page through entries they may see. Filtering must be
+  // SQL-side — this list is cursor-paginated.
   const conditions: SQL<unknown>[] = [isNull(changelogEntries.deletedAt)]
+  if (actor) {
+    conditions.push(changelogAudienceFilter(actor))
+  }
 
   // Filter by status
   if (status === 'draft') {
@@ -158,6 +169,9 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
       displayDate: entry.displayDate,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
+      isPublic: entry.isPublic,
+      allowedSegmentIds: entry.allowedSegmentIds,
+      allowedTeamPrincipalIds: entry.allowedTeamPrincipalIds,
       author: entry.principalId ? (authorMap.get(entry.principalId) ?? null) : null,
       linkedPosts: entryLinkedPosts.map((lp) => ({
         id: lp.post.id,

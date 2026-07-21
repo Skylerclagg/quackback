@@ -18,6 +18,13 @@ import {
 } from '@/lib/server/db'
 import type { ChangelogId, StatusId } from '@quackback/ids'
 import { NotFoundError } from '@/lib/shared/errors'
+import {
+  ANONYMOUS_ACTOR,
+  canViewChangelogEntry,
+  changelogAudienceFilter,
+  isAllowed,
+  type Actor,
+} from '@/lib/server/policy'
 import { computeStatus } from './changelog.service'
 import type { PublicChangelogEntry, PublicChangelogListResult } from './changelog.types'
 
@@ -44,14 +51,24 @@ export function publicChangelogConditions(now: Date) {
  * Returns null (no throw) when the entry isn't publicly visible.
  */
 export async function getPublicChangelogMetaById(
-  id: ChangelogId
+  id: ChangelogId,
+  actor: Actor = ANONYMOUS_ACTOR
 ): Promise<{ id: ChangelogId; title: string; publishedAt: Date } | null> {
   const now = new Date()
   const entry = await db.query.changelogEntries.findFirst({
     where: and(eq(changelogEntries.id, id), ...publicChangelogConditions(now)),
-    columns: { id: true, title: true, publishedAt: true, displayDate: true },
+    columns: {
+      id: true,
+      title: true,
+      publishedAt: true,
+      displayDate: true,
+      isPublic: true,
+      allowedSegmentIds: true,
+      allowedTeamPrincipalIds: true,
+    },
   })
   if (!entry || !entry.publishedAt) return null
+  if (!isAllowed(canViewChangelogEntry(actor, entry))) return null
   return {
     id: entry.id as ChangelogId,
     title: entry.title,
@@ -65,14 +82,19 @@ export async function getPublicChangelogMetaById(
  * @param id - Changelog entry ID
  * @returns Public changelog entry
  */
-export async function getPublicChangelogById(id: ChangelogId): Promise<PublicChangelogEntry> {
+export async function getPublicChangelogById(
+  id: ChangelogId,
+  actor: Actor = ANONYMOUS_ACTOR
+): Promise<PublicChangelogEntry> {
   const now = new Date()
 
   const entry = await db.query.changelogEntries.findFirst({
     where: and(eq(changelogEntries.id, id), ...publicChangelogConditions(now)),
   })
 
-  if (!entry || !entry.publishedAt) {
+  // Audience denials 404 exactly like missing entries so a restricted
+  // entry is indistinguishable from a nonexistent one.
+  if (!entry || !entry.publishedAt || !isAllowed(canViewChangelogEntry(actor, entry))) {
     throw new NotFoundError(
       'CHANGELOG_NOT_FOUND',
       `Published changelog entry with ID ${id} not found`
@@ -157,14 +179,20 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
  * @param params - List parameters
  * @returns Paginated list of public changelog entries
  */
-export async function listPublicChangelogs(params: {
-  cursor?: string
-  limit?: number
-}): Promise<PublicChangelogListResult> {
+export async function listPublicChangelogs(
+  params: {
+    cursor?: string
+    limit?: number
+  },
+  actor: Actor = ANONYMOUS_ACTOR
+): Promise<PublicChangelogListResult> {
   const { cursor, limit = 20 } = params
   const now = new Date()
 
-  const conditions = publicChangelogConditions(now)
+  // Audience filtering happens in SQL (not in JS after the query)
+  // because this list is cursor-paginated — dropping rows after LIMIT
+  // would shrink pages and break the cursor contract.
+  const conditions = [...publicChangelogConditions(now), changelogAudienceFilter(actor)]
 
   // Cursor-based pagination. The lookup does NOT filter on deletedAt:
   // if an admin deleted the cursor row between page load and "Load

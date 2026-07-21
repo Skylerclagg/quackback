@@ -1,4 +1,6 @@
 export * from './types'
+export * from './audience'
 export * from './boards'
 export * from './posts'
 export * from './roadmaps'
+export * from './changelog'
