@@ -5,7 +5,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Roadmap } from '@/lib/shared/db-types'
+import type { Roadmap, TimelineAccess } from '@/lib/shared/db-types'
 import type { RoadmapId } from '@quackback/ids'
 import {
   createRoadmapFn,
@@ -26,6 +26,7 @@ interface CreateRoadmapInput {
   isPublic?: boolean
   allowedSegmentIds?: string[]
   allowedTeamPrincipalIds?: string[]
+  timelineAccess?: TimelineAccess
 }
 
 interface UpdateRoadmapInput {
@@ -34,6 +35,7 @@ interface UpdateRoadmapInput {
   isPublic?: boolean
   allowedSegmentIds?: string[]
   allowedTeamPrincipalIds?: string[]
+  timelineAccess?: TimelineAccess
 }
 
 // ============================================================================
@@ -56,6 +58,7 @@ export function useCreateRoadmap() {
           isPublic: input.isPublic,
           allowedSegmentIds: input.allowedSegmentIds,
           allowedTeamPrincipalIds: input.allowedTeamPrincipalIds,
+          timelineAccess: input.timelineAccess,
         },
       }) as unknown as Promise<Roadmap>,
     onSuccess: () => {
@@ -80,6 +83,7 @@ export function useUpdateRoadmap() {
           isPublic: input.isPublic,
           allowedSegmentIds: input.allowedSegmentIds,
           allowedTeamPrincipalIds: input.allowedTeamPrincipalIds,
+          timelineAccess: input.timelineAccess,
         },
       }) as unknown as Promise<Roadmap>,
     onSuccess: () => {

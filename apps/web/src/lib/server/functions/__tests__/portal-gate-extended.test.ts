@@ -136,6 +136,13 @@ vi.mock('@/lib/server/domains/roadmaps/roadmap.query', () => ({
   getPublicRoadmapPosts: (...a: unknown[]) => mockGetPortalPublicRoadmapPosts(...a),
 }))
 
+// fetchPublicRoadmaps computes a per-roadmap timelineVisible flag;
+// pretend every roadmap has timeline content so the gate assertions
+// stay about portal access, not content.
+vi.mock('@/lib/server/domains/roadmaps/roadmap.timeline', () => ({
+  roadmapIdsWithTimelineContent: vi.fn(async (ids: unknown[]) => new Set(ids.map(String))),
+}))
+
 vi.mock('@/lib/server/domains/subscriptions/subscription.service', () => ({
   getSubscriptionStatus: vi.fn(),
 }))

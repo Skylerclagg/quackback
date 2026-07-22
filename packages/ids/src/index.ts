@@ -77,6 +77,7 @@ export type {
   PostMentionId,
   NoteId,
   RoadmapId,
+  MilestoneId,
   ChangelogId,
   ConversationId,
   ChatMessageId,

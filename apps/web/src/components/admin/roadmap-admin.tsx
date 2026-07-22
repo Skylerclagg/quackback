@@ -11,11 +11,13 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { MapIcon } from '@heroicons/react/24/solid'
+import { MapIcon, ViewColumnsIcon, CalendarDaysIcon } from '@heroicons/react/24/solid'
+import { Button } from '@/components/ui/button'
 import { RoadmapSidebar } from './roadmap-sidebar'
 import { RoadmapColumn } from './roadmap-column'
 import { RoadmapCardOverlay } from './roadmap-card'
 import { RoadmapFiltersBar } from './roadmap/roadmap-filters-bar'
+import { RoadmapTimelineAdmin } from './roadmap/roadmap-timeline-admin'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useRoadmaps } from '@/lib/client/hooks/use-roadmaps-query'
 import { useRoadmapSelection } from './use-roadmap-selection'
@@ -64,6 +66,9 @@ export function RoadmapAdmin({ statuses }: RoadmapAdminProps) {
   // Track dragged post for overlay
   const [activePost, setActivePost] = useState<RoadmapPostEntry | null>(null)
 
+  // Presentation mode: status columns (default) or the date timeline.
+  const [view, setView] = useState<'columns' | 'timeline'>('columns')
+
   // Distance threshold: drag only starts after moving 8px (like Trello)
   // This allows click to work normally if pointer doesn't move much
   const sensors = useSensors(
@@ -106,56 +111,90 @@ export function RoadmapAdmin({ statuses }: RoadmapAdminProps) {
         {selectedRoadmap ? (
           <>
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 bg-card/50 space-y-3">
-              <div>
-                <h2 className="text-lg font-semibold">{selectedRoadmap.name}</h2>
-                {selectedRoadmap.description && (
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    {selectedRoadmap.description}
-                  </p>
-                )}
-              </div>
-              <RoadmapFiltersBar
-                filters={filters}
-                onFiltersChange={setFilters}
-                onClearAll={clearFilters}
-                boards={boards}
-                tags={tags}
-                segments={segments}
-                onToggleBoard={toggleBoard}
-                onToggleTag={toggleTag}
-                onToggleSegment={toggleSegment}
-              />
-            </div>
-
-            <DndContext
-              sensors={sensors}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              autoScroll={false}
-            >
-              <div className="flex-1 overflow-auto p-4 sm:p-6">
-                <div className="flex items-stretch gap-4 sm:gap-5">
-                  {statuses.map((status) => (
-                    <RoadmapColumn
-                      key={status.id}
-                      roadmapId={selectedRoadmapId as RoadmapId}
-                      statusId={status.id}
-                      title={status.name}
-                      color={status.color}
-                      filters={filters}
-                      onCardClick={handleCardClick}
-                    />
-                  ))}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">{selectedRoadmap.name}</h2>
+                  {selectedRoadmap.description && (
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {selectedRoadmap.description}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 rounded-md border border-border/60 p-0.5">
+                  <Button
+                    variant={view === 'columns' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setView('columns')}
+                  >
+                    <ViewColumnsIcon className="h-3.5 w-3.5 mr-1" />
+                    Columns
+                  </Button>
+                  <Button
+                    variant={view === 'timeline' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setView('timeline')}
+                  >
+                    <CalendarDaysIcon className="h-3.5 w-3.5 mr-1" />
+                    Timeline
+                  </Button>
                 </div>
               </div>
-
-              {createPortal(
-                <DragOverlay dropAnimation={null}>
-                  {activePost && <RoadmapCardOverlay post={activePost} />}
-                </DragOverlay>,
-                document.body
+              {view === 'columns' && (
+                <RoadmapFiltersBar
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  onClearAll={clearFilters}
+                  boards={boards}
+                  tags={tags}
+                  segments={segments}
+                  onToggleBoard={toggleBoard}
+                  onToggleTag={toggleTag}
+                  onToggleSegment={toggleSegment}
+                />
               )}
-            </DndContext>
+            </div>
+
+            {view === 'timeline' ? (
+              <div className="flex-1 overflow-auto p-4 sm:p-6">
+                <RoadmapTimelineAdmin
+                  roadmapId={selectedRoadmapId as string}
+                  statuses={statuses}
+                  onCardClick={handleCardClick}
+                />
+              </div>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                autoScroll={false}
+              >
+                <div className="flex-1 overflow-auto p-4 sm:p-6">
+                  <div className="flex items-stretch gap-4 sm:gap-5">
+                    {statuses.map((status) => (
+                      <RoadmapColumn
+                        key={status.id}
+                        roadmapId={selectedRoadmapId as RoadmapId}
+                        statusId={status.id}
+                        title={status.name}
+                        color={status.color}
+                        filters={filters}
+                        onCardClick={handleCardClick}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {createPortal(
+                  <DragOverlay dropAnimation={null}>
+                    {activePost && <RoadmapCardOverlay post={activePost} />}
+                  </DragOverlay>,
+                  document.body
+                )}
+              </DndContext>
+            )}
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">

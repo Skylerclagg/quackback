@@ -79,6 +79,13 @@ vi.mock('@/lib/server/domains/roadmaps/roadmap.query', () => ({
   getPublicRoadmapPosts: (...a: unknown[]) => mockGetPublicRoadmapPosts(...a),
 }))
 
+// listPublicRoadmapsFn computes a per-roadmap timelineVisible flag;
+// pretend every roadmap has timeline content so the gate assertions
+// stay about portal access, not content.
+vi.mock('@/lib/server/domains/roadmaps/roadmap.timeline', () => ({
+  roadmapIdsWithTimelineContent: vi.fn(async (ids: unknown[]) => new Set(ids.map(String))),
+}))
+
 vi.mock('@/lib/server/domains/posts/post.public.utils', () => ({
   getPublicRoadmapPostsPaginated: (...a: unknown[]) => mockGetPublicRoadmapPostsPaginated(...a),
   getVoteAndSubscriptionStatus: vi.fn(),
@@ -108,6 +115,9 @@ vi.mock('@/lib/server/policy', () => ({
   canViewBoard: vi.fn(),
   postViewFilter: vi.fn(() => 'POST_VIEW_FILTER_SQL'),
   canVotePost: (...a: unknown[]) => mockCanVotePost(...(a as [])),
+  // listPublicRoadmapsFn computes a per-viewer timelineVisible flag.
+  canViewRoadmapTimeline: vi.fn(() => ({ allowed: true })),
+  isAllowed: vi.fn((d: { allowed: boolean }) => d.allowed),
 }))
 vi.mock('@/lib/server/domains/posts/post.service', () => ({ createPost: vi.fn() }))
 vi.mock('@/lib/server/domains/posts/post.voting', () => ({ voteOnPost: vi.fn() }))

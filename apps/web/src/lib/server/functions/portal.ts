@@ -11,7 +11,7 @@ import {
   type UserId,
 } from '@quackback/ids'
 import type { BoardSettings, BoardAccess } from '@/lib/server/db'
-import type { Actor } from '@/lib/server/policy'
+import { canViewRoadmapTimeline, isAllowed, type Actor } from '@/lib/server/policy'
 import {
   getOptionalAuth,
   hasAuthCredentials,
@@ -38,6 +38,7 @@ import { listPublicTags } from '@/lib/server/domains/tags/tag.service'
 import { getSubscriptionStatus } from '@/lib/server/domains/subscriptions/subscription.service'
 import { listPublicRoadmaps } from '@/lib/server/domains/roadmaps/roadmap.service'
 import { getPublicRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
+import { roadmapIdsWithTimelineContent } from '@/lib/server/domains/roadmaps/roadmap.timeline'
 import { resolvePortalAccessForRequest } from './portal-access'
 import { logger } from '@/lib/server/logger'
 
@@ -542,12 +543,19 @@ export const fetchPublicRoadmaps = createServerFn({ method: 'GET' }).handler(asy
     const actor = await policyActorFromAuth(auth)
 
     const roadmaps = await listPublicRoadmaps(actor)
+    const roadmapsWithTimeline = await roadmapIdsWithTimelineContent(roadmaps.map((r) => r.id))
     return roadmaps.map((r) => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
       description: r.description,
       isPublic: r.isPublic,
+      // Whether THIS viewer gets the timeline view (dates) at all —
+      // permission (timelineAccess) AND actual content, so an empty
+      // timeline is never offered. Computed server-side to avoid
+      // leaking the roadmap's timelineAccess config to the client.
+      timelineVisible:
+        roadmapsWithTimeline.has(String(r.id)) && isAllowed(canViewRoadmapTimeline(actor, r)),
       position: r.position,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),

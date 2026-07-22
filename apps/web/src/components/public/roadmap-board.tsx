@@ -1,8 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useIntl } from 'react-intl'
-import { MapIcon } from '@heroicons/react/24/solid'
+import { MapIcon, ViewColumnsIcon, CalendarDaysIcon } from '@heroicons/react/24/solid'
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { Button } from '@/components/ui/button'
+import { RoadmapTimeline } from './roadmap-timeline'
 import { Card, CardContent } from '@/components/ui/card'
 import type { PostStatusEntity } from '@/lib/shared/db-types'
 import { usePublicRoadmaps, type RoadmapView } from '@/lib/client/hooks/use-roadmaps-query'
@@ -36,6 +38,7 @@ export function RoadmapBoard({
   const { selectedRoadmapId, setSelectedRoadmap } = usePublicRoadmapSelection()
   const { data: roadmaps } = usePublicRoadmaps({ enabled: !initialRoadmaps })
   const columnsScroll = usePillsScroll()
+  const [view, setView] = useState<'columns' | 'timeline'>('columns')
 
   const { filters, setFilters, clearFilters, toggleBoard, toggleTag, toggleSegment } =
     usePublicRoadmapFilters()
@@ -48,6 +51,12 @@ export function RoadmapBoard({
   const availableRoadmaps = initialRoadmaps ?? roadmaps ?? []
   const effectiveSelectedId = selectedRoadmapId ?? initialSelectedRoadmapId
   const selectedRoadmap = availableRoadmaps.find((r) => r.id === effectiveSelectedId)
+
+  // The timeline view can be hidden (or date-coarsened) per audience —
+  // the server computes entitlement per viewer. Without it, fall back
+  // to columns and don't render the toggle at all.
+  const timelineAvailable = selectedRoadmap?.timelineVisible === true
+  const effectiveView = timelineAvailable ? view : 'columns'
 
   useEffect(() => {
     if (availableRoadmaps.length > 0 && !selectedRoadmapId) {
@@ -96,13 +105,60 @@ export function RoadmapBoard({
         </div>
       )}
 
-      <PublicRoadmapToolbar
-        currentSort={filters.sort ?? 'votes'}
-        onSortChange={(sort) => setFilters({ sort })}
-        currentSearch={filters.search}
-        onSearchChange={(search) => setFilters({ search })}
-        filterButton={
-          <PublicRoadmapToolbarFilterButton
+      {timelineAvailable && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1 rounded-md border border-border/60 p-0.5">
+            <Button
+              variant={effectiveView === 'columns' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setView('columns')}
+            >
+              <ViewColumnsIcon className="h-3.5 w-3.5 me-1" />
+              {intl.formatMessage({
+                id: 'portal.roadmap.view.columns',
+                defaultMessage: 'Columns',
+              })}
+            </Button>
+            <Button
+              variant={effectiveView === 'timeline' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setView('timeline')}
+            >
+              <CalendarDaysIcon className="h-3.5 w-3.5 me-1" />
+              {intl.formatMessage({
+                id: 'portal.roadmap.view.timeline',
+                defaultMessage: 'Timeline',
+              })}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {effectiveView === 'columns' && (
+        <>
+          <PublicRoadmapToolbar
+            currentSort={filters.sort ?? 'votes'}
+            onSortChange={(sort) => setFilters({ sort })}
+            currentSearch={filters.search}
+            onSearchChange={(search) => setFilters({ search })}
+            filterButton={
+              <PublicRoadmapToolbarFilterButton
+                boards={boards}
+                tags={tags}
+                segments={isTeamMember ? segments : undefined}
+                onToggleBoard={toggleBoard}
+                onToggleTag={toggleTag}
+                onToggleSegment={isTeamMember ? toggleSegment : undefined}
+              />
+            }
+          />
+
+          <PublicRoadmapFiltersBar
+            filters={filters}
+            onFiltersChange={setFilters}
+            onClearAll={clearFilters}
             boards={boards}
             tags={tags}
             segments={isTeamMember ? segments : undefined}
@@ -110,22 +166,16 @@ export function RoadmapBoard({
             onToggleTag={toggleTag}
             onToggleSegment={isTeamMember ? toggleSegment : undefined}
           />
-        }
-      />
+        </>
+      )}
 
-      <PublicRoadmapFiltersBar
-        filters={filters}
-        onFiltersChange={setFilters}
-        onClearAll={clearFilters}
-        boards={boards}
-        tags={tags}
-        segments={isTeamMember ? segments : undefined}
-        onToggleBoard={toggleBoard}
-        onToggleTag={toggleTag}
-        onToggleSegment={isTeamMember ? toggleSegment : undefined}
-      />
+      {effectiveSelectedId && effectiveView === 'timeline' && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <RoadmapTimeline roadmapId={effectiveSelectedId} statuses={statuses} />
+        </div>
+      )}
 
-      {effectiveSelectedId && (
+      {effectiveSelectedId && effectiveView === 'columns' && (
         <div className="relative flex-1 min-h-0">
           <div
             ref={columnsScroll.ref}

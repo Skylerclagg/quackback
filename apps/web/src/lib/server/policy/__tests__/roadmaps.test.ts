@@ -9,9 +9,15 @@
  * matching the `segments` tier semantics in tierAllows().
  */
 import { describe, it, expect } from 'vitest'
-import { canViewRoadmap, type RoadmapVisibility } from '../roadmaps'
+import {
+  canViewRoadmap,
+  canViewRoadmapTimeline,
+  timelineSpecificityFor,
+  type RoadmapVisibility,
+} from '../roadmaps'
 import { ANONYMOUS_ACTOR, type Actor } from '../types'
 import type { SegmentId, PrincipalId } from '@quackback/ids'
+import type { TimelineAccess, TimelineSpecificity } from '@/lib/server/db'
 
 // ----------------------------------------------------------------------
 // Actor fixtures — one per meaningful shape
@@ -58,6 +64,13 @@ const portalUserInAlpha: Actor = {
   role: 'user',
   principalType: 'user',
   segmentIds: new Set(['segment_alpha' as SegmentId]),
+}
+
+const portalUserInAlphaBeta: Actor = {
+  principalId: 'principal_alphabeta' as PrincipalId,
+  role: 'user',
+  principalType: 'user',
+  segmentIds: new Set(['segment_alpha', 'segment_beta'] as SegmentId[]),
 }
 
 const serviceInAlpha: Actor = {
@@ -199,5 +212,88 @@ describe('canViewRoadmap — soft-deleted roadmaps', () => {
     for (const actor of [ANONYMOUS_ACTOR, adminActor, memberActor, portalUserInAlpha]) {
       expect(allowed(actor, deletedPublic)).toBe(false)
     }
+  })
+})
+
+// ----------------------------------------------------------------------
+// Timeline date specificity (timelineAccess)
+// ----------------------------------------------------------------------
+
+const withAccess = (
+  dflt: TimelineSpecificity,
+  segments: TimelineAccess['segments'] = []
+): { timelineAccess: TimelineAccess } => ({ timelineAccess: { default: dflt, segments } })
+
+describe('timelineSpecificityFor', () => {
+  it('team actors always get full specificity, even on a hidden timeline', () => {
+    expect(timelineSpecificityFor(adminActor, withAccess('hidden'))).toBe('day')
+    expect(timelineSpecificityFor(memberActor, withAccess('hidden'))).toBe('day')
+  })
+
+  it('the default cap applies to viewers without a matching override', () => {
+    const roadmap = withAccess('quarter', [{ segmentId: 'segment_beta', specificity: 'day' }])
+    expect(timelineSpecificityFor(ANONYMOUS_ACTOR, roadmap)).toBe('quarter')
+    expect(timelineSpecificityFor(portalUserNoSegments, roadmap)).toBe('quarter')
+  })
+
+  it('hidden default with a segment override: public sees nothing, the segment sees dates', () => {
+    const roadmap = withAccess('hidden', [{ segmentId: 'segment_alpha', specificity: 'month' }])
+    expect(timelineSpecificityFor(ANONYMOUS_ACTOR, roadmap)).toBe('hidden')
+    expect(timelineSpecificityFor(portalUserInAlpha, roadmap)).toBe('month')
+  })
+
+  it('a viewer in several overridden segments takes the finest cap', () => {
+    const roadmap = withAccess('hidden', [
+      { segmentId: 'segment_alpha', specificity: 'year' },
+      { segmentId: 'segment_beta', specificity: 'month' },
+    ])
+    expect(timelineSpecificityFor(portalUserInAlphaBeta, roadmap)).toBe('month')
+  })
+
+  it('an override can never make things vaguer than the default', () => {
+    const roadmap = withAccess('day', [{ segmentId: 'segment_alpha', specificity: 'year' }])
+    expect(timelineSpecificityFor(portalUserInAlpha, roadmap)).toBe('day')
+  })
+
+  it('service principals never match segment overrides', () => {
+    const roadmap = withAccess('hidden', [{ segmentId: 'segment_alpha', specificity: 'day' }])
+    expect(timelineSpecificityFor(serviceInAlpha, roadmap)).toBe('hidden')
+  })
+
+  it('missing timelineAccess defaults to fully public dates', () => {
+    expect(timelineSpecificityFor(ANONYMOUS_ACTOR, {})).toBe('day')
+  })
+
+  it('member-role teammates see everything unless individually capped', () => {
+    const roadmap = {
+      timelineAccess: {
+        default: 'day' as const,
+        segments: [],
+        teamMembers: [{ principalId: 'principal_member', specificity: 'quarter' as const }],
+      },
+    }
+    expect(timelineSpecificityFor(memberActor, roadmap)).toBe('quarter')
+    expect(timelineSpecificityFor(listedMemberActor, roadmap)).toBe('day')
+  })
+
+  it('a member capped to hidden loses the timeline view; admins never do', () => {
+    const roadmap = {
+      timelineAccess: {
+        default: 'day' as const,
+        segments: [],
+        teamMembers: [{ principalId: 'principal_member', specificity: 'hidden' as const }],
+      },
+    }
+    expect(canViewRoadmapTimeline(memberActor, roadmap).allowed).toBe(false)
+    expect(timelineSpecificityFor(adminActor, roadmap)).toBe('day')
+  })
+})
+
+describe('canViewRoadmapTimeline', () => {
+  it('denies exactly when the effective specificity is hidden', () => {
+    const roadmap = withAccess('hidden', [{ segmentId: 'segment_alpha', specificity: 'quarter' }])
+    expect(canViewRoadmapTimeline(ANONYMOUS_ACTOR, roadmap).allowed).toBe(false)
+    expect(canViewRoadmapTimeline(portalUserInAlpha, roadmap).allowed).toBe(true)
+    expect(canViewRoadmapTimeline(adminActor, roadmap).allowed).toBe(true)
   })
 })

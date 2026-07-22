@@ -1,7 +1,14 @@
 import { pgTable, text, timestamp, boolean, jsonb, integer, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
-import { typeIdWithDefault } from '@quackback/ids/drizzle'
-import { type BoardSettings, type BoardAccess, DEFAULT_BOARD_ACCESS } from '../types'
+import { typeIdWithDefault, typeIdColumn } from '@quackback/ids/drizzle'
+import {
+  type BoardSettings,
+  type BoardAccess,
+  type TimelinePrecision,
+  type TimelineAccess,
+  DEFAULT_BOARD_ACCESS,
+  DEFAULT_TIMELINE_ACCESS,
+} from '../types'
 
 export const boards = pgTable(
   'boards',
@@ -44,6 +51,14 @@ export const roadmaps = pgTable(
       .$type<string[]>()
       .default([])
       .notNull(),
+    // Per-audience cap on how specifically the timeline dates render
+    // on the portal (hidden … exact day) — independent of roadmap
+    // visibility. Team always sees full specificity. See
+    // TimelineAccess in ../types.
+    timelineAccess: jsonb('timeline_access')
+      .$type<TimelineAccess>()
+      .default(DEFAULT_TIMELINE_ACCESS)
+      .notNull(),
     position: integer('position').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -55,6 +70,35 @@ export const roadmaps = pgTable(
     index('roadmaps_position_idx').on(table.position),
     index('roadmaps_is_public_idx').on(table.isPublic),
     index('roadmaps_deleted_at_idx').on(table.deletedAt),
+  ]
+)
+
+// Custom timeline entries on a roadmap — free-text items ("Mobile app
+// beta") not tied to any feedback post. They share bucket semantics
+// and timelinePosition ordering with post_roadmaps timeline fields.
+export const roadmapMilestones = pgTable(
+  'roadmap_milestones',
+  {
+    id: typeIdWithDefault('milestone')('id').primaryKey(),
+    roadmapId: typeIdColumn('roadmap')('roadmap_id')
+      .notNull()
+      .references(() => roadmaps.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    // Normalized to the bucket start for its precision (see
+    // lib/shared/timeline.ts).
+    timelineDate: timestamp('timeline_date', { withTimezone: true }).notNull(),
+    timelinePrecision: text('timeline_precision')
+      .$type<TimelinePrecision>()
+      .notNull()
+      .default('month'),
+    timelinePosition: integer('timeline_position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('roadmap_milestones_roadmap_id_idx').on(table.roadmapId),
+    index('roadmap_milestones_timeline_date_idx').on(table.timelineDate),
   ]
 )
 
@@ -83,6 +127,14 @@ export const boardsRelations = relations(boards, ({ many }) => ({
 
 export const roadmapsRelations = relations(roadmaps, ({ many }) => ({
   postRoadmaps: many(postRoadmaps),
+  milestones: many(roadmapMilestones),
+}))
+
+export const roadmapMilestonesRelations = relations(roadmapMilestones, ({ one }) => ({
+  roadmap: one(roadmaps, {
+    fields: [roadmapMilestones.roadmapId],
+    references: [roadmaps.id],
+  }),
 }))
 
 export const tagsRelations = relations(tags, ({ many }) => ({

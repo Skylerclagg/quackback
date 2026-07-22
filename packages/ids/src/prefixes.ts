@@ -26,6 +26,7 @@ export const ID_PREFIXES = {
 
   // Planning domain
   roadmap: 'roadmap',
+  milestone: 'milestone', // Custom timeline entries on a roadmap
   changelog: 'changelog',
 
   // Live chat

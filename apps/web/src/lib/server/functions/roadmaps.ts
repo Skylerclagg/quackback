@@ -12,12 +12,12 @@ import {
   type TagId,
   type SegmentId,
 } from '@quackback/ids'
-import { requireAuth, teamActorFromAuth, withSelfIfMember, type AuthContext } from './auth-helpers'
+import { requireAuth, teamActorFromAuth, withSelfIfMember } from './auth-helpers'
+import { requireRoadmapAccess } from './roadmap-access'
 import {
   addPostToRoadmap,
   createRoadmap,
   deleteRoadmap,
-  getRoadmap,
   listRoadmaps,
   removePostFromRoadmap,
   reorderRoadmaps,
@@ -25,24 +25,21 @@ import {
 } from '@/lib/server/domains/roadmaps/roadmap.service'
 import { getRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
 import { canViewRoadmap, isAllowed } from '@/lib/server/policy'
-import { NotFoundError } from '@/lib/shared/errors'
+import { TIMELINE_SPECIFICITIES } from '@/lib/shared/timeline'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'roadmaps' })
 
-/**
- * Load a roadmap and 404 unless the caller may view it. Admins always
- * pass; members need the roadmap public or their principal id in its
- * team allowlist. 404 (not 403) so restricted roadmaps stay
- * indistinguishable from missing ones.
- */
-async function requireRoadmapAccess(auth: AuthContext, id: RoadmapId) {
-  const roadmap = await getRoadmap(id)
-  if (!isAllowed(canViewRoadmap(teamActorFromAuth(auth), roadmap))) {
-    throw new NotFoundError('ROADMAP_NOT_FOUND', `Roadmap with ID ${id} not found`)
-  }
-  return roadmap
-}
+const timelineAccessSchema = z.object({
+  default: z.enum(TIMELINE_SPECIFICITIES),
+  segments: z
+    .array(z.object({ segmentId: z.string(), specificity: z.enum(TIMELINE_SPECIFICITIES) }))
+    .max(100),
+  teamMembers: z
+    .array(z.object({ principalId: z.string(), specificity: z.enum(TIMELINE_SPECIFICITIES) }))
+    .max(100)
+    .optional(),
+})
 
 // ============================================
 // Schemas
@@ -55,6 +52,7 @@ const createRoadmapSchema = z.object({
   isPublic: z.boolean().optional(),
   allowedSegmentIds: z.array(z.string()).max(100).optional(),
   allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
+  timelineAccess: timelineAccessSchema.optional(),
 })
 
 const getRoadmapSchema = z.object({
@@ -68,6 +66,7 @@ const updateRoadmapSchema = z.object({
   isPublic: z.boolean().optional(),
   allowedSegmentIds: z.array(z.string()).max(100).optional(),
   allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
+  timelineAccess: timelineAccessSchema.optional(),
 })
 
 const deleteRoadmapSchema = z.object({
@@ -138,6 +137,7 @@ export const fetchRoadmaps = createServerFn({ method: 'GET' }).handler(async () 
       isPublic: roadmap.isPublic,
       allowedSegmentIds: roadmap.allowedSegmentIds,
       allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
+      timelineAccess: roadmap.timelineAccess,
       position: roadmap.position,
       createdAt: roadmap.createdAt.toISOString(),
       updatedAt: roadmap.updatedAt.toISOString(),
@@ -168,6 +168,7 @@ export const fetchRoadmap = createServerFn({ method: 'GET' })
         isPublic: roadmap.isPublic,
         allowedSegmentIds: roadmap.allowedSegmentIds,
         allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
+        timelineAccess: roadmap.timelineAccess,
         position: roadmap.position,
         createdAt: roadmap.createdAt.toISOString(),
         updatedAt: roadmap.updatedAt.toISOString(),
@@ -203,6 +204,7 @@ export const createRoadmapFn = createServerFn({ method: 'POST' })
           data.isPublic === false
             ? withSelfIfMember(auth, data.allowedTeamPrincipalIds ?? [])
             : data.allowedTeamPrincipalIds,
+        timelineAccess: data.timelineAccess,
       })
       // Serialize branded types to plain strings for turbo-stream
       return {
@@ -213,6 +215,7 @@ export const createRoadmapFn = createServerFn({ method: 'POST' })
         isPublic: roadmap.isPublic,
         allowedSegmentIds: roadmap.allowedSegmentIds,
         allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
+        timelineAccess: roadmap.timelineAccess,
         position: roadmap.position,
         createdAt: roadmap.createdAt.toISOString(),
         updatedAt: roadmap.updatedAt.toISOString(),
@@ -240,6 +243,7 @@ export const updateRoadmapFn = createServerFn({ method: 'POST' })
         isPublic: data.isPublic,
         allowedSegmentIds: data.allowedSegmentIds,
         allowedTeamPrincipalIds: withSelfIfMember(auth, data.allowedTeamPrincipalIds),
+        timelineAccess: data.timelineAccess,
       })
       // Serialize branded types to plain strings for turbo-stream
       return {
@@ -250,6 +254,7 @@ export const updateRoadmapFn = createServerFn({ method: 'POST' })
         isPublic: roadmap.isPublic,
         allowedSegmentIds: roadmap.allowedSegmentIds,
         allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
+        timelineAccess: roadmap.timelineAccess,
         position: roadmap.position,
         createdAt: roadmap.createdAt.toISOString(),
         updatedAt: roadmap.updatedAt.toISOString(),
@@ -397,6 +402,11 @@ export const getRoadmapPostsFn = createServerFn({ method: 'GET' })
             postId: String(item.roadmapEntry.postId),
             roadmapId: String(item.roadmapEntry.roadmapId),
             position: item.roadmapEntry.position,
+            timelineDate: item.roadmapEntry.timelineDate
+              ? item.roadmapEntry.timelineDate.toISOString()
+              : null,
+            timelinePrecision: item.roadmapEntry.timelinePrecision,
+            timelinePosition: item.roadmapEntry.timelinePosition,
           },
         })),
       }

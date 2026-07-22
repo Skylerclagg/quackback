@@ -25,6 +25,11 @@ import {
   useUnpinComment,
 } from '@/lib/client/mutations'
 import { addPostToRoadmapFn, removePostFromRoadmapFn } from '@/lib/server/functions/roadmaps'
+import { CalendarDaysIcon } from '@heroicons/react/24/solid'
+import { PlacementPopover } from './roadmap/placement-popover'
+import { useRoadmapTimeline } from '@/lib/client/hooks/use-roadmap-timeline'
+import { useSetTimelinePlacement } from '@/lib/client/mutations/roadmap-timeline'
+import { formatTimelineLabel, type TimelinePrecision } from '@/lib/shared/timeline'
 import { Route } from '@/routes/admin/roadmap'
 import { type PostId, type StatusId, type TagId, type RoadmapId } from '@quackback/ids'
 import type { PostDetails, CurrentUser } from '@/lib/shared/types'
@@ -144,6 +149,22 @@ function RoadmapModalContent({ postId, currentUser, onClose }: RoadmapModalConte
         viewUrl={`/b/${post.board.slug}/posts/${post.id}`}
       />
 
+      {/* Timeline placement — one control per roadmap this post is on. */}
+      {postRoadmaps.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-6 py-2.5 border-b border-border/30 bg-muted/20">
+          <span className="text-xs font-medium text-muted-foreground">Timeline</span>
+          {postRoadmaps.map((roadmap) => (
+            <RoadmapPlacementControl
+              key={roadmap.id}
+              roadmapId={roadmap.id}
+              roadmapName={roadmap.name}
+              postId={post.id as PostId}
+              showName={postRoadmaps.length > 1}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Main content */}
       <div className="flex-1 overflow-y-auto">
         {/* Post content layout */}
@@ -210,6 +231,57 @@ function RoadmapModalContent({ postId, currentUser, onClose }: RoadmapModalConte
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * "Set due date" control for one (roadmap, post) membership. Reads the
+ * current placement from the roadmap's timeline query and opens the
+ * shared date + vagueness picker. Cards only DISPLAY the date — this
+ * modal is where it gets set.
+ */
+function RoadmapPlacementControl({
+  roadmapId,
+  roadmapName,
+  postId,
+  showName,
+}: {
+  roadmapId: string
+  roadmapName: string
+  postId: PostId
+  showName: boolean
+}) {
+  const { data } = useRoadmapTimeline(roadmapId)
+  const setPlacement = useSetTimelinePlacement()
+  const entry = data?.posts.find((p) => p.id === String(postId))
+  const placedDate = entry?.timelineDate ? new Date(entry.timelineDate) : undefined
+  const precision = (entry?.timelinePrecision ?? undefined) as TimelinePrecision | undefined
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {showName && <span className="text-xs text-muted-foreground">{roadmapName}:</span>}
+      <PlacementPopover
+        initialDate={placedDate}
+        initialPrecision={precision}
+        onApply={(date, prec) =>
+          setPlacement.mutate({
+            roadmapId,
+            postId: String(postId),
+            placement: { date, precision: prec },
+          })
+        }
+        onClear={() => setPlacement.mutate({ roadmapId, postId: String(postId), placement: null })}
+      >
+        <button
+          type="button"
+          aria-label={placedDate ? 'Change due date' : 'Set due date'}
+          className="inline-flex items-center gap-1 rounded-md border border-dashed border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted/40 transition-colors"
+        >
+          <CalendarDaysIcon className="h-3 w-3" />
+          {placedDate && precision ? formatTimelineLabel(placedDate, precision) : 'Set due date'}
+        </button>
+      </PlacementPopover>
+    </span>
   )
 }
 

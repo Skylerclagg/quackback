@@ -22,6 +22,8 @@ export interface RoadmapView {
   description: string | null
   slug: string
   isPublic: boolean
+  /** Whether the current viewer may open the timeline view at all. */
+  timelineVisible?: boolean
   position: number
   createdAt: Date | string
   updatedAt: Date | string

@@ -46,6 +46,9 @@ export type ReactionId = TypeId<'reaction'>
 /** Roadmap ID - e.g., roadmap_01h455vb4pex5vsknk084sn02q */
 export type RoadmapId = TypeId<'roadmap'>
 
+/** Roadmap timeline milestone ID - e.g., milestone_01h455vb4pex5vsknk084sn02q */
+export type MilestoneId = TypeId<'milestone'>
+
 /** Changelog entry ID - e.g., changelog_01h455vb4pex5vsknk084sn02q */
 export type ChangelogId = TypeId<'changelog'>
 
@@ -259,6 +262,7 @@ export interface EntityIdMap {
   user_mapping: ExternalUserMappingId
   merge_suggestion: MergeSuggestionId
   roadmap: RoadmapId
+  milestone: MilestoneId
   changelog: ChangelogId
   conversation: ConversationId
   chat_message: ChatMessageId

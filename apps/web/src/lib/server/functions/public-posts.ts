@@ -23,6 +23,7 @@ import {
   policyActorFromAuth,
 } from './auth-helpers'
 import { getSettings } from './workspace'
+import { canViewRoadmapTimeline, isAllowed } from '@/lib/server/policy'
 import { workspaceAllowsAnonymous } from '@/lib/server/domains/settings/settings.types'
 import { listPublicPosts, getAllUserVotedPostIds } from '@/lib/server/domains/posts/post.public'
 import {
@@ -38,6 +39,7 @@ import { getPublicBoardById } from '@/lib/server/domains/boards/board.public'
 import { getDefaultStatus } from '@/lib/server/domains/statuses/status.service'
 import { getMemberByUser } from '@/lib/server/domains/principals/principal.service'
 import { listPublicRoadmaps } from '@/lib/server/domains/roadmaps/roadmap.service'
+import { roadmapIdsWithTimelineContent } from '@/lib/server/domains/roadmaps/roadmap.timeline'
 import { getPublicRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
 import { resolvePortalAccessForRequest } from './portal-access'
 import { logger } from '@/lib/server/logger'
@@ -559,6 +561,7 @@ export const listPublicRoadmapsFn = createServerFn({ method: 'GET' }).handler(as
     const actor = await policyActorFromAuth(auth)
 
     const result = await listPublicRoadmaps(actor)
+    const roadmapsWithTimeline = await roadmapIdsWithTimelineContent(result.map((r) => r.id))
 
     log.debug({ count: result.length }, 'list public roadmaps results')
     // Serialize branded types to plain strings for turbo-stream
@@ -568,6 +571,11 @@ export const listPublicRoadmapsFn = createServerFn({ method: 'GET' }).handler(as
       slug: roadmap.slug,
       description: roadmap.description,
       isPublic: roadmap.isPublic,
+      // Per-viewer timeline entitlement (permission AND content) —
+      // drives the portal toggle without leaking timelineAccess.
+      timelineVisible:
+        roadmapsWithTimeline.has(String(roadmap.id)) &&
+        isAllowed(canViewRoadmapTimeline(actor, roadmap)),
       position: roadmap.position,
       createdAt: roadmap.createdAt.toISOString(),
       updatedAt: roadmap.updatedAt.toISOString(),

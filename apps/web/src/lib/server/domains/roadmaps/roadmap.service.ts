@@ -22,12 +22,42 @@ import {
   type Roadmap,
 } from '@/lib/server/db'
 import { toUuid, type RoadmapId, type PostId, type PrincipalId } from '@quackback/ids'
+import type { TimelineAccess } from '@/lib/server/db'
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/shared/errors'
 import { ANONYMOUS_ACTOR, canViewRoadmap, isAllowed, type Actor } from '@/lib/server/policy'
 import {
   normalizeAllowedSegmentIds,
   normalizeAllowedTeamPrincipalIds,
 } from '@/lib/server/domains/segments/allowlists'
+
+/**
+ * Validate a timeline access config: drop overrides for unknown /
+ * soft-deleted segments and non-team principals, dedupe (first entry
+ * wins). Specificity values are enum-validated at the fn boundary.
+ */
+async function normalizeTimelineAccess(input: TimelineAccess): Promise<TimelineAccess> {
+  const [validSegments, validMembers] = await Promise.all([
+    normalizeAllowedSegmentIds((input.segments ?? []).map((o) => o.segmentId)),
+    normalizeAllowedTeamPrincipalIds((input.teamMembers ?? []).map((o) => o.principalId)),
+  ])
+  const segmentSet = new Set(validSegments)
+  const memberSet = new Set(validMembers)
+  const seenSegments = new Set<string>()
+  const seenMembers = new Set<string>()
+  return {
+    default: input.default,
+    segments: (input.segments ?? []).filter((o) => {
+      if (!segmentSet.has(o.segmentId) || seenSegments.has(o.segmentId)) return false
+      seenSegments.add(o.segmentId)
+      return true
+    }),
+    teamMembers: (input.teamMembers ?? []).filter((o) => {
+      if (!memberSet.has(o.principalId) || seenMembers.has(o.principalId)) return false
+      seenMembers.add(o.principalId)
+      return true
+    }),
+  }
+}
 import { createActivity } from '@/lib/server/domains/activity/activity.service'
 import { logger } from '@/lib/server/logger'
 
@@ -93,6 +123,9 @@ export async function createRoadmap(input: CreateRoadmapInput): Promise<Roadmap>
       allowedTeamPrincipalIds: input.allowedTeamPrincipalIds
         ? await normalizeAllowedTeamPrincipalIds(input.allowedTeamPrincipalIds)
         : [],
+      ...(input.timelineAccess
+        ? { timelineAccess: await normalizeTimelineAccess(input.timelineAccess) }
+        : {}),
       position,
     })
     .returning()
@@ -125,6 +158,9 @@ export async function updateRoadmap(id: RoadmapId, input: UpdateRoadmapInput): P
     updateData.allowedTeamPrincipalIds = await normalizeAllowedTeamPrincipalIds(
       input.allowedTeamPrincipalIds
     )
+  }
+  if (input.timelineAccess !== undefined) {
+    updateData.timelineAccess = await normalizeTimelineAccess(input.timelineAccess)
   }
 
   // Update the roadmap (single update, no transaction needed)

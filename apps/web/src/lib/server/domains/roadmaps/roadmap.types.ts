@@ -2,7 +2,7 @@
  * Input/Output types for RoadmapService operations
  */
 
-import type { PostRoadmap } from '@/lib/server/db'
+import type { PostRoadmap, TimelineAccess } from '@/lib/server/db'
 import type { PostId, RoadmapId, StatusId, BoardId, TagId, SegmentId } from '@quackback/ids'
 
 /**
@@ -17,6 +17,8 @@ export interface CreateRoadmapInput {
   allowedSegmentIds?: string[]
   /** Member-role principals who may view the roadmap while private (admins always can). */
   allowedTeamPrincipalIds?: string[]
+  /** Per-audience cap on timeline date specificity. */
+  timelineAccess?: TimelineAccess
 }
 
 /**
@@ -30,6 +32,8 @@ export interface UpdateRoadmapInput {
   allowedSegmentIds?: string[]
   /** Member-role principals who may view the roadmap while private — [] clears. */
   allowedTeamPrincipalIds?: string[]
+  /** Per-audience cap on timeline date specificity. */
+  timelineAccess?: TimelineAccess
 }
 
 /**

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
+import { TIMELINE_SPECIFICITIES } from '@/lib/shared/timeline'
 import { withApiKeyAuth } from '@/lib/server/domains/api/auth'
 import {
   successResponse,
@@ -11,12 +12,24 @@ import { parseTypeId } from '@/lib/server/domains/api/validation'
 import type { RoadmapId } from '@quackback/ids'
 
 // Input validation schema
+const timelineAccessSchema = z.object({
+  default: z.enum(TIMELINE_SPECIFICITIES),
+  segments: z
+    .array(z.object({ segmentId: z.string(), specificity: z.enum(TIMELINE_SPECIFICITIES) }))
+    .max(100),
+  teamMembers: z
+    .array(z.object({ principalId: z.string(), specificity: z.enum(TIMELINE_SPECIFICITIES) }))
+    .max(100)
+    .optional(),
+})
+
 const updateRoadmapSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
   isPublic: z.boolean().optional(),
   allowedSegmentIds: z.array(z.string()).max(100).optional(),
   allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
+  timelineAccess: timelineAccessSchema.optional(),
 })
 
 export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
@@ -44,6 +57,7 @@ export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
             isPublic: roadmap.isPublic,
             allowedSegmentIds: roadmap.allowedSegmentIds,
             allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
+            timelineAccess: roadmap.timelineAccess,
             position: roadmap.position,
             createdAt: roadmap.createdAt.toISOString(),
           })
@@ -79,6 +93,7 @@ export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
             isPublic: parsed.data.isPublic,
             allowedSegmentIds: parsed.data.allowedSegmentIds,
             allowedTeamPrincipalIds: parsed.data.allowedTeamPrincipalIds,
+            timelineAccess: parsed.data.timelineAccess,
           })
 
           return successResponse({
@@ -89,6 +104,7 @@ export const Route = createFileRoute('/api/v1/roadmaps/$roadmapId')({
             isPublic: roadmap.isPublic,
             allowedSegmentIds: roadmap.allowedSegmentIds,
             allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds,
+            timelineAccess: roadmap.timelineAccess,
             position: roadmap.position,
             createdAt: roadmap.createdAt.toISOString(),
           })

@@ -19,7 +19,7 @@ import { postExternalLinks } from './external-links'
 import { feedbackSuggestions } from './feedback'
 import { principal } from './auth'
 import { MODERATION_STATES } from '../types'
-import type { TiptapContent } from '../types'
+import type { TiptapContent, TimelinePrecision } from '../types'
 
 // Custom tsvector type for full-text search
 const tsvector = customType<{ data: string }>({
@@ -186,6 +186,13 @@ export const postRoadmaps = pgTable(
       .notNull()
       .references(() => roadmaps.id, { onDelete: 'cascade' }),
     position: integer('position').notNull().default(0),
+    // Timeline placement (null = not on the timeline view yet). The
+    // date is normalized to the bucket start for its precision — see
+    // lib/shared/timeline.ts. timelinePosition orders items that share
+    // a bucket, across posts AND milestones.
+    timelineDate: timestamp('timeline_date', { withTimezone: true }),
+    timelinePrecision: text('timeline_precision').$type<TimelinePrecision>(),
+    timelinePosition: integer('timeline_position').notNull().default(0),
   },
   (table) => [
     uniqueIndex('post_roadmaps_pk').on(table.postId, table.roadmapId),

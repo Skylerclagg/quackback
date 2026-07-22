@@ -1,6 +1,6 @@
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
 import type { StatusId } from '@quackback/ids'
-import type { boards, roadmaps, tags } from './schema/boards'
+import type { boards, roadmaps, roadmapMilestones, tags } from './schema/boards'
 import type { postStatuses } from './schema/statuses'
 import type {
   posts,
@@ -52,6 +52,37 @@ export interface BoardSettings {
 // approval overrides. The legacy `BoardAudience` discriminated union was
 // removed in migration 0080 — every reader now consults `BoardAccess`.
 // ----------------------------------------------------------------------
+
+// Timeline placement vagueness for roadmap items ("Mar 14, 2026",
+// "March 2026", "Q2 2026", "2026"). Stored alongside a date normalized
+// to the bucket start; see lib/shared/timeline.ts for the helpers.
+export const TIMELINE_PRECISIONS = ['day', 'month', 'quarter', 'year'] as const
+export type TimelinePrecision = (typeof TIMELINE_PRECISIONS)[number]
+
+// How specifically a portal audience may see a roadmap's timeline
+// dates, from nothing at all up to exact days. Team actors always see
+// full specificity; other viewers get the FINEST cap among the
+// roadmap's default and any matching per-segment override, and items
+// vaguer than the cap simply keep their own precision.
+export const TIMELINE_SPECIFICITIES = ['hidden', 'year', 'quarter', 'month', 'day'] as const
+export type TimelineSpecificity = (typeof TIMELINE_SPECIFICITIES)[number]
+
+export interface TimelineAccess {
+  /** Cap for portal viewers with no matching segment override. */
+  default: TimelineSpecificity
+  /** Per-segment caps; a viewer in several takes the finest. */
+  segments: Array<{ segmentId: string; specificity: TimelineSpecificity }>
+  /**
+   * Per-member caps for member-role teammates (admins always see full
+   * specificity). A member without an entry sees everything — this is
+   * an opt-in restriction, mirroring the roadmap team allowlist's
+   * per-person granularity.
+   */
+  teamMembers?: Array<{ principalId: string; specificity: TimelineSpecificity }>
+}
+
+/** Full-specificity public dates — the pre-feature behavior. */
+export const DEFAULT_TIMELINE_ACCESS: TimelineAccess = { default: 'day', segments: [] }
 
 export const ACCESS_TIERS = ['anonymous', 'authenticated', 'segments', 'team'] as const
 export type AccessTier = (typeof ACCESS_TIERS)[number]
@@ -259,6 +290,8 @@ export function getBoardSettings(board: Board): BoardSettings {
 // Roadmap types (filtered views of posts within a board)
 export type Roadmap = InferSelectModel<typeof roadmaps>
 export type NewRoadmap = InferInsertModel<typeof roadmaps>
+export type RoadmapMilestone = InferSelectModel<typeof roadmapMilestones>
+export type NewRoadmapMilestone = InferInsertModel<typeof roadmapMilestones>
 
 // Tag types
 export type Tag = InferSelectModel<typeof tags>

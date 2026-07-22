@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { adminQueries } from '@/lib/client/queries/admin'
 import {
   PlusIcon,
   MapIcon,
@@ -32,11 +34,26 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { EmptyState } from '@/components/shared/empty-state'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { XMarkIcon } from '@heroicons/react/24/outline'
 import { cn, slugify } from '@/lib/shared/utils'
 import { useRoadmaps } from '@/lib/client/hooks/use-roadmaps-query'
+import { useSegments } from '@/lib/client/hooks/use-segments-queries'
 import { useCreateRoadmap, useUpdateRoadmap, useDeleteRoadmap } from '@/lib/client/mutations'
 import { AudienceFields } from '@/components/admin/audience-fields'
-import type { Roadmap } from '@/lib/shared/db-types'
+import {
+  TIMELINE_SPECIFICITIES,
+  TIMELINE_SPECIFICITY_LABELS,
+  type TimelineSpecificity,
+} from '@/lib/shared/timeline'
+import { DEFAULT_TIMELINE_ACCESS } from '@/lib/shared/db-types'
+import type { Roadmap, TimelineAccess } from '@/lib/shared/db-types'
 
 interface RoadmapSidebarProps {
   selectedRoadmapId: string | null
@@ -52,9 +69,13 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
   const [createIsPublic, setCreateIsPublic] = useState(true)
   const [createSegmentIds, setCreateSegmentIds] = useState<string[]>([])
   const [createTeamIds, setCreateTeamIds] = useState<string[]>([])
+  const [createTimelineAccess, setCreateTimelineAccess] =
+    useState<TimelineAccess>(DEFAULT_TIMELINE_ACCESS)
   const [editIsPublic, setEditIsPublic] = useState(true)
   const [editSegmentIds, setEditSegmentIds] = useState<string[]>([])
   const [editTeamIds, setEditTeamIds] = useState<string[]>([])
+  const [editTimelineAccess, setEditTimelineAccess] =
+    useState<TimelineAccess>(DEFAULT_TIMELINE_ACCESS)
 
   const { data: roadmaps, isLoading } = useRoadmaps()
   const createRoadmap = useCreateRoadmap()
@@ -67,6 +88,7 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
       setCreateIsPublic(true)
       setCreateSegmentIds([])
       setCreateTeamIds([])
+      setCreateTimelineAccess(DEFAULT_TIMELINE_ACCESS)
     }
   }
 
@@ -84,6 +106,7 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
         isPublic: createIsPublic,
         allowedSegmentIds: createIsPublic ? [] : createSegmentIds,
         allowedTeamPrincipalIds: createIsPublic ? [] : createTeamIds,
+        timelineAccess: createTimelineAccess,
       })
       handleCreateDialogChange(false)
       onSelectRoadmap(newRoadmap.id)
@@ -109,6 +132,7 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
           isPublic: editIsPublic,
           allowedSegmentIds: editIsPublic ? [] : editSegmentIds,
           allowedTeamPrincipalIds: editIsPublic ? [] : editTeamIds,
+          timelineAccess: editTimelineAccess,
         },
       })
       setIsEditDialogOpen(false)
@@ -138,6 +162,7 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
     setEditIsPublic(roadmap.isPublic)
     setEditSegmentIds(roadmap.allowedSegmentIds ?? [])
     setEditTeamIds(roadmap.allowedTeamPrincipalIds ?? [])
+    setEditTimelineAccess(roadmap.timelineAccess ?? DEFAULT_TIMELINE_ACCESS)
     setIsEditDialogOpen(true)
   }
 
@@ -199,6 +224,10 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
                       onSegmentIdsChange={setCreateSegmentIds}
                       teamPrincipalIds={createTeamIds}
                       onTeamPrincipalIdsChange={setCreateTeamIds}
+                    />
+                    <TimelineAccessFields
+                      value={createTimelineAccess}
+                      onChange={setCreateTimelineAccess}
                     />
                     <div className="flex justify-end gap-2">
                       <Button
@@ -328,6 +357,7 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
                 teamPrincipalIds={editTeamIds}
                 onTeamPrincipalIdsChange={setEditTeamIds}
               />
+              <TimelineAccessFields value={editTimelineAccess} onChange={setEditTimelineAccess} />
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                   Cancel
@@ -356,5 +386,181 @@ export function RoadmapSidebar({ selectedRoadmapId, onSelectRoadmap }: RoadmapSi
         onConfirm={handleDelete}
       />
     </aside>
+  )
+}
+
+/**
+ * Per-audience cap on timeline date specificity. "Everyone else" is
+ * the default cap (Hidden … Exact day); per-segment overrides grant a
+ * finer view to chosen segments (a viewer takes the finest matching
+ * cap). The team always sees exact placements.
+ */
+function TimelineAccessFields({
+  value,
+  onChange,
+}: {
+  value: TimelineAccess
+  onChange: (next: TimelineAccess) => void
+}) {
+  const { data: segments } = useSegments()
+  const { data: teamMembers } = useQuery(adminQueries.teamMembers())
+  const segmentOptions = (segments ?? []).map((s) => ({ id: String(s.id), name: s.name }))
+  const overridden = new Set(value.segments.map((s) => s.segmentId))
+  const available = segmentOptions.filter((s) => !overridden.has(s.id))
+  const memberOptions = (teamMembers ?? [])
+    .filter((m) => m.role === 'member')
+    .map((m) => ({ id: String(m.id), name: m.name || m.email || 'Team member' }))
+  const memberOverrides = value.teamMembers ?? []
+  const overriddenMembers = new Set(memberOverrides.map((o) => o.principalId))
+  const availableMembers = memberOptions.filter((m) => !overriddenMembers.has(m.id))
+
+  return (
+    <div className="space-y-2">
+      <Label>Timeline dates</Label>
+      <p className="text-xs text-muted-foreground">
+        How specific the timeline view is for portal visitors. Your team always sees exact
+        placements; &ldquo;Hidden&rdquo; removes the timeline view for that audience.
+      </p>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">Everyone else</span>
+        <SpecificitySelect
+          value={value.default}
+          onChange={(next) => onChange({ ...value, default: next })}
+        />
+      </div>
+      {value.segments.map((override) => (
+        <div key={override.segmentId} className="flex items-center justify-between gap-2">
+          <span className="flex-1 min-w-0 truncate text-xs">
+            {segmentOptions.find((s) => s.id === override.segmentId)?.name ?? 'Unknown segment'}
+          </span>
+          <SpecificitySelect
+            value={override.specificity}
+            onChange={(next) =>
+              onChange({
+                ...value,
+                segments: value.segments.map((s) =>
+                  s.segmentId === override.segmentId ? { ...s, specificity: next } : s
+                ),
+              })
+            }
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            aria-label="Remove segment override"
+            onClick={() =>
+              onChange({
+                ...value,
+                segments: value.segments.filter((s) => s.segmentId !== override.segmentId),
+              })
+            }
+          >
+            <XMarkIcon className="h-3 w-3" />
+          </Button>
+        </div>
+      ))}
+      {available.length > 0 && (
+        <Select
+          value=""
+          onValueChange={(segmentId) =>
+            onChange({
+              ...value,
+              segments: [...value.segments, { segmentId, specificity: 'day' }],
+            })
+          }
+        >
+          <SelectTrigger className="h-7 w-full text-xs text-muted-foreground">
+            <SelectValue placeholder="Add segment override…" />
+          </SelectTrigger>
+          <SelectContent>
+            {available.map((s) => (
+              <SelectItem key={s.id} value={s.id} className="text-xs">
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {memberOverrides.map((override) => (
+        <div key={override.principalId} className="flex items-center justify-between gap-2">
+          <span className="flex-1 min-w-0 truncate text-xs">
+            {memberOptions.find((m) => m.id === override.principalId)?.name ?? 'Unknown member'}
+          </span>
+          <SpecificitySelect
+            value={override.specificity}
+            onChange={(next) =>
+              onChange({
+                ...value,
+                teamMembers: memberOverrides.map((o) =>
+                  o.principalId === override.principalId ? { ...o, specificity: next } : o
+                ),
+              })
+            }
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            aria-label="Remove member override"
+            onClick={() =>
+              onChange({
+                ...value,
+                teamMembers: memberOverrides.filter((o) => o.principalId !== override.principalId),
+              })
+            }
+          >
+            <XMarkIcon className="h-3 w-3" />
+          </Button>
+        </div>
+      ))}
+      {availableMembers.length > 0 && (
+        <Select
+          value=""
+          onValueChange={(principalId) =>
+            onChange({
+              ...value,
+              teamMembers: [...memberOverrides, { principalId, specificity: 'hidden' }],
+            })
+          }
+        >
+          <SelectTrigger className="h-7 w-full text-xs text-muted-foreground">
+            <SelectValue placeholder="Cap a team member…" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableMembers.map((m) => (
+              <SelectItem key={m.id} value={m.id} className="text-xs">
+                {m.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
+  )
+}
+
+function SpecificitySelect({
+  value,
+  onChange,
+}: {
+  value: TimelineSpecificity
+  onChange: (next: TimelineSpecificity) => void
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as TimelineSpecificity)}>
+      <SelectTrigger className="h-7 w-32 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {TIMELINE_SPECIFICITIES.map((s) => (
+          <SelectItem key={s} value={s} className="text-xs">
+            {TIMELINE_SPECIFICITY_LABELS[s]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

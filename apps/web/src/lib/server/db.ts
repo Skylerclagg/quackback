@@ -134,6 +134,8 @@ export {
   boards,
   boardsRelations,
   roadmaps,
+  roadmapMilestones,
+  roadmapMilestonesRelations,
   roadmapsRelations,
   tags,
   tagsRelations,

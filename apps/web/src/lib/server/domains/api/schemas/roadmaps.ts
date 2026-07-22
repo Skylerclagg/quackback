@@ -3,6 +3,7 @@
  */
 import 'zod-openapi'
 import { z } from 'zod'
+import { TIMELINE_SPECIFICITIES } from '@/lib/shared/timeline'
 import {
   registerPath,
   TypeIdSchema,
@@ -10,6 +11,18 @@ import {
   createPaginatedResponseSchema,
   asSchema,
 } from '../openapi'
+
+const TimelineAccessSchema = z
+  .object({
+    default: z.enum(TIMELINE_SPECIFICITIES),
+    segments: z.array(
+      z.object({ segmentId: TypeIdSchema, specificity: z.enum(TIMELINE_SPECIFICITIES) })
+    ),
+    teamMembers: z
+      .array(z.object({ principalId: TypeIdSchema, specificity: z.enum(TIMELINE_SPECIFICITIES) }))
+      .optional(),
+  })
+  .meta({ description: 'Per-audience cap on timeline date specificity (admins always see all)' })
 import {
   TimestampSchema,
   SlugSchema,
@@ -27,6 +40,7 @@ const RoadmapSchema = z.object({
   isPublic: z.boolean().meta({ description: 'Whether the roadmap is publicly visible' }),
   allowedSegmentIds: z.array(TypeIdSchema),
   allowedTeamPrincipalIds: z.array(TypeIdSchema),
+  timelineAccess: TimelineAccessSchema,
   position: z.number().meta({ description: 'Display order' }),
   createdAt: TimestampSchema,
 })
@@ -62,11 +76,12 @@ const CreateRoadmapSchema = z
       .min(1)
       .max(100)
       .regex(/^[a-z0-9-]+$/)
-      .meta({ description: 'URL-friendly slug', example: 'product-roadmap' }),
+      .meta({ description: 'URL-friendly slug' }),
     description: z.string().max(500).optional().meta({ description: 'Roadmap description' }),
     isPublic: z.boolean().optional().meta({ description: 'Make roadmap public', default: true }),
     allowedSegmentIds: AllowedSegmentIdsInputSchema,
     allowedTeamPrincipalIds: AllowedTeamIdsInputSchema,
+    timelineAccess: TimelineAccessSchema.optional(),
   })
   .meta({ description: 'Create roadmap request body' })
 
@@ -77,16 +92,12 @@ const UpdateRoadmapSchema = z
     isPublic: z.boolean().optional(),
     allowedSegmentIds: AllowedSegmentIdsInputSchema,
     allowedTeamPrincipalIds: AllowedTeamIdsInputSchema,
+    timelineAccess: TimelineAccessSchema.optional(),
   })
   .meta({ description: 'Update roadmap request body' })
 
 const AddPostToRoadmapSchema = z
-  .object({
-    postId: TypeIdSchema.meta({
-      description: 'Post ID to add',
-      example: 'post_01h455vb4pex5vsknk084sn02q',
-    }),
-  })
+  .object({ postId: TypeIdSchema.meta({ description: 'Post ID to add' }) })
   .meta({ description: 'Add post to roadmap request body' })
 
 // Response schemas
@@ -101,21 +112,12 @@ const RoadmapPostsResponseSchema = z
   .meta({ description: 'Paginated roadmap posts response' })
 
 const AddPostConfirmationSchema = z
-  .object({
-    message: z.string(),
-    roadmapId: z.string(),
-    postId: z.string(),
-  })
+  .object({ message: z.string(), roadmapId: z.string(), postId: z.string() })
   .meta({ description: 'Post added confirmation' })
 
 // Error response schemas
 const ConflictErrorSchema = z
-  .object({
-    error: z.object({
-      code: z.literal('CONFLICT'),
-      message: z.string(),
-    }),
-  })
+  .object({ error: z.object({ code: z.literal('CONFLICT'), message: z.string() }) })
   .meta({ description: 'Conflict error' })
 
 // Register GET /roadmaps
