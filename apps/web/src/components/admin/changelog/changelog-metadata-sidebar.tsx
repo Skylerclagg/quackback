@@ -8,6 +8,9 @@ export { SidebarSkeleton as ChangelogMetadataSidebarSkeleton }
 interface ChangelogMetadataSidebarProps {
   publishState: PublishState
   onPublishStateChange: (state: PublishState) => void
+  /** Collection the entry belongs to; null = the built-in "General" changelog. */
+  changelogId: string | null
+  onChangelogIdChange: (next: string | null) => void
   linkedPostIds: PostId[]
   onLinkedPostsChange: (postIds: PostId[]) => void
   authorName?: string | null
@@ -26,6 +29,8 @@ interface ChangelogMetadataSidebarProps {
 export function ChangelogMetadataSidebar({
   publishState,
   onPublishStateChange,
+  changelogId,
+  onChangelogIdChange,
   linkedPostIds,
   onLinkedPostsChange,
   authorName,
@@ -45,6 +50,8 @@ export function ChangelogMetadataSidebar({
       <ChangelogMetadataSidebarContent
         publishState={publishState}
         onPublishStateChange={onPublishStateChange}
+        changelogId={changelogId}
+        onChangelogIdChange={onChangelogIdChange}
         linkedPostIds={linkedPostIds}
         onLinkedPostsChange={onLinkedPostsChange}
         authorName={authorName}

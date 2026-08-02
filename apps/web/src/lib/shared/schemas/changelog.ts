@@ -23,6 +23,8 @@ export const createChangelogSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string(),
   contentJson: tiptapContentSchema.nullable().optional(),
+  /** Collection the entry belongs to; null/omitted = the built-in "General" changelog. */
+  changelogId: z.string().nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
   publishState: publishStateSchema,
   displayDate: z.coerce.date().nullable().optional(),
@@ -39,6 +41,8 @@ export const updateChangelogSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   content: z.string().optional(),
   contentJson: tiptapContentSchema.nullable().optional(),
+  /** Collection to move the entry to; null = the built-in "General" changelog. */
+  changelogId: z.string().nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
   publishState: publishStateSchema.optional(),
   displayDate: z.coerce.date().nullable().optional(),
@@ -52,8 +56,41 @@ export const updateChangelogSchema = z.object({
  */
 export const listChangelogsSchema = z.object({
   status: z.enum(['draft', 'scheduled', 'published', 'all']).optional(),
+  /** Collection filter: a collection id, 'general', or omitted for all. */
+  changelogId: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
+})
+
+/**
+ * Changelog collection schemas
+ */
+export const createChangelogCollectionSchema = z.object({
+  name: z.string().min(1).max(100),
+  slug: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
+  description: z.string().max(500).nullable().optional(),
+  roadmapId: z.string().nullable().optional(),
+  isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
+})
+
+export const updateChangelogCollectionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).nullable().optional(),
+  roadmapId: z.string().nullable().optional(),
+  isPublic: z.boolean().optional(),
+  allowedSegmentIds: z.array(z.string()).max(100).optional(),
+  allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
+})
+
+export const deleteChangelogCollectionSchema = z.object({
+  id: z.string().min(1),
 })
 
 /**
@@ -76,6 +113,8 @@ export const deleteChangelogSchema = z.object({
 export const listPublicChangelogsSchema = z.object({
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
+  /** Collection filter: a collection slug, 'general', or omitted for all. */
+  changelog: z.string().optional(),
 })
 
 // Export types inferred from schemas

@@ -52,6 +52,9 @@ export type MilestoneId = TypeId<'milestone'>
 /** Changelog entry ID - e.g., changelog_01h455vb4pex5vsknk084sn02q */
 export type ChangelogId = TypeId<'changelog'>
 
+/** Changelog collection ID - e.g., clog_01h455vb4pex5vsknk084sn02q */
+export type ChangelogCollectionId = TypeId<'clog'>
+
 /** Support-inbox conversation ID - e.g., conversation_01h455vb4pex5vsknk084sn02q */
 export type ConversationId = TypeId<'conversation'>
 
@@ -264,6 +267,7 @@ export interface EntityIdMap {
   roadmap: RoadmapId
   milestone: MilestoneId
   changelog: ChangelogId
+  changelog_collection: ChangelogCollectionId
   conversation: ConversationId
   chat_message: ChatMessageId
   chat_tag: ChatTagId

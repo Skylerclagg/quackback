@@ -28,6 +28,7 @@ export const ID_PREFIXES = {
   roadmap: 'roadmap',
   milestone: 'milestone', // Custom timeline entries on a roadmap
   changelog: 'changelog',
+  changelog_collection: 'clog', // Named changelog an entry belongs to (optionally tied to a roadmap)
 
   // Live chat
   conversation: 'conversation',

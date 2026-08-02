@@ -11,7 +11,7 @@ import type {
   postNotes,
 } from './schema/posts'
 import type { integrations } from './schema/integrations'
-import type { changelogEntries, changelogEntryPosts } from './schema/changelog'
+import type { changelogs, changelogEntries, changelogEntryPosts } from './schema/changelog'
 import type {
   conversations,
   chatMessages,
@@ -435,6 +435,8 @@ export type NewIntegration = InferInsertModel<typeof integrations>
 export type IntegrationStatus = Integration['status']
 
 // Changelog types
+export type ChangelogCollection = InferSelectModel<typeof changelogs>
+export type NewChangelogCollection = InferInsertModel<typeof changelogs>
 export type ChangelogEntry = InferSelectModel<typeof changelogEntries>
 export type NewChangelogEntry = InferInsertModel<typeof changelogEntries>
 export type ChangelogEntryPost = InferSelectModel<typeof changelogEntryPosts>

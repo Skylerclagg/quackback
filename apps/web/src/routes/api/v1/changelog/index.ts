@@ -12,13 +12,14 @@ import { listChangelogs } from '@/lib/server/domains/changelog/changelog.query'
 import { publishedAtToPublishState } from '@/lib/shared/schemas/changelog'
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { db, principal, eq } from '@/lib/server/db'
-import type { PostId } from '@quackback/ids'
+import type { ChangelogCollectionId, PostId } from '@quackback/ids'
 
 // Input validation schema
 const createChangelogSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
   content: z.string().min(1, 'Content is required'),
   publishedAt: z.string().datetime().optional(),
+  changelogId: z.string().nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
   isPublic: z.boolean().optional(),
   allowedSegmentIds: z.array(z.string()).max(100).optional(),
@@ -62,6 +63,7 @@ export const Route = createFileRoute('/api/v1/changelog/')({
               isPublic: entry.isPublic,
               allowedSegmentIds: entry.allowedSegmentIds,
               allowedTeamPrincipalIds: entry.allowedTeamPrincipalIds,
+              changelogId: entry.changelogId,
               createdAt: entry.createdAt.toISOString(),
               updatedAt: entry.updatedAt.toISOString(),
             })),
@@ -109,6 +111,7 @@ export const Route = createFileRoute('/api/v1/changelog/')({
               title: parsed.data.title,
               content: parsed.data.content,
               publishState,
+              changelogId: (parsed.data.changelogId ?? null) as ChangelogCollectionId | null,
               linkedPostIds: parsed.data.linkedPostIds as PostId[] | undefined,
               isPublic: parsed.data.isPublic,
               allowedSegmentIds: parsed.data.allowedSegmentIds,
@@ -129,6 +132,7 @@ export const Route = createFileRoute('/api/v1/changelog/')({
             isPublic: entry.isPublic,
             allowedSegmentIds: entry.allowedSegmentIds,
             allowedTeamPrincipalIds: entry.allowedTeamPrincipalIds,
+            changelogId: entry.changelogId,
             createdAt: entry.createdAt.toISOString(),
             updatedAt: entry.updatedAt.toISOString(),
           })

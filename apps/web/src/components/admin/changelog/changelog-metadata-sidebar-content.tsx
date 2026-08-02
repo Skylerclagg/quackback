@@ -16,6 +16,14 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
 import { useQuery } from '@tanstack/react-query'
 import { searchShippedPostsFn } from '@/lib/server/functions/changelog'
+import { changelogQueries } from '@/lib/client/queries/changelog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { TimeAgo } from '@/components/ui/time-ago'
 import {
   SidebarRow,
@@ -33,6 +41,9 @@ import type { PublishState } from '@/lib/shared/schemas/changelog'
 interface ChangelogMetadataSidebarContentProps {
   publishState: PublishState
   onPublishStateChange: (state: PublishState) => void
+  /** Collection the entry belongs to; null = the built-in "General" changelog. */
+  changelogId: string | null
+  onChangelogIdChange: (next: string | null) => void
   linkedPostIds: PostId[]
   onLinkedPostsChange: (postIds: PostId[]) => void
   authorName?: string | null
@@ -57,6 +68,8 @@ const PUBLISH_STATUS_OPTIONS: readonly StatusOption[] = [
 export function ChangelogMetadataSidebarContent({
   publishState,
   onPublishStateChange,
+  changelogId,
+  onChangelogIdChange,
   linkedPostIds,
   onLinkedPostsChange,
   authorName,
@@ -73,6 +86,10 @@ export function ChangelogMetadataSidebarContent({
 }: ChangelogMetadataSidebarContentProps) {
   const [postsOpen, setPostsOpen] = useState(false)
   const [search, setSearch] = useState('')
+
+  // Named changelog collections for the picker. The row is hidden when
+  // none exist, so zero-collection installs see no new UI.
+  const { data: collections = [] } = useQuery(changelogQueries.collections())
 
   // Default scheduled time to tomorrow at 9am
   const [scheduledDateTime, setScheduledDateTime] = useState<Date>(() => {
@@ -151,6 +168,29 @@ export function ChangelogMetadataSidebarContent({
           onChange={handleStatusChange}
         />
       </div>
+
+      {/* Changelog collection - only shown once collections exist */}
+      {collections.length > 0 && (
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-sm text-muted-foreground shrink-0">Changelog</span>
+          <Select
+            value={changelogId ?? 'general'}
+            onValueChange={(value) => onChangelogIdChange(value === 'general' ? null : value)}
+          >
+            <SelectTrigger size="sm" className="h-7 min-w-0 max-w-[11rem] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="general">General</SelectItem>
+              {collections.map((collection) => (
+                <SelectItem key={collection.id} value={collection.id}>
+                  {collection.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Author */}
       {authorName && (

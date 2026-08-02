@@ -27,6 +27,7 @@ interface CreateChangelogDialogProps {
 export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDialogProps) {
   const [open, setOpen] = useState(false)
   const [contentJson, setContentJson] = useState<JSONContent | null>(null)
+  const [changelogId, setChangelogId] = useState<string | null>(null)
   const [linkedPostIds, setLinkedPostIds] = useState<PostId[]>([])
   const [publishState, setPublishState] = useState<PublishState>({ type: 'draft' })
   const [displayDateOverride, setDisplayDateOverride] = useState<Date | undefined>(undefined)
@@ -74,6 +75,7 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
   function resetFormState() {
     form.reset()
     setContentJson(null)
+    setChangelogId(null)
     setLinkedPostIds([])
     setPublishState({ type: 'draft' })
     setDisplayDateOverride(undefined)
@@ -89,6 +91,7 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
         title: data.title,
         content: data.content,
         contentJson: contentJson as TiptapContent | null,
+        changelogId,
         linkedPostIds,
         publishState,
         ...(publishState.type === 'published' &&
@@ -167,6 +170,8 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
               <ChangelogMetadataSidebar
                 publishState={publishState}
                 onPublishStateChange={handlePublishStateChange}
+                changelogId={changelogId}
+                onChangelogIdChange={setChangelogId}
                 linkedPostIds={linkedPostIds}
                 onLinkedPostsChange={setLinkedPostIds}
                 displayDateValue={displayDateOverride}
@@ -203,6 +208,8 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
                     <ChangelogMetadataSidebarContent
                       publishState={publishState}
                       onPublishStateChange={handlePublishStateChange}
+                      changelogId={changelogId}
+                      onChangelogIdChange={setChangelogId}
                       linkedPostIds={linkedPostIds}
                       onLinkedPostsChange={setLinkedPostIds}
                       displayDateValue={displayDateOverride}

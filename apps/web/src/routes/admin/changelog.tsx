@@ -4,6 +4,8 @@ import { ChangelogList, ChangelogModal } from '@/components/admin/changelog'
 
 const searchSchema = z.object({
   status: z.enum(['draft', 'scheduled', 'published']).optional(),
+  // Collection filter: a collection id or 'general' (entries without a collection)
+  changelog: z.string().optional(),
   entry: z.string().optional(), // Entry ID for modal view
   search: z.string().optional(),
 })

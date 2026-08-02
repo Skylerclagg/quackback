@@ -27,6 +27,9 @@ const ChangelogEntrySchema = z.object({
   isPublic: z.boolean().meta({ description: 'False restricts the entry to its allowlists' }),
   allowedSegmentIds: z.array(TypeIdSchema),
   allowedTeamPrincipalIds: z.array(TypeIdSchema),
+  changelogId: TypeIdSchema.nullable().optional().meta({
+    description: 'Changelog collection the entry belongs to (null = the built-in changelog)',
+  }),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
@@ -59,6 +62,9 @@ const CreateChangelogEntrySchema = z
       .meta({ description: 'Entry visible to everyone', default: true }),
     allowedSegmentIds: AudienceSegmentIdsSchema,
     allowedTeamPrincipalIds: AudienceTeamIdsSchema,
+    changelogId: TypeIdSchema.nullable().optional().meta({
+      description: 'Changelog collection to file the entry under (omit/null = built-in changelog)',
+    }),
   })
   .meta({ description: 'Create changelog entry request body' })
 
@@ -79,6 +85,9 @@ const UpdateChangelogEntrySchema = z
     isPublic: z.boolean().optional(),
     allowedSegmentIds: AudienceSegmentIdsSchema,
     allowedTeamPrincipalIds: AudienceTeamIdsSchema,
+    changelogId: TypeIdSchema.nullable().optional().meta({
+      description: 'Changelog collection to move the entry to (null = built-in changelog)',
+    }),
   })
   .meta({ description: 'Update changelog entry request body' })
 

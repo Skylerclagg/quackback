@@ -13,6 +13,7 @@ import { useDebouncedSearch } from '@/lib/client/hooks/use-debounced-search'
 import { ChangelogFiltersPanel } from './changelog-filters'
 import { useChangelogFilters } from './use-changelog-filters'
 import { CreateChangelogDialog } from './create-changelog-dialog'
+import { ManageChangelogsDialog } from './manage-changelogs-dialog'
 import { ChangelogListItem } from './changelog-list-item'
 import { changelogQueries } from '@/lib/client/queries/changelog'
 import { useDeleteChangelog } from '@/lib/client/mutations/changelog'
@@ -55,7 +56,10 @@ export function ChangelogList() {
   })
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery(
-    changelogQueries.list({ status: filters.status })
+    changelogQueries.list({
+      status: filters.status,
+      changelogId: filters.changelog === 'all' ? undefined : filters.changelog,
+    })
   )
 
   const loadMoreRef = useInfiniteScroll({
@@ -141,6 +145,8 @@ export function ChangelogList() {
           <ChangelogFiltersPanel
             status={filters.status}
             onStatusChange={(status) => setFilters({ status })}
+            changelog={filters.changelog}
+            onChangelogChange={(changelog) => setFilters({ changelog })}
           />
         }
         hasActiveFilters={hasActiveFilters}
@@ -150,7 +156,12 @@ export function ChangelogList() {
           <AdminListHeader
             searchValue={searchValue}
             onSearchChange={setSearchValue}
-            action={<CreateChangelogDialog />}
+            action={
+              <div className="flex items-center gap-2">
+                <ManageChangelogsDialog />
+                <CreateChangelogDialog />
+              </div>
+            }
           />
 
           {/* List */}
@@ -187,6 +198,7 @@ export function ChangelogList() {
                       displayDate={entry.displayDate}
                       createdAt={entry.createdAt}
                       author={entry.author}
+                      changelog={entry.changelog}
                       linkedPosts={entry.linkedPosts}
                       onEdit={handleEdit}
                       onDelete={handleDelete}

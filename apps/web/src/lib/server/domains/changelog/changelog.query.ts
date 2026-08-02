@@ -2,6 +2,7 @@ import type { SQL } from 'drizzle-orm'
 import {
   db,
   boards,
+  changelogs,
   changelogEntries,
   changelogEntryPosts,
   posts,
@@ -19,8 +20,19 @@ import {
   inArray,
   sql,
 } from '@/lib/server/db'
-import type { BoardId, ChangelogId, PrincipalId, PostId, StatusId } from '@quackback/ids'
-import { changelogAudienceFilter, type Actor } from '@/lib/server/policy'
+import type {
+  BoardId,
+  ChangelogCollectionId,
+  ChangelogId,
+  PrincipalId,
+  PostId,
+  StatusId,
+} from '@quackback/ids'
+import {
+  changelogAudienceFilter,
+  changelogCollectionVisibleFilter,
+  type Actor,
+} from '@/lib/server/policy'
 import { computeStatus } from './changelog.service'
 import type {
   ListChangelogParams,
@@ -39,17 +51,26 @@ export async function listChangelogs(
   params: ListChangelogParams,
   actor?: Actor
 ): Promise<ChangelogListResult> {
-  const { status = 'all', cursor, limit = 20 } = params
+  const { status = 'all', changelogId, cursor, limit = 20 } = params
   const now = new Date()
 
   // Build where conditions - always exclude soft-deleted entries.
   // When an actor is supplied (the admin server fn passes the caller),
   // audience-restricted entries are filtered in SQL so member-role
-  // callers only page through entries they may see. Filtering must be
-  // SQL-side — this list is cursor-paginated.
+  // callers only page through entries they may see — the entry's own
+  // audience AND its collection's. Filtering must be SQL-side — this
+  // list is cursor-paginated.
   const conditions: SQL<unknown>[] = [isNull(changelogEntries.deletedAt)]
   if (actor) {
     conditions.push(changelogAudienceFilter(actor))
+    conditions.push(changelogCollectionVisibleFilter(actor))
+  }
+
+  // Filter by collection ('general' = entries without a collection)
+  if (changelogId === 'general') {
+    conditions.push(isNull(changelogEntries.changelogId))
+  } else if (changelogId) {
+    conditions.push(eq(changelogEntries.changelogId, changelogId))
   }
 
   // Filter by status
@@ -114,6 +135,23 @@ export async function listChangelogs(
     }
   }
 
+  // Batch-load collection refs for the page (live collections only —
+  // entries pointing at a soft-deleted collection render as General)
+  const collectionIds = Array.from(
+    new Set(items.map((e) => e.changelogId).filter((id): id is ChangelogCollectionId => id != null))
+  )
+  const collectionMap = new Map<
+    ChangelogCollectionId,
+    { id: ChangelogCollectionId; slug: string; name: string }
+  >()
+  if (collectionIds.length > 0) {
+    const collections = await db.query.changelogs.findMany({
+      where: and(inArray(changelogs.id, collectionIds), isNull(changelogs.deletedAt)),
+      columns: { id: true, slug: true, name: true },
+    })
+    collections.forEach((c) => collectionMap.set(c.id, c))
+  }
+
   // Get linked posts for all entries
   const entryIds = items.map((e) => e.id)
   const allLinkedPosts =
@@ -159,11 +197,14 @@ export async function listChangelogs(
   // Transform to output format
   const result: ChangelogEntryWithDetails[] = items.map((entry) => {
     const entryLinkedPosts = linkedPostsMap.get(entry.id) ?? []
+    const changelog = entry.changelogId ? (collectionMap.get(entry.changelogId) ?? null) : null
     return {
       id: entry.id,
       title: entry.title,
       content: entry.content,
       contentJson: entry.contentJson,
+      changelogId: changelog?.id ?? null,
+      changelog,
       principalId: entry.principalId,
       publishedAt: entry.publishedAt,
       displayDate: entry.displayDate,

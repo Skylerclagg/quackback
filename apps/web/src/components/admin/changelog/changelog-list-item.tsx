@@ -31,6 +31,12 @@ interface ChangelogListItemProps {
     name: string
     avatarUrl: string | null
   } | null
+  /** Collection the entry belongs to; null = the built-in "General" changelog. */
+  changelog?: {
+    id: string
+    slug: string
+    name: string
+  } | null
   linkedPosts: Array<{
     id: PostId
     title: string
@@ -55,6 +61,7 @@ export function ChangelogListItem({
   displayDate,
   createdAt,
   author,
+  changelog,
   linkedPosts,
   onEdit,
   onDelete,
@@ -76,8 +83,15 @@ export function ChangelogListItem({
     >
       {/* Content */}
       <div className="flex-1 min-w-0">
-        {/* Status badge */}
-        <StatusBadge name={config.label} color={config.color} className="mb-1" />
+        {/* Status badge + collection */}
+        <div className="flex items-center gap-1.5 mb-1">
+          <StatusBadge name={config.label} color={config.color} />
+          {changelog && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+              {changelog.name}
+            </span>
+          )}
+        </div>
 
         {/* Title */}
         <h3 className="font-semibold text-base text-foreground line-clamp-1">{title}</h3>

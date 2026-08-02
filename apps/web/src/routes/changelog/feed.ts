@@ -8,14 +8,14 @@ export const Route = createFileRoute('/changelog/feed')({
        * GET /changelog/feed
        * Returns RSS 2.0 feed of published changelog entries
        */
-      GET: async () => {
+      GET: async ({ request }) => {
         const [
           { config },
-          { db, changelogEntries, and, desc, sql },
+          { db, changelogs, changelogEntries, and, eq, desc, isNull, sql },
           { publicChangelogConditions },
           { getSettingsBrandingData },
           { resolvePortalAccessForRequest },
-          { changelogAudienceFilter },
+          { changelogAudienceFilter, changelogCollectionVisibleFilter },
           { getOptionalAuth, hasAuthCredentials, policyActorFromAuth },
         ] = await Promise.all([
           import('@/lib/server/config'),
@@ -45,14 +45,40 @@ export const Route = createFileRoute('/changelog/feed')({
         const auth = hasAuthCredentials() ? await getOptionalAuth() : null
         const actor = await policyActorFromAuth(auth)
 
-        const entries = access.granted
-          ? await db
-              .select()
-              .from(changelogEntries)
-              .where(and(...publicChangelogConditions(new Date()), changelogAudienceFilter(actor)))
-              .orderBy(desc(effectiveDisplayDate))
-              .limit(50)
-          : []
+        // Optional per-collection feed: /changelog/feed?changelog=<slug>
+        // ('general' = the built-in changelog). An unknown slug yields a
+        // valid empty feed, indistinguishable from a restricted one.
+        const changelogSlug = new URL(request.url).searchParams.get('changelog')
+
+        const conditions = [
+          ...publicChangelogConditions(new Date()),
+          changelogAudienceFilter(actor),
+          changelogCollectionVisibleFilter(actor),
+        ]
+        let unknownCollection = false
+        if (changelogSlug === 'general') {
+          conditions.push(isNull(changelogEntries.changelogId))
+        } else if (changelogSlug) {
+          const collection = await db.query.changelogs.findFirst({
+            where: and(eq(changelogs.slug, changelogSlug), isNull(changelogs.deletedAt)),
+            columns: { id: true },
+          })
+          if (collection) {
+            conditions.push(eq(changelogEntries.changelogId, collection.id))
+          } else {
+            unknownCollection = true
+          }
+        }
+
+        const entries =
+          access.granted && !unknownCollection
+            ? await db
+                .select()
+                .from(changelogEntries)
+                .where(and(...conditions))
+                .orderBy(desc(effectiveDisplayDate))
+                .limit(50)
+            : []
 
         // Per-caller portal-access decisions can't share a public CDN
         // cache: a granted caller would seed the cache with content that

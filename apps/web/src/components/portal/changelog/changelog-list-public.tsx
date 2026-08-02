@@ -6,10 +6,17 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { publicChangelogQueries } from '@/lib/client/queries/changelog'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 
-export function ChangelogListPublic() {
+interface ChangelogListPublicProps {
+  /** Collection filter: a collection slug, 'general', or undefined for all. */
+  changelog?: string
+  /** Whether entries show their collection badge (combined "All" view). */
+  showChangelogBadge?: boolean
+}
+
+export function ChangelogListPublic({ changelog, showChangelogBadge }: ChangelogListPublicProps) {
   const intl = useIntl()
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery(
-    publicChangelogQueries.list()
+    publicChangelogQueries.list(changelog ? { changelog } : undefined)
   )
 
   const entries = data?.pages.flatMap((page) => page.items) ?? []
@@ -54,6 +61,7 @@ export function ChangelogListPublic() {
             content={entry.content}
             contentJson={entry.contentJson}
             publishedAt={entry.publishedAt}
+            changelog={showChangelogBadge ? entry.changelog : null}
             linkedPosts={entry.linkedPosts}
           />
         </div>

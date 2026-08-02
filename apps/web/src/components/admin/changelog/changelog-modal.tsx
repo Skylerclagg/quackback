@@ -35,6 +35,7 @@ interface ChangelogModalContentProps {
 
 function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps) {
   const [contentJson, setContentJson] = useState<JSONContent | null>(null)
+  const [changelogId, setChangelogId] = useState<string | null>(null)
   const [linkedPostIds, setLinkedPostIds] = useState<PostId[]>([])
   const [publishState, setPublishState] = useState<PublishState>({ type: 'draft' })
   const [displayDateOverride, setDisplayDateOverride] = useState<Date | undefined>(undefined)
@@ -69,6 +70,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
       form.setValue('title', entry.title)
       form.setValue('content', entry.content)
       setContentJson(entry.contentJson as JSONContent | null)
+      setChangelogId(entry.changelogId ?? null)
       setLinkedPostIds(entry.linkedPosts.map((p) => p.id))
       setPublishState(toPublishState(entry.status, entry.publishedAt))
       setDisplayDateOverride(entry.displayDate ? new Date(entry.displayDate) : undefined)
@@ -113,6 +115,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         title: data.title,
         content: data.content,
         contentJson: contentJson as TiptapContent | null,
+        changelogId,
         linkedPostIds,
         publishState,
         ...(displayDatePayload !== undefined && { displayDate: displayDatePayload }),
@@ -181,6 +184,8 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
           <ChangelogMetadataSidebar
             publishState={publishState}
             onPublishStateChange={setPublishState}
+            changelogId={changelogId}
+            onChangelogIdChange={setChangelogId}
             linkedPostIds={linkedPostIds}
             onLinkedPostsChange={setLinkedPostIds}
             authorName={entry?.author?.name}
@@ -219,6 +224,8 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
                 <ChangelogMetadataSidebarContent
                   publishState={publishState}
                   onPublishStateChange={setPublishState}
+                  changelogId={changelogId}
+                  onChangelogIdChange={setChangelogId}
                   linkedPostIds={linkedPostIds}
                   onLinkedPostsChange={setLinkedPostIds}
                   authorName={entry?.author?.name}

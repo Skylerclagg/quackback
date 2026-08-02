@@ -178,6 +178,8 @@ export {
   postExternalLinks,
   postExternalLinksRelations,
   // Schema tables - changelog
+  changelogs,
+  changelogsRelations,
   changelogEntries,
   changelogEntriesRelations,
   changelogEntryPosts,

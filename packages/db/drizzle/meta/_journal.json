@@ -925,6 +925,13 @@
       "when": 1784937600000,
       "tag": "0131_roadmap_timeline_access",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1785456000000,
+      "tag": "0132_changelog_collections",
+      "breakpoints": true
     }
   ]
 }

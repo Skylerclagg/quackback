@@ -37,6 +37,7 @@ import {
   normalizeAllowedSegmentIds,
   normalizeAllowedTeamPrincipalIds,
 } from '@/lib/server/domains/segments/allowlists'
+import { assertCollectionExists, getCollectionRef } from './changelog-collection.helpers'
 import { logger } from '@/lib/server/logger'
 
 import { isSameDay } from 'date-fns'
@@ -105,10 +106,15 @@ export async function createChangelog(
     principalId: author.principalId,
   })
 
+  if (input.changelogId !== undefined) {
+    await assertCollectionExists(input.changelogId)
+  }
+
   const [entry] = await db
     .insert(changelogEntries)
     .values({
       title,
+      changelogId: input.changelogId ?? null,
       // Store the markdown projection of the canonical contentJson so every
       // consumer of the `content` column (webhooks, notifications) sees images.
       content: contentJsonToMarkdown(contentJson, content),
@@ -224,6 +230,12 @@ export async function updateChangelog(
     updateData.publishedAt = getPublishedAtFromState(input.publishState)
   }
 
+  // Collection move
+  if (input.changelogId !== undefined) {
+    await assertCollectionExists(input.changelogId)
+    updateData.changelogId = input.changelogId
+  }
+
   // Audience changes
   if (input.isPublic !== undefined) updateData.isPublic = input.isPublic
   if (input.allowedSegmentIds !== undefined) {
@@ -330,6 +342,8 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     throw new NotFoundError('CHANGELOG_NOT_FOUND', `Changelog entry with ID ${id} not found`)
   }
 
+  const changelog = await getCollectionRef(entry.changelogId)
+
   // Get author info from principal's display fields
   let author: ChangelogAuthor | null = null
   if (entry.principalId) {
@@ -388,6 +402,8 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     title: entry.title,
     content: entry.content,
     contentJson: entry.contentJson,
+    changelogId: changelog?.id ?? null,
+    changelog,
     principalId: entry.principalId,
     publishedAt: entry.publishedAt,
     displayDate: entry.displayDate,

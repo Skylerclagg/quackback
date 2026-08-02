@@ -5,7 +5,7 @@
  */
 
 import { createServerFn } from '@tanstack/react-start'
-import type { BoardId, ChangelogId, PostId } from '@quackback/ids'
+import type { BoardId, ChangelogCollectionId, ChangelogId, PostId } from '@quackback/ids'
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { NotFoundError } from '@/lib/shared/errors'
@@ -18,7 +18,8 @@ import {
   withSelfIfMember,
   type AuthContext,
 } from './auth-helpers'
-import { canViewChangelogEntry, isAllowed } from '@/lib/server/policy'
+import { canViewChangelogEntryInCollection, isAllowed } from '@/lib/server/policy'
+import { db, changelogs, and as andOp, eq as eqOp, isNull as isNullOp } from '@/lib/server/db'
 import { resolvePortalAccessForRequest } from './portal-access'
 import {
   createChangelog,
@@ -48,13 +49,27 @@ const log = logger.child({ component: 'changelog' })
 
 /**
  * Load a changelog entry and 404 unless the caller may view it. Admins
- * always pass; members need the entry public or their principal id in
- * its team allowlist. 404 (not 403) so restricted entries stay
- * indistinguishable from missing ones.
+ * always pass; members need the entry public, one of their segments on
+ * its segment allowlist, or their principal id in its team allowlist.
+ * 404 (not 403) so restricted entries stay indistinguishable from
+ * missing ones.
  */
 async function requireChangelogAccess(auth: AuthContext, id: ChangelogId) {
   const entry = await getChangelogById(id)
-  if (!isAllowed(canViewChangelogEntry(teamActorFromAuth(auth), entry))) {
+  // The collection's audience gates in addition to the entry's own.
+  const collection = entry.changelogId
+    ? ((await db.query.changelogs.findFirst({
+        where: andOp(eqOp(changelogs.id, entry.changelogId), isNullOp(changelogs.deletedAt)),
+        columns: {
+          isPublic: true,
+          allowedSegmentIds: true,
+          allowedTeamPrincipalIds: true,
+          deletedAt: true,
+        },
+      })) ?? null)
+    : null
+  const actor = await teamActorFromAuth(auth)
+  if (!isAllowed(canViewChangelogEntryInCollection(actor, entry, collection))) {
     throw new NotFoundError('CHANGELOG_NOT_FOUND', `Changelog entry with ID ${id} not found`)
   }
   return entry
@@ -82,6 +97,7 @@ export const createChangelogFn = createServerFn({ method: 'POST' })
           title: data.title,
           content: data.content,
           contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : null,
+          changelogId: (data.changelogId ?? null) as ChangelogCollectionId | null,
           linkedPostIds: (data.linkedPostIds ?? []) as PostId[],
           publishState: data.publishState as PublishState,
           ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
@@ -127,6 +143,9 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
         title: data.title,
         content: data.content,
         contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : undefined,
+        ...(data.changelogId !== undefined && {
+          changelogId: data.changelogId as ChangelogCollectionId | null,
+        }),
         linkedPostIds: data.linkedPostIds as PostId[] | undefined,
         publishState: data.publishState as PublishState | undefined,
         ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
@@ -208,10 +227,11 @@ export const listChangelogsFn = createServerFn({ method: 'GET' })
       const result = await listChangelogs(
         {
           status: data.status,
+          changelogId: data.changelogId as ChangelogCollectionId | 'general' | undefined,
           cursor: data.cursor,
           limit: data.limit,
         },
-        teamActorFromAuth(auth)
+        await teamActorFromAuth(auth)
       )
 
       return {
@@ -296,6 +316,7 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
         {
           cursor: data.cursor,
           limit: data.limit,
+          changelog: data.changelog,
         },
         actor
       )

@@ -733,24 +733,28 @@ async function getMentionTargets(event: EventData, context: HookContext): Promis
 // Changelog Subscriber Targets
 // ============================================================================
 
+interface ChangelogAudienceFields {
+  isPublic: boolean
+  allowedSegmentIds: string[]
+  allowedTeamPrincipalIds: string[]
+  deletedAt: Date | null
+}
+
 /**
  * Filter subscribers to those inside a restricted changelog entry's
- * audience (see policy/audience.ts). Resolves each subscriber's role
- * and segment memberships in two batch queries, then applies the same
- * canViewChangelogEntry predicate the read paths use — a subscriber
- * who can't open the entry must not be emailed its content.
+ * audience (see policy/audience.ts) — the entry's own audience AND its
+ * collection's, matching the read paths. Resolves each subscriber's
+ * role and segment memberships in two batch queries, then applies the
+ * same canViewChangelogEntryInCollection predicate — a subscriber who
+ * can't open the entry must not be emailed its content.
  */
 async function filterSubscribersByChangelogAudience(
   subscribers: Subscriber[],
-  entry: {
-    isPublic: boolean
-    allowedSegmentIds: string[]
-    allowedTeamPrincipalIds: string[]
-    deletedAt: Date | null
-  }
+  entry: ChangelogAudienceFields,
+  collection: ChangelogAudienceFields | null
 ): Promise<Subscriber[]> {
-  if (entry.isPublic) return subscribers
-  const { canViewChangelogEntry, isAllowed } = await import('@/lib/server/policy')
+  if (entry.isPublic && (!collection || collection.isPublic)) return subscribers
+  const { canViewChangelogEntryInCollection, isAllowed } = await import('@/lib/server/policy')
   const ids = subscribers.map((s) => s.principalId as PrincipalId)
   const [principals, memberships] = await Promise.all([
     db.query.principal.findMany({
@@ -779,7 +783,7 @@ async function filterSubscribersByChangelogAudience(
         p.type === 'anonymous' ? 'anonymous' : p.type === 'service' ? 'service' : 'user',
       segmentIds: segmentMap.get(String(s.principalId)) ?? new Set(),
     }
-    return isAllowed(canViewChangelogEntry(actor, entry))
+    return isAllowed(canViewChangelogEntryInCollection(actor, entry, collection))
   })
 }
 
@@ -798,13 +802,22 @@ async function getChangelogSubscriberTargets(
   if (!changelogId) return []
 
   // Look up linked posts
-  const { changelogEntryPosts, changelogEntries, eq: eqOp } = await import('@/lib/server/db')
+  const {
+    changelogEntryPosts,
+    changelogEntries,
+    changelogs,
+    eq: eqOp,
+    and: andOp,
+    isNull: isNullOp,
+  } = await import('@/lib/server/db')
 
   // Audience gate: a restricted entry must not be announced outside
-  // its audience, so its own audience fields drive recipient filtering.
+  // its audience, so its own audience fields — and its collection's —
+  // drive recipient filtering.
   const entry = await db.query.changelogEntries.findFirst({
     where: eqOp(changelogEntries.id, changelogId as import('@quackback/ids').ChangelogId),
     columns: {
+      changelogId: true,
       isPublic: true,
       allowedSegmentIds: true,
       allowedTeamPrincipalIds: true,
@@ -812,6 +825,17 @@ async function getChangelogSubscriberTargets(
     },
   })
   if (!entry || entry.deletedAt) return []
+  const collection = entry.changelogId
+    ? ((await db.query.changelogs.findFirst({
+        where: andOp(eqOp(changelogs.id, entry.changelogId), isNullOp(changelogs.deletedAt)),
+        columns: {
+          isPublic: true,
+          allowedSegmentIds: true,
+          allowedTeamPrincipalIds: true,
+          deletedAt: true,
+        },
+      })) ?? null)
+    : null
   const linkedPosts = await db.query.changelogEntryPosts.findMany({
     where: eqOp(
       changelogEntryPosts.changelogEntryId,
@@ -845,7 +869,8 @@ async function getChangelogSubscriberTargets(
   // Filter out the actor, then anyone outside the entry's audience.
   const nonActorSubscribers = await filterSubscribersByChangelogAudience(
     subscribers.filter((subscriber) => !isActorSubscriber(subscriber, event.actor)),
-    entry
+    entry,
+    collection
   )
   if (nonActorSubscribers.length === 0) return []
 

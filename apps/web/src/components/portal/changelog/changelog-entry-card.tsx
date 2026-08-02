@@ -24,6 +24,8 @@ interface ChangelogEntryCardProps {
   content: string
   contentJson: TiptapContent | null
   publishedAt: string
+  /** Collection the entry belongs to; shown as a badge on combined views. */
+  changelog?: { slug: string; name: string } | null
   linkedPosts: LinkedPost[]
   className?: string
 }
@@ -42,6 +44,7 @@ export function ChangelogEntryCard({
   content,
   contentJson,
   publishedAt,
+  changelog,
   linkedPosts,
   className,
 }: ChangelogEntryCardProps) {
@@ -52,6 +55,11 @@ export function ChangelogEntryCard({
         <time dateTime={publishedAt} className="text-sm text-muted-foreground">
           {formatDate(publishedAt)}
         </time>
+        {changelog && (
+          <span className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+            {changelog.name}
+          </span>
+        )}
       </div>
 
       {/* Main content */}

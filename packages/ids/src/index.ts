@@ -79,6 +79,7 @@ export type {
   RoadmapId,
   MilestoneId,
   ChangelogId,
+  ChangelogCollectionId,
   ConversationId,
   ChatMessageId,
   ChatTagId,

@@ -1,5 +1,6 @@
 import {
   db,
+  changelogs,
   changelogEntries,
   changelogEntryPosts,
   postStatuses,
@@ -16,12 +17,13 @@ import {
   inArray,
   sql,
 } from '@/lib/server/db'
-import type { ChangelogId, StatusId } from '@quackback/ids'
+import type { ChangelogCollectionId, ChangelogId, StatusId } from '@quackback/ids'
 import { NotFoundError } from '@/lib/shared/errors'
 import {
   ANONYMOUS_ACTOR,
-  canViewChangelogEntry,
+  canViewChangelogEntryInCollection,
   changelogAudienceFilter,
+  changelogCollectionVisibleFilter,
   isAllowed,
   type Actor,
 } from '@/lib/server/policy'
@@ -44,6 +46,30 @@ export function publicChangelogConditions(now: Date) {
 }
 
 /**
+ * Load an entry's live collection for audience checks + display.
+ * Returns null for General entries and for soft-deleted collections
+ * (canViewChangelogEntryInCollection then treats the entry as General,
+ * which matches how deleteChangelogCollection reassigns entries — this
+ * only covers the race window before that reassignment lands).
+ */
+async function getLiveCollection(changelogId: ChangelogCollectionId | null) {
+  if (!changelogId) return null
+  const collection = await db.query.changelogs.findFirst({
+    where: and(eq(changelogs.id, changelogId), isNull(changelogs.deletedAt)),
+    columns: {
+      id: true,
+      slug: true,
+      name: true,
+      isPublic: true,
+      allowedSegmentIds: true,
+      allowedTeamPrincipalIds: true,
+      deletedAt: true,
+    },
+  })
+  return collection ?? null
+}
+
+/**
  * Slim public lookup for link embeds: title + published date only, under the
  * same published-only visibility filter, but WITHOUT the view-count increment
  * or linked-post joins of {@link getPublicChangelogById}. An embed resolves on
@@ -60,6 +86,7 @@ export async function getPublicChangelogMetaById(
     columns: {
       id: true,
       title: true,
+      changelogId: true,
       publishedAt: true,
       displayDate: true,
       isPublic: true,
@@ -68,7 +95,8 @@ export async function getPublicChangelogMetaById(
     },
   })
   if (!entry || !entry.publishedAt) return null
-  if (!isAllowed(canViewChangelogEntry(actor, entry))) return null
+  const collection = await getLiveCollection(entry.changelogId)
+  if (!isAllowed(canViewChangelogEntryInCollection(actor, entry, collection))) return null
   return {
     id: entry.id as ChangelogId,
     title: entry.title,
@@ -93,8 +121,14 @@ export async function getPublicChangelogById(
   })
 
   // Audience denials 404 exactly like missing entries so a restricted
-  // entry is indistinguishable from a nonexistent one.
-  if (!entry || !entry.publishedAt || !isAllowed(canViewChangelogEntry(actor, entry))) {
+  // entry is indistinguishable from a nonexistent one. The collection's
+  // audience gates in addition to the entry's own.
+  const collection = entry ? await getLiveCollection(entry.changelogId) : null
+  if (
+    !entry ||
+    !entry.publishedAt ||
+    !isAllowed(canViewChangelogEntryInCollection(actor, entry, collection))
+  ) {
     throw new NotFoundError(
       'CHANGELOG_NOT_FOUND',
       `Published changelog entry with ID ${id} not found`
@@ -163,6 +197,9 @@ export async function getPublicChangelogById(
     content: entry.content,
     contentJson: entry.contentJson,
     publishedAt: entry.displayDate ?? entry.publishedAt,
+    changelog: collection
+      ? { id: collection.id, slug: collection.slug, name: collection.name }
+      : null,
     linkedPosts: linkedPostRows.map((lp) => ({
       id: lp.postId,
       title: lp.postTitle,
@@ -183,16 +220,42 @@ export async function listPublicChangelogs(
   params: {
     cursor?: string
     limit?: number
+    /**
+     * Filter by collection: a collection slug, 'general' for entries
+     * of the built-in changelog, or undefined for all entries.
+     */
+    changelog?: string
   },
   actor: Actor = ANONYMOUS_ACTOR
 ): Promise<PublicChangelogListResult> {
-  const { cursor, limit = 20 } = params
+  const { cursor, limit = 20, changelog: changelogSlug } = params
   const now = new Date()
 
   // Audience filtering happens in SQL (not in JS after the query)
   // because this list is cursor-paginated — dropping rows after LIMIT
-  // would shrink pages and break the cursor contract.
-  const conditions = [...publicChangelogConditions(now), changelogAudienceFilter(actor)]
+  // would shrink pages and break the cursor contract. The collection
+  // filter gates in addition to each entry's own audience.
+  const conditions = [
+    ...publicChangelogConditions(now),
+    changelogAudienceFilter(actor),
+    changelogCollectionVisibleFilter(actor),
+  ]
+
+  // Filter by collection slug ('general' = entries without a collection).
+  // An unknown slug matches nothing — same outward behavior as an
+  // audience-restricted collection (empty list, not an error).
+  if (changelogSlug === 'general') {
+    conditions.push(isNull(changelogEntries.changelogId))
+  } else if (changelogSlug) {
+    const collection = await db.query.changelogs.findFirst({
+      where: and(eq(changelogs.slug, changelogSlug), isNull(changelogs.deletedAt)),
+      columns: { id: true },
+    })
+    if (!collection) {
+      return { items: [], nextCursor: null, hasMore: false }
+    }
+    conditions.push(eq(changelogEntries.changelogId, collection.id))
+  }
 
   // Cursor-based pagination. The lookup does NOT filter on deletedAt:
   // if an admin deleted the cursor row between page load and "Load
@@ -231,6 +294,22 @@ export async function listPublicChangelogs(
 
   const hasMore = entries.length > limit
   const items = hasMore ? entries.slice(0, limit) : entries
+
+  // Batch-load collection refs for the page (for the collection badge)
+  const pageCollectionIds = Array.from(
+    new Set(items.map((e) => e.changelogId).filter((id): id is ChangelogCollectionId => id != null))
+  )
+  const collectionRefMap = new Map<
+    ChangelogCollectionId,
+    { id: ChangelogCollectionId; slug: string; name: string }
+  >()
+  if (pageCollectionIds.length > 0) {
+    const pageCollections = await db.query.changelogs.findMany({
+      where: and(inArray(changelogs.id, pageCollectionIds), isNull(changelogs.deletedAt)),
+      columns: { id: true, slug: true, name: true },
+    })
+    pageCollections.forEach((c) => collectionRefMap.set(c.id, c))
+  }
 
   // Get linked posts for all entries. Same four-guard filter as
   // `getPublicChangelogById` — see the comment there. Filtering happens
@@ -295,6 +374,7 @@ export async function listPublicChangelogs(
         content: entry.content,
         contentJson: entry.contentJson,
         publishedAt: entry.displayDate ?? entry.publishedAt!,
+        changelog: entry.changelogId ? (collectionRefMap.get(entry.changelogId) ?? null) : null,
         linkedPosts: entryLinkedPosts.map((lp) => ({
           id: lp.postId,
           title: lp.postTitle,

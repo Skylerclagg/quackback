@@ -16,7 +16,7 @@ import {
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import type { TiptapContent } from '@/lib/server/db'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
-import type { ChangelogId } from '@quackback/ids'
+import type { ChangelogCollectionId, ChangelogId } from '@quackback/ids'
 
 // Input validation schema
 const updateChangelogSchema = z.object({
@@ -24,6 +24,7 @@ const updateChangelogSchema = z.object({
   content: z.string().min(1).optional(),
   publishedAt: z.string().datetime().nullable().optional(),
   displayDate: z.string().datetime().nullable().optional(),
+  changelogId: z.string().nullable().optional(),
   isPublic: z.boolean().optional(),
   allowedSegmentIds: z.array(z.string()).max(100).optional(),
   allowedTeamPrincipalIds: z.array(z.string()).max(100).optional(),
@@ -34,6 +35,7 @@ function formatChangelogResponse(entry: {
   title: string
   content: string
   contentJson: TiptapContent | null
+  changelogId: ChangelogCollectionId | null
   publishedAt: Date | null
   displayDate: Date | null
   isPublic: boolean
@@ -51,6 +53,7 @@ function formatChangelogResponse(entry: {
     isPublic: entry.isPublic,
     allowedSegmentIds: entry.allowedSegmentIds,
     allowedTeamPrincipalIds: entry.allowedTeamPrincipalIds,
+    changelogId: entry.changelogId,
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),
   }
@@ -120,6 +123,9 @@ export const Route = createFileRoute('/api/v1/changelog/$entryId')({
           const updated = await updateChangelog(entryId, {
             title: parsed.data.title,
             content: parsed.data.content,
+            ...(parsed.data.changelogId !== undefined && {
+              changelogId: parsed.data.changelogId as ChangelogCollectionId | null,
+            }),
             ...(publishState && { publishState }),
             ...(parsed.data.displayDate !== undefined && {
               displayDate:

@@ -23,6 +23,12 @@ vi.mock('@/lib/server/db', () => ({
         findFirst: (...args: unknown[]) => mockEntryFindFirst(...args),
         findMany: (...args: unknown[]) => mockEntryFindMany(...args),
       },
+      // Collection lookups: entries in these fixtures carry no
+      // changelogId, so these resolve empty.
+      changelogs: {
+        findFirst: vi.fn().mockResolvedValue(undefined),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       postStatuses: {
         findMany: (...args: unknown[]) => mockStatusesFindMany(...args),
       },
@@ -43,6 +49,15 @@ vi.mock('@/lib/server/db', () => ({
     }),
   },
   changelogEntries: changelogEntriesTable,
+  changelogs: {
+    id: { name: 'id' },
+    slug: { name: 'slug' },
+    name: { name: 'name' },
+    isPublic: { name: 'is_public' },
+    allowedSegmentIds: { name: 'allowed_segment_ids' },
+    allowedTeamPrincipalIds: { name: 'allowed_team_principal_ids' },
+    deletedAt: { name: 'deleted_at' },
+  },
   changelogEntryPosts: { changelogEntryId: 'changelog_entry_id', postId: 'post_id' },
   posts: {
     id: 'posts.id',
