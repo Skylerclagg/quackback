@@ -70,7 +70,11 @@ export {
 } from './auth-provider-credentials'
 
 // Roadmap posts mutations
-export { useAddPostToRoadmap, useRemovePostFromRoadmap } from './roadmap-posts'
+export {
+  useAddPostToRoadmap,
+  useRemovePostFromRoadmap,
+  useBulkAddPostsToRoadmap,
+} from './roadmap-posts'
 
 // Roadmap mutations
 export {
@@ -88,7 +92,12 @@ export {
 } from './notifications'
 
 // User mutations
-export { useCreatePortalUser, useRemovePortalUser, useUpdatePortalUser } from './users'
+export {
+  useCreatePortalUser,
+  useRemovePortalUser,
+  useUpdatePortalUser,
+  useUpdatePrincipalRole,
+} from './users'
 
 // Avatar mutations
 export { useUploadAvatar, useDeleteAvatar } from './avatar'
@@ -102,6 +111,7 @@ export {
   useRemoveUsersFromSegment,
   useEvaluateSegment,
   useEvaluateAllSegments,
+  invalidateSegmentQueries,
 } from './segments'
 
 // User attribute mutations

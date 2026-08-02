@@ -32,6 +32,7 @@ import {
 } from '@/lib/shared/segment-builtin-fields'
 import type { FieldOperator } from '@/lib/shared/segment-builtin-fields'
 import { SearchableInput } from '@/components/ui/searchable-input'
+import { SegmentImportSection } from '@/components/admin/segments/segment-import-section'
 import { fetchSegmentAttributeValuesFn } from '@/lib/server/functions/admin'
 
 // Attributes with DB-backed value typeahead. Matches SEARCHABLE_ATTRIBUTES
@@ -455,6 +456,12 @@ export function SegmentFormDialog({
 }: SegmentFormDialogProps) {
   const isEditing = !!initialValues?.id
 
+  // The import block sits outside the <form> so the two actions stay
+  // independent, which means the footer's Save button has to reach back
+  // into the form by id. Generated per instance — the segment list mounts
+  // a create dialog and an edit dialog side by side.
+  const formId = React.useId()
+
   const [name, setName] = useState(initialValues?.name ?? '')
   const [description, setDescription] = useState(initialValues?.description ?? '')
   const [type, setType] = useState<'manual' | 'dynamic'>(initialValues?.type ?? 'manual')
@@ -491,12 +498,12 @@ export function SegmentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Segment' : 'Create Segment'}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
           {/* Type selector - only when creating */}
           {!isEditing && (
             <div className="flex gap-3">
@@ -569,21 +576,29 @@ export function SegmentFormDialog({
               />
             </div>
           )}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isPending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!canSubmit || isPending}>
-              {isPending ? 'Saving...' : isEditing ? 'Save changes' : 'Create segment'}
-            </Button>
-          </DialogFooter>
         </form>
+
+        {/* CSV bulk-add. Editing only (needs a segment id) and manual only
+         *  (assignUsersToSegment rejects dynamic segments — their membership
+         *  comes from rules). Rendered outside the <form> above so an upload
+         *  never trips the Save submit, and vice versa. */}
+        {isEditing && initialValues?.id && type === 'manual' && (
+          <SegmentImportSection segmentId={initialValues.id} segmentName={name || 'this segment'} />
+        )}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
+            Cancel
+          </Button>
+          <Button form={formId} type="submit" disabled={!canSubmit || isPending}>
+            {isPending ? 'Saving...' : isEditing ? 'Save changes' : 'Create segment'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
