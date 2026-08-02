@@ -36,6 +36,9 @@ interface FeedbackTableViewProps {
   onToggleSegment?: (id: string) => void
   /** Duplicate counts per post (for badges) */
   duplicateCountByPostId?: Map<PostId, number>
+  /** Selected post ids (bulk actions) */
+  selectedIds: ReadonlySet<string>
+  onToggleSelected: (postId: string) => void
 }
 
 function TableSkeleton() {
@@ -95,6 +98,8 @@ export function FeedbackTableView({
   onToggleBoard,
   duplicateCountByPostId,
   onToggleSegment,
+  selectedIds,
+  onToggleSelected,
 }: FeedbackTableViewProps): React.ReactElement {
   const sort = filters.sort
   const { value: searchValue, setValue: setSearchValue } = useDebouncedSearch({
@@ -237,6 +242,9 @@ export function FeedbackTableView({
                 statuses={statuses}
                 duplicateCount={duplicateCountByPostId?.get(post.id)}
                 onClick={() => onNavigateToPost(post.id)}
+                selected={selectedIds.has(post.id)}
+                selectionActive={selectedIds.size > 0}
+                onToggleSelected={() => onToggleSelected(post.id)}
               />
             </div>
           ))}

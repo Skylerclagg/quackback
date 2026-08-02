@@ -8,14 +8,17 @@ import { InboxFiltersPanel } from '@/components/admin/feedback/inbox-filters'
 import { FeedbackTableView } from '@/components/admin/feedback/table'
 import { CreatePostDialog } from '@/components/admin/feedback/create-post-dialog'
 import { ModerationPendingBanner } from '@/components/admin/feedback/moderation-pending-banner'
+import { BulkActionsBar } from '@/components/admin/feedback/bulk-actions-bar'
 import { useInboxFilters } from '@/components/admin/feedback/use-inbox-filters'
+import { usePostSelection } from '@/components/admin/feedback/use-post-selection'
 import { useInboxPosts, flattenInboxPosts, inboxKeys } from '@/lib/client/hooks/use-inbox-query'
 import { useSegments } from '@/lib/client/hooks/use-segments-queries'
+import { useBulkAddPostsToRoadmap } from '@/lib/client/mutations'
 import { mergeSuggestionQueries } from '@/lib/client/queries/signals'
 import type { CurrentUser } from '@/lib/shared/types'
 import type { Board, Tag, InboxPostListResult, PostStatusEntity } from '@/lib/shared/db-types'
 import type { TeamMember } from '@/lib/shared/types'
-import type { PostId } from '@quackback/ids'
+import type { PostId, RoadmapId } from '@quackback/ids'
 import { saveNavigationContext } from '@/components/admin/feedback/detail/use-navigation-context'
 
 interface InboxContainerProps {
@@ -52,6 +55,9 @@ export function InboxContainer({
 
   // Segments data for filter UI
   const { data: segments } = useSegments()
+
+  // Multi-select state for bulk actions (clears when filters change)
+  const { selectedIds, toggleSelected, selectAll, clearSelection } = usePostSelection(filters)
 
   // Track whether we're on the initial render (for using server-prefetched data)
   const isInitialRender = useRef(true)
@@ -126,6 +132,23 @@ export function InboxContainer({
     })
   }, [queryClient, filters])
 
+  // Bulk add selected posts to a roadmap
+  const bulkAddToRoadmap = useBulkAddPostsToRoadmap()
+
+  const handleSelectAll = useCallback(() => {
+    selectAll(posts.map((p) => p.id))
+  }, [selectAll, posts])
+
+  const handleBulkAddToRoadmap = useCallback(
+    (roadmapId: RoadmapId) => {
+      bulkAddToRoadmap.mutate(
+        { roadmapId, postIds: Array.from(selectedIds) as PostId[] },
+        { onSuccess: () => clearSelection() }
+      )
+    },
+    [bulkAddToRoadmap, selectedIds, clearSelection]
+  )
+
   return (
     <InboxLayout
       hasActiveFilters={hasActiveFilters}
@@ -163,6 +186,8 @@ export function InboxContainer({
         onToggleBoard={toggleBoard}
         onToggleSegment={toggleSegment}
         duplicateCountByPostId={duplicateCountByPostId}
+        selectedIds={selectedIds}
+        onToggleSelected={toggleSelected}
         headerAction={
           <CreatePostDialog
             boards={boards}
@@ -173,6 +198,16 @@ export function InboxContainer({
           />
         }
       />
+      {selectedIds.size > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedIds.size}
+          totalCount={posts.length}
+          onSelectAll={handleSelectAll}
+          onClear={clearSelection}
+          onAddToRoadmap={handleBulkAddToRoadmap}
+          isAdding={bulkAddToRoadmap.isPending}
+        />
+      )}
     </InboxLayout>
   )
 }

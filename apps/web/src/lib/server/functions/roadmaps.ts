@@ -26,6 +26,7 @@ import {
 import { getRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
 import { canViewRoadmap, isAllowed } from '@/lib/server/policy'
 import { TIMELINE_SPECIFICITIES } from '@/lib/shared/timeline'
+import { ConflictError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'roadmaps' })
@@ -78,6 +79,11 @@ const addPostToRoadmapSchema = z.object({
   postId: z.string(),
 })
 
+const bulkAddPostsToRoadmapSchema = z.object({
+  roadmapId: z.string(),
+  postIds: z.array(z.string()).min(1).max(200),
+})
+
 const removePostFromRoadmapSchema = z.object({
   roadmapId: z.string(),
   postId: z.string(),
@@ -125,8 +131,8 @@ export const fetchRoadmaps = createServerFn({ method: 'GET' }).handler(async () 
     const auth = await requireAuth({ roles: ['admin', 'member'] })
 
     // Members only see public roadmaps plus private ones they're
-    // allowlisted on; admins see everything.
-    const actor = teamActorFromAuth(auth)
+    // allowlisted on (by segment or by principal); admins see everything.
+    const actor = await teamActorFromAuth(auth)
     const roadmaps = (await listRoadmaps()).filter((r) => isAllowed(canViewRoadmap(actor, r)))
     // Serialize branded types to plain strings for turbo-stream
     return roadmaps.map((roadmap) => ({
@@ -310,6 +316,57 @@ export const addPostToRoadmapFn = createServerFn({ method: 'POST' })
   })
 
 /**
+ * Add many posts to a roadmap in one call (bulk assign from the inbox).
+ *
+ * Loops the single-post service so per-post validation and the
+ * `roadmap.added` activity keep firing. Posts already on the roadmap
+ * are counted as skipped, not errors — re-running a bulk assign over
+ * an overlapping selection is idempotent. Other per-post failures are
+ * collected instead of aborting the batch.
+ */
+export const bulkAddPostsToRoadmapFn = createServerFn({ method: 'POST' })
+  .validator(bulkAddPostsToRoadmapSchema)
+  .handler(async ({ data }) => {
+    log.info(
+      { roadmap_id: data.roadmapId, post_count: data.postIds.length },
+      'bulk add posts to roadmap'
+    )
+    try {
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
+      await requireRoadmapAccess(auth, data.roadmapId as RoadmapId)
+
+      let added = 0
+      let skipped = 0
+      const failed: string[] = []
+      // Dedupe defensively — a double-clicked row must not become two inserts.
+      for (const postId of new Set(data.postIds)) {
+        try {
+          await addPostToRoadmap(
+            {
+              roadmapId: data.roadmapId as RoadmapId,
+              postId: postId as PostId,
+            },
+            auth.principal.id
+          )
+          added++
+        } catch (error) {
+          if (error instanceof ConflictError && error.code === 'POST_ALREADY_IN_ROADMAP') {
+            skipped++
+          } else {
+            log.error({ err: error, post_id: postId }, 'bulk add: post failed')
+            failed.push(postId)
+          }
+        }
+      }
+
+      return { added, skipped, failed }
+    } catch (error) {
+      log.error({ err: error }, 'bulk add posts to roadmap failed')
+      throw error
+    }
+  })
+
+/**
  * Remove a post from a roadmap
  */
 export const removePostFromRoadmapFn = createServerFn({ method: 'POST' })
@@ -344,7 +401,7 @@ export const reorderRoadmapsFn = createServerFn({ method: 'POST' })
 
       // Members can only reorder roadmaps they can see — silently drop
       // ids outside their view instead of failing the whole request.
-      const actor = teamActorFromAuth(auth)
+      const actor = await teamActorFromAuth(auth)
       const visible = new Set(
         (await listRoadmaps())
           .filter((r) => isAllowed(canViewRoadmap(actor, r)))
