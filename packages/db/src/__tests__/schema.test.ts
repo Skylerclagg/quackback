@@ -126,7 +126,12 @@ describe('Schema definitions', () => {
       expect(columns).toContain('postId')
       expect(columns).toContain('roadmapId')
       expect(columns).toContain('position')
-      expect(columns.length).toBe(3)
+      // Timeline placement (0129_roadmap_timeline): null timelineDate
+      // means the post isn't on the timeline yet.
+      expect(columns).toContain('timelineDate')
+      expect(columns).toContain('timelinePrecision')
+      expect(columns).toContain('timelinePosition')
+      expect(columns.length).toBe(6)
     })
   })
 
