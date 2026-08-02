@@ -43,7 +43,14 @@ import type { PortalUserDetail, EngagedPost } from '@/lib/shared/types'
 import type { ConversationDTO, ConversationStatus } from '@/lib/shared/chat/types'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
 import { UserSegmentBadges } from '@/components/admin/users/user-segments'
-import { useUpdatePortalUser } from '@/lib/client/mutations'
+import { useUpdatePortalUser, useUpdatePrincipalRole } from '@/lib/client/mutations'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { listConversationsForUserFn, getConversationFn } from '@/lib/server/functions/chat'
 import type { PrincipalId } from '@quackback/ids'
 
@@ -417,11 +424,14 @@ export function UserDetail({
   currentMemberRole,
 }: UserDetailProps) {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
+  const [promoteDialogOpen, setPromoteDialogOpen] = useState(false)
+  const [promoteRole, setPromoteRole] = useState<'admin' | 'member'>('member')
   const [composeOpen, setComposeOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const updateUser = useUpdatePortalUser()
+  const updateRole = useUpdatePrincipalRole()
   const { settings } = useRouteContext({ from: '__root__' })
   const supportInboxEnabled =
     (settings?.featureFlags as FeatureFlags | undefined)?.supportInbox ?? false
@@ -699,6 +709,69 @@ export function UserDetail({
         {canManageUsers && (
           <div className="border-t border-border/50 pt-4 space-y-3">
             <h3 className="text-sm font-medium">Actions</h3>
+
+            {/* Promote to the team. The detail pane only ever shows
+                portal users, so this is always a promotion; demoting
+                back happens from Settings → Team. */}
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground">Add to team as</span>
+              <div className="flex gap-2">
+                <Select
+                  value={promoteRole}
+                  onValueChange={(value) => setPromoteRole(value as 'admin' | 'member')}
+                >
+                  <SelectTrigger size="sm" className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={updateRole.isPending}
+                  onClick={() => setPromoteDialogOpen(true)}
+                >
+                  {updateRole.isPending ? (
+                    <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <UserIcon className="h-4 w-4 mr-2" />
+                  )}
+                  Add
+                </Button>
+              </div>
+              {updateRole.isError && (
+                <p className="text-xs text-destructive">{updateRole.error.message}</p>
+              )}
+            </div>
+            <ConfirmDialog
+              open={promoteDialogOpen}
+              onOpenChange={setPromoteDialogOpen}
+              title={`Add ${user.name || 'this user'} to the team?`}
+              description={
+                promoteRole === 'admin'
+                  ? 'They will get full admin access, including settings, billing, and the ability to manage other team members. They will no longer appear under Users.'
+                  : 'They will get access to the admin area to manage feedback, roadmaps, and the changelog. They will no longer appear under Users.'
+              }
+              confirmLabel="Add to team"
+              isPending={updateRole.isPending}
+              onConfirm={() => {
+                updateRole.mutate(
+                  { principalId: user.principalId, role: promoteRole },
+                  {
+                    onSuccess: () => {
+                      setPromoteDialogOpen(false)
+                      // The promoted principal no longer matches the
+                      // portal-user query, so the pane would show a
+                      // permanent skeleton if left open.
+                      onClose()
+                    },
+                  }
+                )
+              }}
+            />
 
             {/* Remove User */}
             <Button

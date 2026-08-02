@@ -12,19 +12,26 @@ import { parseTypeId } from '@/lib/server/domains/api/validation'
 import type { PrincipalId } from '@quackback/ids'
 import { isTeamMember } from '@/lib/shared/roles'
 
-// Input validation schema for updating member role
+// Input validation schema for updating a principal's role.
+// 'user' demotes out of the team (same end state as DELETE).
 const updateMemberSchema = z.object({
-  role: z.enum(['admin', 'member']),
+  role: z.enum(['admin', 'member', 'user']),
 })
 
-/** Fetch a team member with user details, or throw NotFoundError. */
-async function fetchTeamMemberWithUser(principalId: PrincipalId) {
+/**
+ * Fetch a principal with user details, or throw NotFoundError.
+ *
+ * `requireTeam` is off when echoing back a principal that was just
+ * demoted to 'user' — the team gate would 404 a request that in fact
+ * succeeded.
+ */
+async function fetchTeamMemberWithUser(principalId: PrincipalId, requireTeam = true) {
   const { getMemberById } = await import('@/lib/server/domains/principals/principal.service')
   const { db, eq, user } = await import('@/lib/server/db')
 
   const member = await getMemberById(principalId)
   if (!member) throw new NotFoundError('MEMBER_NOT_FOUND', 'Member not found')
-  if (!isTeamMember(member.role)) {
+  if (requireTeam && !isTeamMember(member.role)) {
     throw new NotFoundError('MEMBER_NOT_FOUND', 'Team member not found')
   }
   if (!member.userId) throw new NotFoundError('USER_NOT_FOUND', 'User not found')
@@ -56,7 +63,11 @@ export const Route = createFileRoute('/api/v1/principals/$principalId')({
         try {
           await withApiKeyAuth(request, { role: 'team' })
 
-          const principalId = parseTypeId<PrincipalId>(params.principalId, 'principal', 'principal ID')
+          const principalId = parseTypeId<PrincipalId>(
+            params.principalId,
+            'principal',
+            'principal ID'
+          )
 
           const result = await fetchTeamMemberWithUser(principalId)
 
@@ -68,13 +79,20 @@ export const Route = createFileRoute('/api/v1/principals/$principalId')({
 
       /**
        * PATCH /api/v1/principals/:principalId
-       * Update a team member's role
+       * Change a principal's role (promote a portal user onto the team,
+       * move between admin/member, or demote back to a portal user)
        */
       PATCH: async ({ request, params }) => {
         try {
-          const { principalId: actingPrincipalId } = await withApiKeyAuth(request, { role: 'admin' })
+          const { principalId: actingPrincipalId } = await withApiKeyAuth(request, {
+            role: 'admin',
+          })
 
-          const principalId = parseTypeId<PrincipalId>(params.principalId, 'principal', 'principal ID')
+          const principalId = parseTypeId<PrincipalId>(
+            params.principalId,
+            'principal',
+            'principal ID'
+          )
 
           const body = await request.json()
           const parsed = updateMemberSchema.safeParse(body)
@@ -90,7 +108,7 @@ export const Route = createFileRoute('/api/v1/principals/$principalId')({
 
           await updateMemberRole(principalId, parsed.data.role, actingPrincipalId)
 
-          const result = await fetchTeamMemberWithUser(principalId)
+          const result = await fetchTeamMemberWithUser(principalId, parsed.data.role !== 'user')
 
           return successResponse(result)
         } catch (error) {
@@ -104,9 +122,15 @@ export const Route = createFileRoute('/api/v1/principals/$principalId')({
        */
       DELETE: async ({ request, params }) => {
         try {
-          const { principalId: actingPrincipalId } = await withApiKeyAuth(request, { role: 'admin' })
+          const { principalId: actingPrincipalId } = await withApiKeyAuth(request, {
+            role: 'admin',
+          })
 
-          const principalId = parseTypeId<PrincipalId>(params.principalId, 'principal', 'principal ID')
+          const principalId = parseTypeId<PrincipalId>(
+            params.principalId,
+            'principal',
+            'principal ID'
+          )
 
           const { removeTeamMember } =
             await import('@/lib/server/domains/principals/principal.service')

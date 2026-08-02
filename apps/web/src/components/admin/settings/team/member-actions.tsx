@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
+  CheckIcon,
   EllipsisVerticalIcon,
   ShieldCheckIcon,
   ShieldExclamationIcon,
@@ -16,16 +17,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
-import {
-  updateMemberRoleFn,
-  removeTeamMemberFn,
-  forceSignOutUserFn,
-} from '@/lib/server/functions/admin'
+import { updateMemberRoleFn, forceSignOutUserFn } from '@/lib/server/functions/admin'
 import { adminResetTwoFactorFn } from '@/lib/server/functions/admin-reset-two-factor'
+import { usersKeys } from '@/lib/client/hooks/use-users-queries'
 
 interface MemberActionsProps {
   principalId: string
@@ -33,6 +32,22 @@ interface MemberActionsProps {
   memberName: string
   memberRole: 'admin' | 'member'
   isLastAdmin: boolean
+}
+
+/** Every role a person can hold. 'user' = portal-only, no admin access. */
+type Role = 'admin' | 'member' | 'user'
+
+const ROLE_LABELS: Record<Role, string> = {
+  admin: 'Admin',
+  member: 'Member',
+  user: 'Portal user',
+}
+
+const ROLE_BLURBS: Record<Role, string> = {
+  admin: 'Full access, including team settings, members, and all workspace configuration.',
+  member:
+    'Access to the admin area to manage feedback, roadmaps, and the changelog — but not team settings.',
+  user: 'No admin access. They keep their account and activity and can still use the feedback portal.',
 }
 
 export function MemberActions({
@@ -44,40 +59,29 @@ export function MemberActions({
 }: MemberActionsProps) {
   const queryClient = useQueryClient()
   const [isLoading, setIsLoading] = useState(false)
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false)
-  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
+  const [pendingRole, setPendingRole] = useState<Role | null>(null)
   const [resetTfaDialogOpen, setResetTfaDialogOpen] = useState(false)
   const [forceSignOutDialogOpen, setForceSignOutDialogOpen] = useState(false)
 
-  const newRole = memberRole === 'admin' ? 'member' : 'admin'
+  // The last admin can neither be demoted nor moved out of the team —
+  // either would leave the workspace with no one who can administer it.
   const canChangeRole = !(memberRole === 'admin' && isLastAdmin)
-  const canRemove = !(memberRole === 'admin' && isLastAdmin)
 
   const handleRoleChange = async () => {
+    if (!pendingRole) return
     setIsLoading(true)
     try {
-      await updateMemberRoleFn({ data: { principalId, role: newRole } })
+      await updateMemberRoleFn({ data: { principalId, role: pendingRole } })
       await queryClient.invalidateQueries({ queryKey: ['settings', 'team'] })
+      // Demoting to 'user' moves them onto the Users page.
+      await queryClient.invalidateQueries({ queryKey: usersKeys.lists() })
+      await queryClient.invalidateQueries({ queryKey: usersKeys.totalCount() })
     } catch (error) {
       console.error('Failed to update role:', error)
       alert(error instanceof Error ? error.message : 'Failed to update role')
     } finally {
       setIsLoading(false)
-      setRoleDialogOpen(false)
-    }
-  }
-
-  const handleRemove = async () => {
-    setIsLoading(true)
-    try {
-      await removeTeamMemberFn({ data: { principalId } })
-      await queryClient.invalidateQueries({ queryKey: ['settings', 'team'] })
-    } catch (error) {
-      console.error('Failed to remove member:', error)
-      alert(error instanceof Error ? error.message : 'Failed to remove team member')
-    } finally {
-      setIsLoading(false)
-      setRemoveDialogOpen(false)
+      setPendingRole(null)
     }
   }
 
@@ -124,24 +128,34 @@ export function MemberActions({
             <span className="sr-only">Member actions</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={() => setRoleDialogOpen(true)}
-            disabled={!canChangeRole}
-            className="gap-2"
-          >
-            {newRole === 'admin' ? (
-              <>
-                <ShieldCheckIcon className="h-4 w-4" />
-                Make admin
-              </>
-            ) : (
-              <>
-                <UserIcon className="h-4 w-4" />
-                Make member
-              </>
-            )}
-          </DropdownMenuItem>
+        <DropdownMenuContent align="end" className="w-56">
+          {/* All three roles are listed explicitly — "Portal user" is the
+              demotion out of the team, which was previously buried under
+              a "Remove from team" label that read like a deletion. */}
+          <DropdownMenuLabel className="text-xs text-muted-foreground">Role</DropdownMenuLabel>
+          {(['admin', 'member', 'user'] as const).map((role) => {
+            const isCurrent = role === memberRole
+            const Icon =
+              role === 'admin' ? ShieldCheckIcon : role === 'member' ? UserIcon : UserMinusIcon
+            return (
+              <DropdownMenuItem
+                key={role}
+                onClick={() => setPendingRole(role)}
+                disabled={isCurrent || !canChangeRole}
+                className="gap-2"
+              >
+                <Icon className="h-4 w-4" />
+                <span className="flex-1">{ROLE_LABELS[role]}</span>
+                {isCurrent && <CheckIcon className="h-4 w-4 text-muted-foreground" />}
+              </DropdownMenuItem>
+            )
+          })}
+          {memberRole === 'admin' && isLastAdmin && (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              This is the last admin — promote someone else first.
+            </p>
+          )}
+          <DropdownMenuSeparator />
           {userId ? (
             <DropdownMenuItem onClick={() => setResetTfaDialogOpen(true)} className="gap-2">
               <ShieldExclamationIcon className="h-4 w-4" />
@@ -154,58 +168,40 @@ export function MemberActions({
               Sign out everywhere
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setRemoveDialogOpen(true)}
-            disabled={!canRemove}
-            variant="destructive"
-            className="gap-2"
-          >
-            <UserMinusIcon className="h-4 w-4" />
-            Remove from team
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <ConfirmDialog
-        open={roleDialogOpen}
-        onOpenChange={setRoleDialogOpen}
-        title={newRole === 'admin' ? 'Make admin?' : 'Remove admin privileges?'}
-        description={
-          newRole === 'admin' ? (
-            <>
-              <strong>{memberName}</strong> will be able to manage team settings, members, and all
-              workspace configurations.
-            </>
-          ) : (
-            <>
-              <strong>{memberName}</strong> will no longer be able to manage team settings or
-              members.
-            </>
-          )
+        open={pendingRole !== null}
+        onOpenChange={(open) => !open && setPendingRole(null)}
+        title={
+          pendingRole === 'user'
+            ? 'Move to portal users?'
+            : `Make ${pendingRole ? ROLE_LABELS[pendingRole].toLowerCase() : ''}?`
         }
+        description={
+          <>
+            <strong>{memberName}</strong>{' '}
+            {pendingRole === 'user'
+              ? 'will be moved off the team and will appear under Users. '
+              : 'will become '}
+            {pendingRole !== 'user' && (
+              <strong>{pendingRole ? ROLE_LABELS[pendingRole] : ''}</strong>
+            )}
+            {pendingRole !== 'user' && '. '}
+            {pendingRole ? ROLE_BLURBS[pendingRole] : ''}
+          </>
+        }
+        variant={pendingRole === 'user' ? 'destructive' : undefined}
         confirmLabel={
-          isLoading ? 'Updating...' : newRole === 'admin' ? 'Make admin' : 'Remove admin'
+          isLoading
+            ? 'Updating...'
+            : pendingRole === 'user'
+              ? 'Move to portal users'
+              : `Make ${pendingRole ? ROLE_LABELS[pendingRole].toLowerCase() : ''}`
         }
         isPending={isLoading}
         onConfirm={handleRoleChange}
-      />
-
-      <ConfirmDialog
-        open={removeDialogOpen}
-        onOpenChange={setRemoveDialogOpen}
-        title="Remove team member?"
-        description={
-          <>
-            <strong>{memberName}</strong> will be removed from the team and converted to a portal
-            user. They will lose access to the admin dashboard but can still interact with the
-            feedback portal.
-          </>
-        }
-        variant="destructive"
-        confirmLabel={isLoading ? 'Removing...' : 'Remove from team'}
-        isPending={isLoading}
-        onConfirm={handleRemove}
       />
 
       <ConfirmDialog

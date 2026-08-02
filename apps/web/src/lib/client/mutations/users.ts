@@ -12,6 +12,7 @@ import {
   createPortalUserFn,
   deletePortalUserFn,
   updatePortalUserFn,
+  updateMemberRoleFn,
 } from '@/lib/server/functions/admin'
 import { usersKeys } from '@/lib/client/hooks/use-users-queries'
 
@@ -46,6 +47,29 @@ export function useUpdatePortalUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: usersKeys.lists() })
       queryClient.invalidateQueries({ queryKey: usersKeys.details() })
+    },
+  })
+}
+
+/**
+ * Hook to change a principal's role in either direction: promote a
+ * portal user onto the team, move between admin and member, or demote a
+ * team member back to a portal user.
+ *
+ * A role change moves the principal between the Users page (portal
+ * users) and the Team settings page, so both caches are invalidated.
+ */
+export function useUpdatePrincipalRole() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: { principalId: string; role: 'admin' | 'member' | 'user' }) =>
+      updateMemberRoleFn({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: usersKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: usersKeys.details() })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'team'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'team', 'members'] })
     },
   })
 }

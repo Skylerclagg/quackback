@@ -26,7 +26,6 @@ import {
   listTeamMembers,
   searchMembers,
   updateMemberRole,
-  removeTeamMember,
 } from '@/lib/server/domains/principals/principal.service'
 import { listPortalUsers, removePortalUser } from '@/lib/server/domains/users/user.service'
 import { getPortalUserDetail } from '@/lib/server/domains/users/user.detail'
@@ -257,17 +256,16 @@ export const searchMembersFn = createServerFn({ method: 'GET' })
   })
 
 // Schema for team member operations
-const principalIdSchema = z.object({
-  principalId: z.string(),
-})
-
 const updatePrincipalRoleSchema = z.object({
   principalId: z.string(),
-  role: z.enum(['admin', 'member']),
+  // 'user' demotes out of the team; 'admin'/'member' promote into it.
+  role: z.enum(['admin', 'member', 'user']),
 })
 
 /**
- * Update a team member's role (admin only)
+ * Change a principal's role in either direction (admin only): promote a
+ * portal user onto the team, move between admin and member, or demote a
+ * team member back to a portal user.
  */
 export const updateMemberRoleFn = createServerFn({ method: 'POST' })
   .validator(updatePrincipalRoleSchema)
@@ -336,31 +334,11 @@ export const forceSignOutUserFn = createServerFn({ method: 'POST' })
     return { revokeCount }
   })
 
-/**
- * Remove a team member (converts to portal user, admin only)
- */
-export const removeTeamMemberFn = createServerFn({ method: 'POST' })
-  .validator(principalIdSchema)
-  .handler(async ({ data }) => {
-    log.info({ principal_id: data.principalId }, 'remove team member')
-    try {
-      const auth = await requireAuth({ roles: ['admin'] })
-      const { actorFromAuth } = await import('@/lib/server/audit/log')
-
-      await removeTeamMember(
-        data.principalId as PrincipalId,
-        auth.principal.id,
-        actorFromAuth(auth),
-        getRequestHeaders()
-      )
-
-      log.info({ principal_id: data.principalId }, 'member removed')
-      return { principalId: data.principalId }
-    } catch (error) {
-      log.error({ err: error }, 'remove team member failed')
-      throw error
-    }
-  })
+// Demoting a team member to a portal user now goes through
+// updateMemberRoleFn with role='user' (the team page exposes all three
+// roles in one picker), so the old removeTeamMemberFn wrapper is gone.
+// The underlying removeTeamMember service still backs
+// DELETE /api/v1/principals/:principalId.
 
 /**
  * Check onboarding completion status

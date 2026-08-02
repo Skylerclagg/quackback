@@ -21,6 +21,13 @@ vi.mock('@/lib/server/redis', () => ({
 const mockFindFirst = vi.fn()
 const mockSelect = vi.fn()
 const mockUpdate = vi.fn()
+const mockEnforceSeatLimit = vi.fn()
+
+// Promoting into a team role consumes a seat. Stubbed so these tests
+// don't need tier settings in the DB.
+vi.mock('../seat-limit', () => ({
+  enforceSeatLimit: (...args: unknown[]) => mockEnforceSeatLimit(...args),
+}))
 
 vi.mock('@/lib/server/db', () => ({
   db: {
@@ -48,6 +55,7 @@ const TARGET_USER = 'user_target' as UserId
 beforeEach(() => {
   vi.clearAllMocks()
   mockCacheDel.mockResolvedValue(undefined)
+  mockEnforceSeatLimit.mockResolvedValue(undefined)
 
   // db.update(principal).set(...).where(...) chain — terminates as a Promise.
   mockUpdate.mockReturnValue({
@@ -77,12 +85,98 @@ describe('updateMemberRole', () => {
   })
 
   it('does not call cacheDel when the target principal has no userId', async () => {
-    // Service principals (API keys) have userId=null; nothing to invalidate.
+    // Nothing to invalidate without a userId — the cache is keyed by it.
+    mockFindFirst.mockResolvedValue({
+      id: TARGET,
+      userId: null,
+      type: 'user',
+      role: 'admin',
+    })
+
+    await updateMemberRole(TARGET, 'member', ACTING)
+
+    expect(mockCacheDel).not.toHaveBeenCalled()
+  })
+
+  it('rejects service principals', async () => {
+    // API keys and integrations carry an admin/member role but are not
+    // seats, and there is no account behind them to sign in with.
     mockFindFirst.mockResolvedValue({
       id: TARGET,
       userId: null,
       type: 'service',
       role: 'admin',
+    })
+
+    await expect(updateMemberRole(TARGET, 'member', ACTING)).rejects.toThrow(
+      'Only human accounts can have their role changed'
+    )
+  })
+
+  it('promotes a portal user onto the team', async () => {
+    mockFindFirst.mockResolvedValue({
+      id: TARGET,
+      userId: TARGET_USER,
+      type: 'user',
+      role: 'user',
+    })
+
+    await updateMemberRole(TARGET, 'member', ACTING)
+
+    expect(mockCacheDel).toHaveBeenCalledWith(`principal:user:${TARGET_USER}`)
+    // A new team member takes a seat.
+    expect(mockEnforceSeatLimit).toHaveBeenCalled()
+  })
+
+  it('does not re-check the seat cap when moving between team roles', async () => {
+    mockFindFirst.mockResolvedValue({
+      id: TARGET,
+      userId: TARGET_USER,
+      type: 'user',
+      role: 'member',
+    })
+
+    await updateMemberRole(TARGET, 'admin', ACTING)
+
+    expect(mockEnforceSeatLimit).not.toHaveBeenCalled()
+  })
+
+  it('demotes a team member back to a portal user', async () => {
+    mockFindFirst.mockResolvedValue({
+      id: TARGET,
+      userId: TARGET_USER,
+      type: 'user',
+      role: 'member',
+    })
+
+    await updateMemberRole(TARGET, 'user', ACTING)
+
+    expect(mockCacheDel).toHaveBeenCalledWith(`principal:user:${TARGET_USER}`)
+  })
+
+  it('refuses to demote the last admin', async () => {
+    mockFindFirst.mockResolvedValue({
+      id: TARGET,
+      userId: TARGET_USER,
+      type: 'user',
+      role: 'admin',
+    })
+    // Only one human admin remains.
+    mockSelect.mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ count: 1 }]) }),
+    })
+
+    await expect(updateMemberRole(TARGET, 'user', ACTING)).rejects.toThrow(
+      'Cannot demote the last admin'
+    )
+  })
+
+  it('is a no-op when the role is unchanged', async () => {
+    mockFindFirst.mockResolvedValue({
+      id: TARGET,
+      userId: TARGET_USER,
+      type: 'user',
+      role: 'member',
     })
 
     await updateMemberRole(TARGET, 'member', ACTING)

@@ -21,9 +21,11 @@ import {
 import type { ServiceMetadata } from '@/lib/server/db'
 import type { PrincipalId, UserId } from '@quackback/ids'
 import { InternalError, ForbiddenError, NotFoundError } from '@/lib/shared/errors'
+import { TierLimitError } from '@/lib/server/errors/tier-limit-error'
 import { isTeamMember, isAdmin } from '@/lib/shared/roles'
 import { cacheDel, CACHE_KEYS } from '@/lib/server/redis'
 import { recordAuditEvent, type AuditActor } from '@/lib/server/audit/log'
+import { enforceSeatLimit } from './seat-limit'
 import type { TeamMember } from './principal.types'
 import { logger } from '@/lib/server/logger'
 
@@ -210,14 +212,21 @@ export async function countMembers(): Promise<number> {
 }
 
 /**
- * Update a team member's role
+ * Change any human principal's role, in either direction:
+ * promote a portal user to member/admin, move between the two team
+ * roles, or demote a team member back to a portal user.
+ *
+ * Promotions into a team role consume a seat, so the tier cap is
+ * enforced here — the invite flow is no longer the only way in.
+ *
  * @throws ForbiddenError if trying to modify own role
  * @throws ForbiddenError if this would leave no admins
- * @throws NotFoundError if principal not found or not a team member
+ * @throws ForbiddenError if the target is a service/anonymous principal
+ * @throws NotFoundError if principal not found
  */
 export async function updateMemberRole(
   principalId: PrincipalId,
-  newRole: 'admin' | 'member',
+  newRole: 'admin' | 'member' | 'user',
   actingPrincipalId: PrincipalId,
   actor: AuditActor | null = null,
   headers?: Headers
@@ -234,16 +243,29 @@ export async function updateMemberRole(
     })
 
     if (!targetMember) {
-      throw new NotFoundError('MEMBER_NOT_FOUND', 'Team member not found')
+      throw new NotFoundError('MEMBER_NOT_FOUND', 'Principal not found')
     }
 
-    // Ensure target is a team member (admin or member), not a portal user
-    if (!isTeamMember(targetMember.role)) {
-      throw new NotFoundError('MEMBER_NOT_FOUND', 'Team member not found')
+    // Only real people get roles. Service principals (API keys,
+    // integrations) carry an admin/member role but are not seats, and
+    // anonymous principals have no account to sign in with.
+    if (targetMember.type !== 'user') {
+      throw new ForbiddenError(
+        'INVALID_PRINCIPAL_TYPE',
+        'Only human accounts can have their role changed'
+      )
     }
 
-    // If demoting an admin to member, ensure at least one human admin remains
-    if (isAdmin(targetMember.role) && newRole === 'member') {
+    const previousRole = targetMember.role
+
+    // No-op — nothing to audit and nothing to enforce.
+    if (previousRole === newRole) {
+      return
+    }
+
+    // Losing the last admin locks everyone out of admin settings, so
+    // guard every transition away from admin, not just admin -> member.
+    if (isAdmin(previousRole) && newRole !== 'admin') {
       const adminCount = await db
         .select({ count: sql<number>`count(*)`.as('count') })
         .from(principal)
@@ -254,7 +276,11 @@ export async function updateMemberRole(
       }
     }
 
-    const previousRole = targetMember.role
+    // Promoting a portal user into the team takes a seat. Moving
+    // between admin and member doesn't change the headcount.
+    if (!isTeamMember(previousRole) && isTeamMember(newRole)) {
+      await enforceSeatLimit()
+    }
 
     // Update the role
     await db.update(principal).set({ role: newRole }).where(eq(principal.id, principalId))
@@ -265,10 +291,15 @@ export async function updateMemberRole(
     // Audit the role change. Already audited from the SSO/JIT path
     // (`auth/hooks.ts` emits user.role.changed there). Admin manual
     // role flips need the same coverage or the audit log doesn't tell
-    // the full story of who got which role.
+    // the full story of who got which role. Demotions out of the team
+    // reuse `user.removed` so they read the same as the "Remove from
+    // team" action, which lands on the identical end state.
     if (actor) {
       await recordAuditEvent({
-        event: 'user.role.changed',
+        event:
+          isTeamMember(previousRole) && !isTeamMember(newRole)
+            ? 'user.removed'
+            : 'user.role.changed',
         actor,
         headers,
         target: { type: 'principal', id: principalId },
@@ -277,7 +308,13 @@ export async function updateMemberRole(
       })
     }
   } catch (error) {
-    if (error instanceof ForbiddenError || error instanceof NotFoundError) {
+    // TierLimitError carries the structured 402 payload the upgrade
+    // modal renders — never flatten it into a 500.
+    if (
+      error instanceof ForbiddenError ||
+      error instanceof NotFoundError ||
+      error instanceof TierLimitError
+    ) {
       throw error
     }
     log.error({ err: error }, 'failed to update principal role')
