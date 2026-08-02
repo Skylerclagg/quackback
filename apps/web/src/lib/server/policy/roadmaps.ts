@@ -31,13 +31,15 @@ export interface RoadmapTimelineGate {
  * How specifically this actor may see the roadmap's timeline dates —
  * layered on top of canViewRoadmap, never replacing it.
  *
- * Admins always get full specificity. Member-role teammates get full
- * specificity unless an explicit per-member override caps them (the
- * same per-person granularity as the roadmap team allowlist). Portal
- * viewers take the FINEST cap among the roadmap's default and their
- * matching segment overrides (a viewer in two overridden segments
- * gets the more specific one). Anonymous/service principals never
- * match segment overrides, mirroring tierAllows().
+ * Admins always get full specificity. Every other viewer takes the
+ * FINEST cap among the roadmap's default and their matching segment
+ * overrides (a viewer in two overridden segments gets the more
+ * specific one); team members are segment members like anyone else, so
+ * they take part in that too. Member-role teammates additionally keep
+ * their per-person rule: an explicit `teamMembers` entry is their cap,
+ * and without one they retain full specificity — the segment result
+ * can only raise a member, never coarsen them. Anonymous/service
+ * principals never match segment overrides, mirroring tierAllows().
  */
 export function timelineSpecificityFor(
   actor: Actor,
@@ -45,24 +47,33 @@ export function timelineSpecificityFor(
 ): TimelineSpecificity {
   const access = roadmap.timelineAccess ?? { default: 'day' as const, segments: [] }
   if (actor.role === 'admin') return 'day'
-  if (isTeamActor(actor)) {
-    const memberOverride = (access.teamMembers ?? []).find(
-      (o) => actor.principalId !== null && o.principalId === actor.principalId
-    )
-    return memberOverride ? memberOverride.specificity : 'day'
-  }
-  let best: TimelineSpecificity = access.default ?? 'day'
+
+  let bySegment: TimelineSpecificity = access.default ?? 'day'
   if (actor.principalType === 'user') {
     for (const override of access.segments ?? []) {
       if (
         actor.segmentIds.has(override.segmentId as never) &&
-        TIMELINE_SPECIFICITY_RANK[override.specificity] > TIMELINE_SPECIFICITY_RANK[best]
+        TIMELINE_SPECIFICITY_RANK[override.specificity] > TIMELINE_SPECIFICITY_RANK[bySegment]
       ) {
-        best = override.specificity
+        bySegment = override.specificity
       }
     }
   }
-  return best
+
+  if (isTeamActor(actor)) {
+    const memberOverride = (access.teamMembers ?? []).find(
+      (o) => actor.principalId !== null && o.principalId === actor.principalId
+    )
+    if (memberOverride) return memberOverride.specificity
+    // No explicit per-member cap: members keep the full specificity
+    // they have always had, and a matching segment override can only
+    // add to it. Taking the finest of the two keeps the change
+    // monotone — 'day' is the top rank today, so this still resolves
+    // to 'day'; written as a max so the property survives any future
+    // change to the ranking or the member baseline.
+    return TIMELINE_SPECIFICITY_RANK[bySegment] > TIMELINE_SPECIFICITY_RANK.day ? bySegment : 'day'
+  }
+  return bySegment
 }
 
 /** Whether the timeline view exists at all for this actor. */

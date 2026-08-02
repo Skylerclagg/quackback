@@ -34,7 +34,9 @@ import {
   InviteLinkRow,
 } from '@/components/admin/settings/team/pending-invitations'
 import { MemberActions } from '@/components/admin/settings/team/member-actions'
+import { UserSegmentBadges } from '@/components/admin/users/user-segments'
 import type { UserId, PrincipalId } from '@quackback/ids'
+import type { UserSegmentSummary } from '@/lib/shared/types'
 import { isAdmin } from '@/lib/shared/roles'
 
 // Discriminated union: each row is either a member or an invitation
@@ -51,6 +53,9 @@ type TeamRow =
        *  signed in (or all sessions have aged out). Rendered as
        *  "2 hours ago" / "Never" in the table. */
       lastSignInAt: string | null
+      /** Segments this team member belongs to (team principals are
+       *  eligible for segment membership just like portal users). */
+      segments: UserSegmentSummary[]
     }
   | {
       type: 'invitation'
@@ -117,6 +122,7 @@ function TeamPage() {
       userId: m.userId,
       principalId: m.id,
       lastSignInAt: m.lastSignInAt,
+      segments: (m.segments ?? []) as UserSegmentSummary[],
     }))
     const invitationRows: TeamRow[] = invitations.map((inv) => ({
       type: 'invitation' as const,
@@ -215,6 +221,22 @@ function TeamPage() {
             >
               {role}
             </Badge>
+          )
+        },
+      },
+      {
+        id: 'segments',
+        header: 'Segments',
+        cell: ({ row }) => {
+          const r = row.original
+          // Invitations have no principal yet, so nothing to assign to.
+          if (r.type !== 'member') return null
+          return (
+            <UserSegmentBadges
+              principalId={r.principalId}
+              segments={r.segments}
+              canManage={isCurrentUserAdmin}
+            />
           )
         },
       },
@@ -461,6 +483,15 @@ function TeamPage() {
                           {getExpiryText(r.expiresAt).text}
                         </span>
                       </p>
+                    )}
+
+                    {/* Segments */}
+                    {r.type === 'member' && (r.segments.length > 0 || isCurrentUserAdmin) && (
+                      <UserSegmentBadges
+                        principalId={r.principalId}
+                        segments={r.segments}
+                        canManage={isCurrentUserAdmin}
+                      />
                     )}
 
                     {/* Actions */}

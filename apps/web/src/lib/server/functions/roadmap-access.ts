@@ -16,13 +16,14 @@ import { NotFoundError } from '@/lib/shared/errors'
 
 /**
  * Load a roadmap and 404 unless the caller may view it. Admins always
- * pass; members need the roadmap public or their principal id in its
- * team allowlist. 404 (not 403) so restricted roadmaps stay
- * indistinguishable from missing ones.
+ * pass; members need the roadmap public, one of their segments on its
+ * segment allowlist, or their principal id in its team allowlist. 404
+ * (not 403) so restricted roadmaps stay indistinguishable from missing
+ * ones.
  */
 export async function requireRoadmapAccess(auth: AuthContext, id: RoadmapId) {
   const roadmap = await getRoadmap(id)
-  if (!isAllowed(canViewRoadmap(teamActorFromAuth(auth), roadmap))) {
+  if (!isAllowed(canViewRoadmap(await teamActorFromAuth(auth), roadmap))) {
     throw new NotFoundError('ROADMAP_NOT_FOUND', `Roadmap with ID ${id} not found`)
   }
   return roadmap

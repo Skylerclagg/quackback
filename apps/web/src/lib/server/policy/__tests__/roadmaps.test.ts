@@ -2,11 +2,13 @@
  * Matrix for canViewRoadmap.
  *
  * Public roadmaps are visible to every viewer. Private roadmaps admit:
- * admins always; member-role team accounts only when listed in the
- * roadmap's team allowlist; portal users only via the segment
- * allowlist. Empty lists make a private roadmap admin-only. Anonymous
- * and service principals must fail closed on the segment branch,
- * matching the `segments` tier semantics in tierAllows().
+ * admins always; any human principal — portal user or team account —
+ * whose segments intersect the segment allowlist; and, additionally,
+ * member-role team accounts listed in the roadmap's team allowlist.
+ * Empty lists make a private roadmap admin-only. Anonymous and service
+ * principals must fail closed on the segment branch, matching the
+ * `segments` tier semantics in tierAllows(). The team allowlist stays
+ * team-only — a portal user is never admitted by it.
  */
 import { describe, it, expect } from 'vitest'
 import {
@@ -44,7 +46,7 @@ const listedMemberActor: Actor = {
   segmentIds: new Set(),
 }
 
-/** Member who was manually placed in a segment — must NOT gain access via it. */
+/** Member placed in a segment — gains access through it, like any human principal. */
 const memberInAlphaSegment: Actor = {
   principalId: 'principal_member_seg' as PrincipalId,
   role: 'member',
@@ -156,13 +158,27 @@ describe('canViewRoadmap — private roadmaps, team side', () => {
     expect(allowed(portalUserInAlpha, privateAdminsOnly)).toBe(false)
   })
 
-  it('members gain access only through the team allowlist', () => {
+  it('the team allowlist admits exactly the members on it', () => {
     expect(allowed(listedMemberActor, privateWithTeamList)).toBe(true)
     expect(allowed(memberActor, privateWithTeamList)).toBe(false)
   })
 
-  it('members never gain access through segment membership', () => {
-    expect(allowed(memberInAlphaSegment, privateSharedWithAlpha)).toBe(false)
+  it('members also gain access through segment membership', () => {
+    expect(allowed(memberInAlphaSegment, privateSharedWithAlpha)).toBe(true)
+    // ...and still not through a segment they are not in.
+    expect(allowed(memberActor, privateSharedWithAlpha)).toBe(false)
+  })
+
+  it('the two doors are independent: either one admits a member', () => {
+    const privateMixed: RoadmapVisibility = {
+      isPublic: false,
+      allowedSegmentIds: ['segment_alpha'],
+      allowedTeamPrincipalIds: ['principal_listed'],
+      deletedAt: null,
+    }
+    expect(allowed(memberInAlphaSegment, privateMixed)).toBe(true)
+    expect(allowed(listedMemberActor, privateMixed)).toBe(true)
+    expect(allowed(memberActor, privateMixed)).toBe(false)
   })
 
   it('admins bypass both lists', () => {
@@ -274,6 +290,13 @@ describe('timelineSpecificityFor', () => {
     }
     expect(timelineSpecificityFor(memberActor, roadmap)).toBe('quarter')
     expect(timelineSpecificityFor(listedMemberActor, roadmap)).toBe('day')
+  })
+
+  it('a member in an overridden segment never drops below full specificity', () => {
+    // Segment overrides can only RAISE a member; without an explicit
+    // per-member cap they keep the 'day' they have always had.
+    const roadmap = withAccess('hidden', [{ segmentId: 'segment_alpha', specificity: 'month' }])
+    expect(timelineSpecificityFor(memberInAlphaSegment, roadmap)).toBe('day')
   })
 
   it('a member capped to hidden loses the timeline view; admins never do', () => {

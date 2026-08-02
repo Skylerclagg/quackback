@@ -2,9 +2,10 @@
  * Distinct-value lookups for the segment rule-builder's autocomplete.
  *
  * Returns the most-common values for a built-in attribute (within the
- * portal-user audience the evaluator targets), optionally filtered by
- * a prefix query. Powers the SearchableInput component so admins see
- * what values are actually present in their workspace as they type.
+ * human-principal audience the evaluator targets — portal users AND
+ * team members), optionally filtered by a prefix query. Powers the
+ * SearchableInput component so admins see what values are actually
+ * present in their workspace as they type.
  *
  * Safety: `attribute` is dispatched via a closed allowlist (one SQL
  * template per key); never interpolated. `query` is parameterized via
@@ -48,17 +49,18 @@ function prefixFilter(expr: ReturnType<typeof sql>, query: string): ReturnType<t
 
 /**
  * Per-attribute SQL templates. Each returns rows shaped {value, count},
- * scoped to portal-user principals to match the segment evaluator's
- * audience (role='user' AND user_id IS NOT NULL). Counts therefore
- * reflect what segments will actually match — not the count of all
- * rows in the user table including team members.
+ * scoped to the same audience the segment evaluator targets: any human
+ * principal — team accounts included — gated on type='user' (the join
+ * already implies user_id IS NOT NULL). Counts therefore reflect what
+ * segments will actually match; anonymous and service principals are
+ * excluded on both sides.
  */
 function queryForAttribute(
   attribute: SearchableAttribute,
   query: string,
   limit: number
 ): ReturnType<typeof sql> {
-  const baseJoin = sql`FROM "user" u INNER JOIN principal p ON p.user_id = u.id WHERE p.role = 'user'`
+  const baseJoin = sql`FROM "user" u INNER JOIN principal p ON p.user_id = u.id WHERE p.type = 'user'`
   switch (attribute) {
     case 'country': {
       const upperQuery = query.toUpperCase()

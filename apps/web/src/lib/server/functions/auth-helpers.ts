@@ -251,18 +251,24 @@ export async function policyActorFromAuth(auth: AuthContext | null): Promise<Act
 }
 
 /**
- * Team-side actor for audience checks on admin surfaces. The
- * admin/member policy branches never consult segment memberships, so
- * this skips the segmentIdsForPrincipal round-trip that
- * policyActorFromAuth pays. Only use where the caller is known to be
- * team (requireAuth roles admin/member).
+ * Team-side actor for audience checks on admin surfaces. Only use
+ * where the caller is known to be team (requireAuth roles
+ * admin/member).
+ *
+ * Resolves real segment memberships, exactly like policyActorFromAuth:
+ * team accounts can now be segment members, and the member policy
+ * branches admit them through the segment allowlist. Handing back an
+ * empty set here would silently deny a member the access their
+ * segment grants — so this pays the segmentIdsForPrincipal round-trip
+ * and is async.
  */
-export function teamActorFromAuth(auth: AuthContext): Actor {
+export async function teamActorFromAuth(auth: AuthContext): Promise<Actor> {
+  const segmentIds = await segmentIdsForPrincipal(auth.principal.id)
   return {
     principalId: auth.principal.id,
     role: auth.principal.role,
     principalType: 'user',
-    segmentIds: new Set(),
+    segmentIds,
   }
 }
 

@@ -95,13 +95,29 @@ const actors: Record<string, Actor> = {
     role: 'member',
     principalType: 'user',
   }),
-  // A member whose segments match must still be denied — members only
-  // enter through the team allowlist.
+  // Team members can be segment members: a member whose segments match
+  // is admitted through the segment allowlist, in addition to the team
+  // allowlist door.
   memberInAlpha: buildActor({
     principalId: createId('principal') as PrincipalId,
     role: 'member',
     principalType: 'user',
     segmentIds: new Set([SEGMENT_ALPHA]),
+  }),
+  // Both doors open at once — the SQL OR must not drop either clause.
+  memberListedInAlpha: buildActor({
+    principalId: LISTED_MEMBER,
+    role: 'member',
+    principalType: 'user',
+    segmentIds: new Set([SEGMENT_ALPHA]),
+  }),
+  // Team-listed, but in a DIFFERENT segment than the one the mixed
+  // fixture allows — each clause must admit only its own rows.
+  memberListedInBeta: buildActor({
+    principalId: LISTED_MEMBER,
+    role: 'member',
+    principalType: 'user',
+    segmentIds: new Set([SEGMENT_BETA]),
   }),
   admin: buildActor({
     principalId: createId('principal') as PrincipalId,

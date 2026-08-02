@@ -157,7 +157,11 @@ export const segments = pgTable(
  * Shared by both manual and dynamic segments.
  * For dynamic segments this is the evaluation cache, rebuilt on each evaluation run.
  *
- * Uses principalId as the user identifier (principal with role='user').
+ * Uses principalId as the member identifier. Membership is open to any
+ * HUMAN principal — portal users and team accounts (role admin/member)
+ * alike — so segments can target teammates as well as customers. The
+ * invariant is principal.type='user' with a linked user row, NOT
+ * principal.role; anonymous and service principals are never members.
  */
 export const userSegments = pgTable(
   'user_segments',

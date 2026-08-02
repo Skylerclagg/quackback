@@ -163,6 +163,42 @@ export const fetchTeamMembersAndInvitations = createServerFn({ method: 'GET' }).
         .leftJoin(lastSession, eq(lastSession.userId, user.id))
         .where(ne(principal.role, 'user'))
 
+      // Segment memberships per member. Team principals can belong to
+      // segments just like portal users do, so the team page shows and
+      // edits them the same way the Users page does.
+      const { userSegments, segments, inArray, isNull } = await import('@/lib/server/db')
+      const memberPrincipalIds = membersRaw.map((m) => m.id)
+      const segmentRows =
+        memberPrincipalIds.length > 0
+          ? await db
+              .select({
+                principalId: userSegments.principalId,
+                id: segments.id,
+                name: segments.name,
+                color: segments.color,
+                type: segments.type,
+              })
+              .from(userSegments)
+              .innerJoin(segments, eq(userSegments.segmentId, segments.id))
+              .where(
+                and(
+                  inArray(userSegments.principalId, memberPrincipalIds),
+                  isNull(segments.deletedAt)
+                )
+              )
+          : []
+
+      const segmentsByPrincipal = new Map<
+        string,
+        Array<Omit<(typeof segmentRows)[number], 'principalId'>>
+      >()
+      for (const row of segmentRows) {
+        const { principalId, ...segment } = row
+        const existing = segmentsByPrincipal.get(principalId) ?? []
+        existing.push(segment)
+        segmentsByPrincipal.set(principalId, existing)
+      }
+
       // Serialise to ISO string on the boundary so the client type
       // stays narrow (`string | null`). `toIsoStringOrNull` handles
       // both the Date and string shapes — postgres-js returns the
@@ -172,6 +208,7 @@ export const fetchTeamMembersAndInvitations = createServerFn({ method: 'GET' }).
       const members = membersRaw.map((m) => ({
         ...m,
         lastSignInAt: toIsoStringOrNull(m.lastSignInAt),
+        segments: segmentsByPrincipal.get(m.id) ?? [],
       }))
 
       const pendingInvitations = await db.query.invitation.findMany({

@@ -105,7 +105,7 @@ export const getRoadmapTimelineFn = createServerFn({ method: 'GET' })
       // timelineAccess.teamMembers — the same coarsening the portal
       // applies, so a capped member never sees finer dates through the
       // admin surface either. Admins always get full specificity.
-      const cap = timelineSpecificityFor(teamActorFromAuth(auth), roadmap)
+      const cap = timelineSpecificityFor(await teamActorFromAuth(auth), roadmap)
       if (cap === 'hidden') {
         throw new NotFoundError('ROADMAP_NOT_FOUND', `Roadmap with ID ${data.roadmapId} not found`)
       }

@@ -317,6 +317,12 @@ function combineConditions(rules: SegmentRules): ReturnType<typeof sql> | null {
 /**
  * Evaluate a dynamic segment's rules and return the set of matching principal IDs.
  * Translates rules to SQL — does not load users into memory.
+ *
+ * Membership is open to ANY human principal — team accounts (role
+ * admin/member) as well as portal users — so a segment can target
+ * teammates too. The invariant is principal.type='user' (plus a linked
+ * user row), NOT principal.role: anonymous and service principals have
+ * no person behind them and stay excluded.
  */
 async function resolveMatchingPrincipals(rules: SegmentRules): Promise<string[]> {
   const combinedWhere = combineConditions(rules)
@@ -326,7 +332,7 @@ async function resolveMatchingPrincipals(rules: SegmentRules): Promise<string[]>
     SELECT p.id
     FROM principal p
     INNER JOIN "user" u ON u.id = p.user_id
-    WHERE p.role = 'user'
+    WHERE p.type = 'user'
       AND p.user_id IS NOT NULL
       AND (${combinedWhere})
   `)
@@ -448,6 +454,11 @@ export async function evaluateAllDynamicSegments(): Promise<EvaluationResult[]> 
  * the next scheduled sweep. Mirrors evaluateDynamicSegment's contract:
  * only rows with addedBy='dynamic' are ever added or removed, so
  * manual / sso / widget / api memberships are never touched.
+ *
+ * Audience matches resolveMatchingPrincipals exactly: any human
+ * principal (team or portal), gated on principal.type='user' rather
+ * than role, so a teammate signing in picks up their rule-based
+ * memberships the same way a portal user does.
  */
 export async function evaluatePrincipalDynamicSegments(principalId: PrincipalId): Promise<void> {
   const dynamicSegments = await db
@@ -474,7 +485,7 @@ export async function evaluatePrincipalDynamicSegments(principalId: PrincipalId)
         FROM principal p
         INNER JOIN "user" u ON u.id = p.user_id
         WHERE p.id = ${principalUuid}::uuid
-          AND p.role = 'user'
+          AND p.type = 'user'
           AND p.user_id IS NOT NULL
           AND (${combinedWhere})
         LIMIT 1

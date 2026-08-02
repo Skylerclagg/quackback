@@ -62,12 +62,15 @@ describe('SEARCHABLE_ATTRIBUTES allowlist', () => {
 
 describe('getAttributeValueSuggestions — universal predicates', () => {
   it.each(['country', 'locale', 'name', 'email', 'signup_source', 'google_workspace'] as const)(
-    'scopes %s to portal-user principals (matches evaluator audience)',
+    'scopes %s to human principals (matches evaluator audience)',
     async (attribute) => {
       await getAttributeValueSuggestions(attribute, '', 20)
       expect(capturedSql).toContain('principal p')
       expect(capturedSql).toContain('p.user_id = u.id')
-      expect(capturedSql).toContain("p.role = 'user'")
+      // type='user', not role='user': team members can be segment
+      // members, so the typeahead must surface their values too.
+      expect(capturedSql).toContain("p.type = 'user'")
+      expect(capturedSql).not.toContain("p.role = 'user'")
     }
   )
 

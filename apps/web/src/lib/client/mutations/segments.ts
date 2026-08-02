@@ -18,10 +18,22 @@ import {
 
 const SEGMENTS_KEY = ['admin', 'segments']
 const USERS_KEY = ['admin', 'users']
+// Team principals can be segment members too, so the team page's
+// per-member segment badges go stale on every membership change.
+const TEAM_KEY = ['settings', 'team']
+const PORTAL_USERS_KEY = ['users']
 
-function invalidateSegmentQueries(queryClient: ReturnType<typeof useQueryClient>) {
+/**
+ * Refresh everything that renders segment membership. Exported so
+ * non-mutation callers (the CSV import section, which POSTs to
+ * /api/segments/import rather than going through a server fn) invalidate
+ * the exact same set instead of drifting their own copy of these keys.
+ */
+export function invalidateSegmentQueries(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: SEGMENTS_KEY })
   void queryClient.invalidateQueries({ queryKey: USERS_KEY })
+  void queryClient.invalidateQueries({ queryKey: TEAM_KEY })
+  void queryClient.invalidateQueries({ queryKey: PORTAL_USERS_KEY })
 }
 
 /** Create a new segment. */
