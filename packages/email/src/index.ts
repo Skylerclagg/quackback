@@ -410,8 +410,13 @@ interface SendNewSignInParams {
 }
 
 /** First-sight new-device sign-in alert. Triggered by
- * `handleNewDeviceNotification` after a successful sign-in lands on
- * an unseen (UA, /24 IP) combination. */
+ * `handleNewDeviceNotification` after a successful sign-in lands on an
+ * unseen (UA + network-prefix) combination.
+ *
+ * The subject names the device rather than the sign-in: recipients read
+ * "New sign-in to your account" as "you were signed in", which is
+ * alarming on a routine visit and, repeated, trains them to ignore the
+ * one alert that matters. */
 export async function sendNewSignInEmail(params: SendNewSignInParams): Promise<EmailResult> {
   const { to, workspaceName, occurredAt, ipAddress, userAgent, logoUrl } = params
 
@@ -426,7 +431,7 @@ export async function sendNewSignInEmail(params: SendNewSignInParams): Promise<E
   log.debug('sending new-sign-in alert')
   return sendEmail({
     to,
-    subject: 'New sign-in to your account',
+    subject: 'New device signed in to your account',
     react: NewSignInEmail({ workspaceName, occurredAt, ipAddress, userAgent, logoUrl }),
   })
 }

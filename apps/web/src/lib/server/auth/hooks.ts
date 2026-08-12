@@ -1107,8 +1107,8 @@ export async function handleCountryCapture(ctx: {
  *     prior steps). Runs after the gates so it only records sign-ins
  *     that actually stuck.
  *  5. `handleNewDeviceNotification` — sends a "new device" email +
- *     records an audit row when the user's UA + /24-IP combination
- *     hasn't been seen for them within the last 90 days.
+ *     records an audit row when the user's UA + network-prefix
+ *     combination hasn't been seen for them within the last 90 days.
  */
 export const hooksAfter = createAuthMiddleware(async (ctx) => {
   if (process.env.AUTH_HOOKS_DEBUG === '1') {
@@ -1165,8 +1165,9 @@ export const hooksAfter = createAuthMiddleware(async (ctx) => {
   await handleSignInSuccessAudit(ctx as Parameters<typeof handleSignInSuccessAudit>[0])
   // Geo-IP country from CDN headers; written best-effort, never blocks.
   await handleCountryCapture(ctx as Parameters<typeof handleCountryCapture>[0])
-  // Fires only when a new device fingerprint (UA + /24) for this user
-  // is observed; default-on but workspace can opt out.
+  // Fires only when a new device fingerprint (UA + network prefix) for
+  // this user is observed. Always on — there is no workspace opt-out,
+  // which is what the email footer tells recipients.
   await handleNewDeviceNotification(
     ctx as Parameters<typeof handleNewDeviceNotification>[0],
     tenant

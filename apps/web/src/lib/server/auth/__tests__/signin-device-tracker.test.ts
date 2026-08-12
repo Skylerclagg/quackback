@@ -48,14 +48,68 @@ describe('computeDeviceFingerprint', () => {
     )
   })
 
-  it('hashes IPv6 whole (no truncation)', () => {
-    expect(computeDeviceFingerprint('UA', '2001:db8::1')).not.toBe(
-      computeDeviceFingerprint('UA', '2001:db8::2')
+  it('returns 32-char hex', () => {
+    expect(computeDeviceFingerprint('UA', '203.0.113.42')).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  it('handles a missing IP without throwing', () => {
+    expect(computeDeviceFingerprint('UA', 'unknown')).toMatch(/^[0-9a-f]{32}$/)
+  })
+})
+
+/**
+ * IPv6 used to be hashed whole. RFC 8981 privacy extensions rotate the
+ * interface identifier (low 64 bits) on a timer — commonly daily, and
+ * per-connection on some stacks — so the same person on the same
+ * network minted a fresh fingerprint constantly and was emailed a
+ * "new device" alert on nearly every sign-in. Truncating to the /64
+ * network prefix is what makes the alert mean something.
+ */
+describe('computeDeviceFingerprint — IPv6 /64 truncation', () => {
+  it('is stable when privacy extensions rotate the interface identifier', () => {
+    expect(computeDeviceFingerprint('UA', '2001:db8:abcd:1234:1111:2222:3333:4444')).toBe(
+      computeDeviceFingerprint('UA', '2001:db8:abcd:1234:9999:8888:7777:6666')
     )
   })
 
-  it('returns 32-char hex', () => {
-    expect(computeDeviceFingerprint('UA', '203.0.113.42')).toMatch(/^[0-9a-f]{32}$/)
+  it('still differs across /64 boundaries', () => {
+    expect(computeDeviceFingerprint('UA', '2001:db8:abcd:1234::1')).not.toBe(
+      computeDeviceFingerprint('UA', '2001:db8:abcd:5678::1')
+    )
+  })
+
+  it('treats compressed and expanded forms of one prefix as equal', () => {
+    expect(computeDeviceFingerprint('UA', '2001:db8::1')).toBe(
+      computeDeviceFingerprint('UA', '2001:0db8:0000:0000:aaaa:bbbb:cccc:dddd')
+    )
+  })
+
+  it('ignores a zone index', () => {
+    expect(computeDeviceFingerprint('UA', 'fe80::1%eth0')).toBe(
+      computeDeviceFingerprint('UA', 'fe80::1')
+    )
+  })
+
+  it('does not collide with an unrelated prefix', () => {
+    expect(computeDeviceFingerprint('UA', '2001:db8::1')).not.toBe(
+      computeDeviceFingerprint('UA', '2001:db9::1')
+    )
+  })
+
+  // Some proxies report client IPv4 as "::ffff:a.b.c.d". Truncating
+  // those to a /64 would discard the embedded address and land every
+  // such client on one shared fingerprint, silencing the alert for all
+  // of them.
+  it('maps IPv4-mapped addresses onto their plain IPv4 fingerprint', () => {
+    expect(computeDeviceFingerprint('UA', '::ffff:203.0.113.7')).toBe(
+      computeDeviceFingerprint('UA', '203.0.113.7')
+    )
+  })
+
+  it('keeps IPv4-mapped addresses in different /24s distinct', () => {
+    expect(computeDeviceFingerprint('UA', '::ffff:203.0.113.7')).not.toBe(
+      computeDeviceFingerprint('UA', '::ffff:198.51.100.7')
+    )
   })
 })
 

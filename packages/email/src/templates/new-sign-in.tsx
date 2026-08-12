@@ -12,9 +12,13 @@ interface NewSignInEmailProps {
 
 /**
  * "New device" sign-in notification — sent only on first-sight of a
- * (UA, /24 IP) combination for the recipient's account. The user is
- * already signed in by the time this lands; the alert is purely
+ * (UA + network-prefix) combination for the recipient's account. The
+ * user is already signed in by the time this lands; the alert is purely
  * informational with a recovery path if it wasn't them.
+ *
+ * The wording leads with the DEVICE, not the sign-in. Signing in is
+ * routine and expected; a device the account has never used before is
+ * the part worth a recipient's attention.
  */
 export function NewSignInEmail({
   workspaceName,
@@ -24,8 +28,11 @@ export function NewSignInEmail({
   logoUrl,
 }: NewSignInEmailProps) {
   return (
-    <EmailLayout preview="A new sign-in was detected on your account" logoUrl={logoUrl}>
-      <Heading style={typography.h1}>New sign-in to your account</Heading>
+    <EmailLayout
+      preview="Your account was used on a device we haven’t seen before"
+      logoUrl={logoUrl}
+    >
+      <Heading style={typography.h1}>New device signed in to your account</Heading>
       <Text style={typography.text}>
         {workspaceName
           ? `Someone just signed in to your ${workspaceName} account on a device we haven't seen before.`
@@ -56,8 +63,9 @@ export function NewSignInEmail({
       </Text>
 
       <TransactionalFooter>
-        You&apos;re receiving this because a new sign-in was detected on your account. These alerts
-        are required and can&apos;t be disabled.
+        You&apos;re receiving this because your account signed in from a device or network it
+        hasn&apos;t used recently — not on every visit. These security alerts are required and
+        can&apos;t be disabled.
       </TransactionalFooter>
     </EmailLayout>
   )
