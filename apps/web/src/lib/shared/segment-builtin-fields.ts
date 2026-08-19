@@ -220,6 +220,17 @@ export const BUILTIN_FIELDS = [
     ],
   },
   {
+    key: 'entra_group',
+    label: 'Entra ID group',
+    type: 'string',
+    group: 'account',
+    description:
+      "Member of the Microsoft Entra ID group with this Object ID (a GUID from the Entra admin center). Membership is fetched from Microsoft Graph on each evaluation, so users added to or removed from the group sync on the segment's schedule. Requires the Entra SSO app registration to hold the GroupMember.Read.All application permission with admin consent.",
+    // evaluator: resolved via Microsoft Graph, then compiled to an
+    // email IN (...) list — see resolveEntraGroupEmails.
+    operators: [{ value: 'eq', label: 'is member of' }],
+  },
+  {
     key: 'post_count',
     label: 'Post Count',
     type: 'number',

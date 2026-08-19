@@ -1,7 +1,7 @@
 import { db, eq, and, inArray, isNull, sql, segments, userSegments } from '@/lib/server/db'
 import type { SegmentId, PrincipalId } from '@quackback/ids'
 import { fromUuid, toUuid } from '@quackback/ids'
-import { NotFoundError, ValidationError } from '@/lib/shared/errors'
+import { InternalError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import type { EvaluationResult } from './segment.types'
 import type { SegmentRules, SegmentCondition } from '@/lib/server/db'
 import { getSegment } from './segment.service'
@@ -41,11 +41,42 @@ function stringOperatorSql(
 }
 
 /**
+ * Emails resolved from Microsoft Graph for each `entra_group` condition,
+ * keyed by group Object ID. Resolved BEFORE SQL compilation (Graph is an
+ * async network call; this compiler is sync) by resolveEntraGroupEmails.
+ */
+type EntraGroupEmails = ReadonlyMap<string, string[]>
+
+/**
  * Build a SQL condition fragment for a single rule condition.
  * Returns a SQL template or null if the condition is unsupported.
  */
-function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> | null {
+function buildConditionSql(
+  condition: SegmentCondition,
+  entraEmails?: EntraGroupEmails
+): ReturnType<typeof sql> | null {
   const { attribute, operator, value } = condition
+
+  // Entra group membership: compiled from the pre-resolved email list.
+  // An EMPTY group legitimately matches nobody (FALSE keeps composition
+  // with `match: any` correct); a MISSING map entry means resolution was
+  // skipped or failed, and compiling that as "no members" would evict
+  // the whole segment — so it throws instead.
+  if (attribute === 'entra_group') {
+    if (operator !== 'eq' || typeof value !== 'string' || !value) return null
+    const emails = entraEmails?.get(value)
+    if (emails === undefined) {
+      throw new InternalError(
+        'ENTRA_NOT_RESOLVED',
+        'entra_group condition reached SQL compilation without resolved members'
+      )
+    }
+    if (emails.length === 0) return sql`FALSE`
+    return sql`LOWER(u.email) IN (${sql.join(
+      emails.map((e) => sql`${e}`),
+      sql`, `
+    )})`
+  }
 
   // Handle is_set / is_not_set
   if (operator === 'is_set' || operator === 'is_not_set') {
@@ -304,14 +335,45 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
  * Combine a rule set's conditions into a single WHERE fragment, or null
  * when no condition translates to SQL (rule-less segments match nobody).
  */
-function combineConditions(rules: SegmentRules): ReturnType<typeof sql> | null {
+function combineConditions(
+  rules: SegmentRules,
+  entraEmails?: EntraGroupEmails
+): ReturnType<typeof sql> | null {
   const conditionSqls = (rules.conditions ?? [])
-    .map(buildConditionSql)
+    .map((c) => buildConditionSql(c, entraEmails))
     .filter((c): c is NonNullable<typeof c> => c !== null)
   if (conditionSqls.length === 0) return null
   return rules.match === 'all'
     ? conditionSqls.reduce((acc, c) => sql`${acc} AND ${c}`)
     : conditionSqls.reduce((acc, c) => sql`${acc} OR ${c}`)
+}
+
+/**
+ * Resolve every `entra_group` condition's member emails from Microsoft
+ * Graph ahead of SQL compilation. Returns an empty map when the rules
+ * carry no such condition (the common case — zero overhead).
+ *
+ * Failure semantics matter here: a Graph outage or misconfiguration
+ * THROWS, which aborts the evaluation and leaves current membership
+ * untouched. Degrading to an empty member list instead would sweep
+ * everyone out of the segment — for a segment gating board or changelog
+ * access, that's a mass lockout caused by a transient network error.
+ */
+async function resolveEntraGroupEmails(rules: SegmentRules): Promise<EntraGroupEmails> {
+  const groupIds = new Set<string>()
+  for (const condition of rules.conditions ?? []) {
+    if (condition.attribute === 'entra_group' && typeof condition.value === 'string') {
+      groupIds.add(condition.value)
+    }
+  }
+  const map = new Map<string, string[]>()
+  if (groupIds.size === 0) return map
+
+  const { getEntraGroupMemberEmails } = await import('@/lib/server/integrations/entra/graph')
+  for (const groupId of groupIds) {
+    map.set(groupId, await getEntraGroupMemberEmails(groupId))
+  }
+  return map
 }
 
 /**
@@ -325,7 +387,8 @@ function combineConditions(rules: SegmentRules): ReturnType<typeof sql> | null {
  * no person behind them and stay excluded.
  */
 async function resolveMatchingPrincipals(rules: SegmentRules): Promise<string[]> {
-  const combinedWhere = combineConditions(rules)
+  const entraEmails = await resolveEntraGroupEmails(rules)
+  const combinedWhere = combineConditions(rules, entraEmails)
   if (!combinedWhere) return []
 
   const rows = await db.execute(sql`
@@ -439,8 +502,14 @@ export async function evaluateAllDynamicSegments(): Promise<EvaluationResult[]> 
 
   const results: EvaluationResult[] = []
   for (const seg of dynamicSegments) {
-    const result = await evaluateDynamicSegment(seg.id as SegmentId)
-    results.push(result)
+    // One segment failing (bad rule, Graph outage on an entra_group
+    // condition) must not starve the rest of the sweep. The failed
+    // segment keeps its current membership and retries next run.
+    try {
+      results.push(await evaluateDynamicSegment(seg.id as SegmentId))
+    } catch (err) {
+      log.error({ err, segment_id: seg.id }, 'segment evaluation failed; continuing sweep')
+    }
   }
   return results
 }
@@ -476,8 +545,24 @@ export async function evaluatePrincipalDynamicSegments(principalId: PrincipalId)
 
   for (const seg of dynamicSegments) {
     // Rule-less dynamic segments match nobody — same as the full sweep,
-    // which clears all dynamic rows for such segments.
-    const combinedWhere = seg.rules ? combineConditions(seg.rules) : null
+    // which clears all dynamic rows for such segments. Entra-group
+    // conditions resolve via a short-lived cache, so a sign-in burst
+    // doesn't turn into a Graph request per user; if resolution fails,
+    // skip THIS segment (leaving its membership as-is) instead of
+    // aborting the whole per-principal sweep.
+    let combinedWhere: ReturnType<typeof combineConditions> = null
+    if (seg.rules) {
+      try {
+        const entraEmails = await resolveEntraGroupEmails(seg.rules)
+        combinedWhere = combineConditions(seg.rules, entraEmails)
+      } catch (err) {
+        log.error(
+          { err, segment_id: seg.id },
+          'entra group resolution failed; skipping segment for this principal'
+        )
+        continue
+      }
+    }
     let matches = false
     if (combinedWhere) {
       const rows = await db.execute(sql`

@@ -34,6 +34,24 @@ import type { FieldOperator } from '@/lib/shared/segment-builtin-fields'
 import { SearchableInput } from '@/components/ui/searchable-input'
 import { SegmentImportSection } from '@/components/admin/segments/segment-import-section'
 import { fetchSegmentAttributeValuesFn } from '@/lib/server/functions/admin'
+import { getEntraAvailabilityFn, searchEntraGroupsFn } from '@/lib/server/functions/entra'
+import { useQuery } from '@tanstack/react-query'
+
+/**
+ * Whether the workspace has an enabled Entra identity provider — gates
+ * the `entra_group` rule attribute in the picker. Called per condition
+ * row; React Query dedupes to one request. Saved entra_group rows still
+ * render when unavailable (via BUILTIN_FIELD_MAP), they just can't be
+ * newly picked.
+ */
+function useEntraAvailability(): boolean {
+  const { data } = useQuery({
+    queryKey: ['admin', 'entra-availability'],
+    queryFn: () => getEntraAvailabilityFn(),
+    staleTime: 5 * 60 * 1000,
+  })
+  return data?.available ?? false
+}
 
 // Attributes with DB-backed value typeahead. Matches SEARCHABLE_ATTRIBUTES
 // in segment-attribute-values.ts; kept duplicated here to avoid pulling
@@ -142,6 +160,7 @@ function RuleConditionRow({
     ? (customAttributes?.find((a) => a.key === customAttrKey) ?? null)
     : null
   const builtinField = BUILTIN_FIELD_MAP.get(condition.attribute)
+  const entraAvailable = useEntraAvailability()
 
   const operators = getOperatorsForAttribute(condition.attribute, customAttributes)
 
@@ -199,7 +218,13 @@ function RuleConditionRow({
               { group: 'activity', label: 'Activity' },
             ] as const
           ).map(({ group, label }, i) => {
-            const fields = BUILTIN_FIELDS.filter((f) => f.group === group)
+            const fields = BUILTIN_FIELDS.filter(
+              (f) =>
+                f.group === group &&
+                // Only offer the Entra rule when an Entra provider is
+                // registered; existing rows still render either way.
+                (f.key !== 'entra_group' || entraAvailable || condition.attribute === 'entra_group')
+            )
             return (
               <React.Fragment key={group}>
                 {i > 0 && <SelectSeparator />}
@@ -304,6 +329,23 @@ function RuleConditionRow({
           </SelectContent>
         </Select>
       )}
+      {/* Entra group picker: searches the tenant's groups by name so the
+          admin never has to know what an Object ID is; the picked row
+          writes the GUID. Pasting a GUID directly still works — and is
+          the fallback when Graph search is denied. */}
+      {!isPresenceOp && condition.attribute === 'entra_group' && (
+        <SearchableInput
+          className="flex-1"
+          value={condition.value}
+          onChange={(v) => onChange({ ...condition, value: v })}
+          placeholder="Search groups by name…"
+          emptyMessage="No matching groups — you can paste the group's Object ID instead"
+          fetchOptions={async (query) => {
+            const groups = await searchEntraGroupsFn({ data: { query } })
+            return groups.map((g) => ({ value: g.id, label: g.displayName, meta: g.id }))
+          }}
+        />
+      )}
       {!isPresenceOp && !allowedValues && !isBoolean && useSearchableInput && (
         <SearchableInput
           className="flex-1"
@@ -331,15 +373,19 @@ function RuleConditionRow({
           }}
         />
       )}
-      {!isPresenceOp && !allowedValues && !isBoolean && !useSearchableInput && (
-        <Input
-          className="h-8 text-xs flex-1"
-          type={isNumeric ? 'number' : 'text'}
-          placeholder={isNumeric ? '0' : 'value'}
-          value={condition.value}
-          onChange={(e) => onChange({ ...condition, value: e.target.value })}
-        />
-      )}
+      {!isPresenceOp &&
+        !allowedValues &&
+        !isBoolean &&
+        !useSearchableInput &&
+        condition.attribute !== 'entra_group' && (
+          <Input
+            className="h-8 text-xs flex-1"
+            type={isNumeric ? 'number' : 'text'}
+            placeholder={isNumeric ? '0' : 'value'}
+            value={condition.value}
+            onChange={(e) => onChange({ ...condition, value: e.target.value })}
+          />
+        )}
       {isPresenceOp && <div className="flex-1" />}
 
       {/* Remove */}

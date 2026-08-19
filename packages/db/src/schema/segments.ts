@@ -48,6 +48,9 @@ export type SegmentRuleAttribute =
   | 'signup_source'
   | 'principal_type'
   | 'google_workspace'
+  // Membership of a Microsoft Entra ID group (value = the group's Object
+  // ID GUID). Resolved against Graph at evaluation time, not in SQL.
+  | 'entra_group'
 
 export interface SegmentCondition {
   attribute: SegmentRuleAttribute

@@ -1172,6 +1172,7 @@ export const segmentConditionSchema = z.object({
     'signup_source',
     'principal_type',
     'google_workspace',
+    'entra_group',
   ]),
   operator: z.enum([
     'eq',
