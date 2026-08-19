@@ -68,8 +68,18 @@ interface GraphPage {
   '@odata.nextLink'?: string
 }
 
-/** True when the provider row looks like an Entra tenant. `kind` is
- *  authoritative; URL sniffing covers rows created before that column. */
+/**
+ * True when the provider row looks like an Entra tenant.
+ *
+ * `kind` records which EDITOR the admin used, not what the IdP actually
+ * is — an Entra tenant configured through the "Custom OIDC" editor is
+ * saved as kind='other' but is still Entra, and its Microsoft authority
+ * URLs are the evidence that matters. So: kind='entra' is trusted,
+ * kinds that name a DIFFERENT IdP family (okta/auth0/keycloak/google)
+ * are rejected, and 'other'/legacy-null fall through to URL sniffing
+ * across the known Microsoft authority hosts (workforce, External ID /
+ * CIAM, and the v1 sts issuer).
+ */
 export function isEntraProvider(provider: {
   kind: string | null
   discoveryUrl: string | null
@@ -77,10 +87,14 @@ export function isEntraProvider(provider: {
   tokenUrl: string | null
 }): boolean {
   if (provider.kind === 'entra') return true
-  if (provider.kind !== null) return false
+  if (provider.kind && provider.kind !== 'other') return false
   const urls = [provider.discoveryUrl, provider.issuer, provider.tokenUrl]
   return urls.some(
-    (u) => !!u && (u.includes('login.microsoftonline.com') || u.includes('.ciamlogin.com'))
+    (u) =>
+      !!u &&
+      (u.includes('login.microsoftonline.com') ||
+        u.includes('.ciamlogin.com') ||
+        u.includes('sts.windows.net'))
   )
 }
 

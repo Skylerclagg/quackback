@@ -70,6 +70,41 @@ describe('isEntraProvider', () => {
     ).toBe(false)
   })
 
+  it("accepts a 'Custom OIDC' (kind=other) provider whose URLs are Microsoft authorities", () => {
+    // An Entra tenant configured through the Custom OIDC editor is
+    // saved as kind='other' — the editor choice must not veto the URL
+    // evidence.
+    expect(
+      isEntraProvider({
+        kind: 'other',
+        discoveryUrl:
+          'https://login.microsoftonline.com/tenant-guid/v2.0/.well-known/openid-configuration',
+        issuer: null,
+        tokenUrl: null,
+      })
+    ).toBe(true)
+    // A custom OIDC pointing somewhere non-Microsoft stays rejected.
+    expect(
+      isEntraProvider({
+        kind: 'other',
+        discoveryUrl: 'https://id.example.com/.well-known/openid-configuration',
+        issuer: null,
+        tokenUrl: null,
+      })
+    ).toBe(false)
+  })
+
+  it('recognises the v1 sts.windows.net issuer on manual-endpoint installs', () => {
+    expect(
+      isEntraProvider({
+        kind: null,
+        discoveryUrl: null,
+        issuer: 'https://sts.windows.net/tenant-guid/',
+        tokenUrl: null,
+      })
+    ).toBe(true)
+  })
+
   it('sniffs pre-kind rows by URL, including CIAM authorities', () => {
     expect(
       isEntraProvider({
