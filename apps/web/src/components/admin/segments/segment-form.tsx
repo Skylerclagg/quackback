@@ -34,11 +34,8 @@ import type { FieldOperator } from '@/lib/shared/segment-builtin-fields'
 import { SearchableInput } from '@/components/ui/searchable-input'
 import { SegmentImportSection } from '@/components/admin/segments/segment-import-section'
 import { fetchSegmentAttributeValuesFn } from '@/lib/server/functions/admin'
-import {
-  getEntraAvailabilityFn,
-  searchEntraGroupsFn,
-  previewEntraGroupFn,
-} from '@/lib/server/functions/entra'
+import { getEntraAvailabilityFn, previewEntraGroupFn } from '@/lib/server/functions/entra'
+import { EntraGroupPicker } from '@/components/admin/segments/entra-group-picker'
 import { useQuery } from '@tanstack/react-query'
 
 /**
@@ -192,16 +189,42 @@ ${raw.uncast}`}
   )
 }
 
+/**
+ * Outcome of a group dry-run, phrased so each failure points somewhere.
+ * An empty segment looks the same whether the group is empty, its
+ * members expose no address, or those addresses match no account here —
+ * this separates the three.
+ */
 function EntraGroupPreview({ result }: { result: EntraPreview }) {
   if (result.error) {
     return <p className="text-xs text-destructive">{result.error}</p>
   }
+  // Which of the two shapes this is — an empty group, or members whose
+  // addresses this app cannot see — is the whole question when a rule
+  // adds nobody, so name it rather than reporting a single zero.
   if (result.addresses === 0) {
+    const members = result.members ?? 0
     return (
-      <p className="text-xs text-muted-foreground">
-        No email addresses came back for this group. Either it has no members, or the members expose
-        no address Graph will return.
-      </p>
+      <div className="text-xs space-y-1">
+        {members === 0 ? (
+          <p className="text-destructive">
+            Graph returned <span className="font-medium">no members</span> for this group
+            {result.uncastMembers ? ` (${result.uncastMembers} without the user filter)` : ''}.
+          </p>
+        ) : (
+          <p className="text-destructive">
+            <span className="font-medium">{members}</span> members came back, but none exposed an
+            address this app can read.
+          </p>
+        )}
+        {result.attributes && members > 0 && (
+          <p className="text-muted-foreground">
+            Populated: mail {result.attributes.mail}, UPN {result.attributes.upn}, identities{' '}
+            {result.attributes.identities}, otherMails {result.attributes.otherMails}
+          </p>
+        )}
+        <EntraRawDump raw={result.raw} />
+      </div>
     )
   }
   return (
@@ -441,18 +464,12 @@ function RuleConditionRow({
       {!isPresenceOp && condition.attribute === 'entra_group' && (
         <div className="flex-1 space-y-1.5">
           <div className="flex items-start gap-2">
-            <SearchableInput
+            <EntraGroupPicker
               className="flex-1"
               value={condition.value}
-              onChange={(v) => {
-                onChange({ ...condition, value: v })
+              onChange={(groupId) => {
+                onChange({ ...condition, value: groupId })
                 setPreview(null)
-              }}
-              placeholder="Search groups by name…"
-              emptyMessage="No matching groups — you can paste the group's Object ID instead"
-              fetchOptions={async (query) => {
-                const groups = await searchEntraGroupsFn({ data: { query } })
-                return groups.map((g) => ({ value: g.id, label: g.displayName, meta: g.id }))
               }}
             />
             <Button
