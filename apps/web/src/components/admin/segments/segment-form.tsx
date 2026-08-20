@@ -152,6 +152,7 @@ interface EntraPreview {
   matched: number
   unmatchedSample: string[]
   attributes?: { mail: number; upn: number; identities: number; otherMails: number }
+  propertiesHidden?: boolean
   raw?: { cast: string; uncast: string }
   error?: string
 }
@@ -211,6 +212,23 @@ function EntraGroupPreview({ result }: { result: EntraPreview }) {
             Graph returned <span className="font-medium">no members</span> for this group
             {result.uncastMembers ? ` (${result.uncastMembers} without the user filter)` : ''}.
           </p>
+        ) : result.propertiesHidden ? (
+          // Distinct from "these people have no address": Graph returned
+          // them as bare ids, so this is the app registration's grant,
+          // not the directory's contents.
+          <div className="space-y-1">
+            <p className="text-destructive">
+              <span className="font-medium">{members}</span> members came back, but Entra hid every
+              detail about them.
+            </p>
+            <p className="text-muted-foreground">
+              The app registration can list this group but not read its members. In Entra, add the{' '}
+              <span className="font-medium text-foreground">application</span> permission{' '}
+              <code className="font-mono">User.Read.All</code> (or{' '}
+              <code className="font-mono">Directory.Read.All</code>), grant admin consent, then
+              restart the app so it requests a fresh token.
+            </p>
+          </div>
         ) : (
           <p className="text-destructive">
             <span className="font-medium">{members}</span> members came back, but none exposed an

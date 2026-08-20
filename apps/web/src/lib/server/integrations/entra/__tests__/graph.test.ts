@@ -353,6 +353,80 @@ describe('listEntraGroupMembers', () => {
   })
 })
 
+describe('members returned without readable properties', () => {
+  const PROVIDER = {
+    registrationId: 'sso',
+    label: 'Entra',
+    kind: 'entra',
+    enabled: true,
+    configured: true,
+    clientId: 'client',
+    discoveryUrl: 'https://login.microsoftonline.com/t/v2.0/.well-known/openid-configuration',
+    issuer: null,
+    tokenUrl: 'https://login.microsoftonline.com/t/oauth2/v2.0/token',
+  }
+
+  /**
+   * The exact payload a missing user-read grant produces: HTTP 200, the
+   * right member count, correct ids — and every other property nulled.
+   * It reads as "these people have no email", which sends you auditing
+   * directory attributes for a problem that is entirely on the app
+   * registration.
+   */
+  const HIDDEN_MEMBERS = [
+    {
+      id: '12d67271-c617-4e27-b75b-deff9cd2f206',
+      displayName: null,
+      mail: null,
+      userPrincipalName: null,
+      otherMails: [],
+      identities: [],
+    },
+    {
+      id: 'e8f831e8-fb58-4ce0-a404-25fbb612918c',
+      displayName: null,
+      mail: null,
+      userPrincipalName: null,
+      otherMails: [],
+      identities: [],
+    },
+  ]
+
+  it('refuses rather than reporting an empty group', async () => {
+    mockListProviders.mockResolvedValue([PROVIDER])
+    mockGetCreds.mockResolvedValue({ clientId: 'client', clientSecret: 's', discoveryUrl: '' })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'tok' }))
+      .mockResolvedValueOnce(jsonResponse({ value: HIDDEN_MEMBERS }))
+
+    // Compiling this as "no members" would evict everyone currently in
+    // the segment on the next sweep, on the strength of a permission gap.
+    await expect(getEntraGroupMemberEmails(GROUP_ID)).rejects.toThrow(/User\.Read\.All/)
+  })
+
+  it('still resolves normally when properties ARE readable', async () => {
+    mockListProviders.mockResolvedValue([PROVIDER])
+    mockGetCreds.mockResolvedValue({ clientId: 'client', clientSecret: 's', discoveryUrl: '' })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'tok' }))
+      .mockResolvedValueOnce(
+        jsonResponse({ value: [{ id: 'u1', displayName: 'A', mail: 'a@x.com' }] })
+      )
+
+    await expect(getEntraGroupMemberEmails(GROUP_ID)).resolves.toEqual(['a@x.com'])
+  })
+
+  it('a genuinely empty group is not mistaken for hidden properties', async () => {
+    mockListProviders.mockResolvedValue([PROVIDER])
+    mockGetCreds.mockResolvedValue({ clientId: 'client', clientSecret: 's', discoveryUrl: '' })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'tok' }))
+      .mockResolvedValueOnce(jsonResponse({ value: [] }))
+
+    await expect(getEntraGroupMemberEmails(GROUP_ID)).resolves.toEqual([])
+  })
+})
+
 describe('getEntraGroupMemberEmails (cached accessor)', () => {
   const PROVIDER = {
     registrationId: 'sso',

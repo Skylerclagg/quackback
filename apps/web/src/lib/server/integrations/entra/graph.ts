@@ -403,6 +403,19 @@ export async function getEntraGroupMemberEmails(groupId: string): Promise<string
   // have stored any of the forms the directory exposes.
   const emails = [...new Set(members.flatMap((m) => m.emails))]
 
+  // Members returned as bare ids means the app registration can list the
+  // group but not read it. Compiling that as "no members" would evict
+  // everyone currently in the segment on the next sweep, on the strength
+  // of a permission gap — so refuse, the same way a Graph outage does,
+  // and keep the existing membership until it is fixed.
+  if (membersHaveHiddenProperties(members)) {
+    log.error(
+      { group_id: groupId, member_count: members.length },
+      'entra group members returned without readable properties — missing User.Read.All'
+    )
+    throw new ForbiddenError('ENTRA_GRAPH_FORBIDDEN', GRAPH_USER_READ_HINT)
+  }
+
   // A group with members but no resolvable addresses matches nobody, and
   // does so silently — the segment just stays empty with no error. That
   // is the hardest shape of this feature to debug from the outside, so
@@ -560,6 +573,8 @@ export interface EntraGroupDiagnostic {
   withUpn: number
   withIdentities: number
   withOtherMails: number
+  /** Members came back as bare ids — the app can list but not read them. */
+  propertiesHidden: boolean
   /** Distinct resolved addresses. */
   emails: string[]
   /** Verbatim first-page JSON from both queries, pre-serialised. */
@@ -625,8 +640,38 @@ export async function diagnoseEntraGroup(groupId: string): Promise<EntraGroupDia
     withUpn: members.filter((m) => m.raw?.userPrincipalName).length,
     withIdentities: members.filter((m) => (m.raw?.identities?.length ?? 0) > 0).length,
     withOtherMails: members.filter((m) => (m.raw?.otherMails?.length ?? 0) > 0).length,
+    propertiesHidden: membersHaveHiddenProperties(members),
     emails: [...new Set(members.flatMap((m) => m.emails))],
     rawCast,
     rawUncast,
   }
 }
+
+/**
+ * True when Graph returned members as bare ids with every readable
+ * property nulled.
+ *
+ * This is what a missing user-read permission looks like from the
+ * outside: the group grant is enough to ENUMERATE members, so the call
+ * succeeds with 200 and the right member count, but each object comes
+ * back with `id` populated and `displayName` / `mail` /
+ * `userPrincipalName` all null rather than a 403. Indistinguishable
+ * from "these people genuinely have no address" unless you look for the
+ * pattern, and it sends you hunting through directory attributes for a
+ * problem that is entirely on the app registration.
+ */
+function membersHaveHiddenProperties(members: EntraGroupMember[]): boolean {
+  if (members.length === 0) return false
+  return members.every(
+    (m) =>
+      !m.raw?.displayName &&
+      !m.raw?.mail &&
+      !m.raw?.userPrincipalName &&
+      (m.raw?.otherMails?.length ?? 0) === 0 &&
+      (m.raw?.identities?.length ?? 0) === 0
+  )
+}
+
+/** The grant that lifts the nulling described in {@link membersHaveHiddenProperties}. */
+export const GRAPH_USER_READ_HINT =
+  'Graph returned these members as bare IDs with every property hidden, which means the app registration can list the group but not read its members. In Entra, add the APPLICATION permission "User.Read.All" (or "Directory.Read.All") to the app registration and grant admin consent, then restart the app so it requests a fresh token.'

@@ -122,6 +122,7 @@ export const previewEntraGroupFn = createServerFn({ method: 'GET' })
             otherMails: diag.withOtherMails,
           },
           uncastMembers: diag.uncastMemberCount,
+          propertiesHidden: diag.propertiesHidden,
           raw: { cast: diag.rawCast, uncast: diag.rawUncast },
         }
       }
@@ -154,6 +155,7 @@ export const previewEntraGroupFn = createServerFn({ method: 'GET' })
           otherMails: diag.withOtherMails,
         },
         uncastMembers: diag.uncastMemberCount,
+        propertiesHidden: diag.propertiesHidden,
         raw: { cast: diag.rawCast, uncast: diag.rawUncast },
       }
     } catch (error) {
