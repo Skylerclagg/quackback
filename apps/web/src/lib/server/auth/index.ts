@@ -94,15 +94,24 @@ async function createAuth() {
     await import('@/lib/server/domains/settings/identity-providers.service')
   const { buildGenericOAuthConfigs } = await import('./build-oauth-configs')
 
-  // OIDC `locale` claim: shipped by Google, Microsoft, and most generic
-  // OIDC IdPs. Pass it through so `user.locale` populates from sign-in
-  // and the segment evaluator can target on language. Wrapped as a
-  // permissive shape because each provider returns a slightly
-  // different profile envelope.
-  const mapProfileLocale = (profile: unknown): { locale: string | null } => {
-    const p = profile as { locale?: unknown } | null | undefined
+  // OIDC profile claims worth persisting beyond Better-Auth's defaults:
+  //  - `locale` so the segment evaluator can target on language;
+  //  - `given_name` / `family_name` for team-only surfaces (admin user
+  //    detail). Public display stays on `name` — the IdP display name.
+  // Wrapped as a permissive shape because each provider returns a
+  // slightly different profile envelope.
+  const mapProfileLocale = (
+    profile: unknown
+  ): { locale: string | null; givenName: string | null; familyName: string | null } => {
+    const p = profile as
+      | { locale?: unknown; given_name?: unknown; family_name?: unknown }
+      | null
+      | undefined
+    const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null)
     return {
-      locale: typeof p?.locale === 'string' && p.locale.length > 0 ? p.locale : null,
+      locale: str(p?.locale),
+      givenName: str(p?.given_name),
+      familyName: str(p?.family_name),
     }
   }
 
@@ -259,6 +268,8 @@ async function createAuth() {
     user: {
       additionalFields: {
         locale: { type: 'string', required: false, input: false },
+        givenName: { type: 'string', required: false, input: false },
+        familyName: { type: 'string', required: false, input: false },
       },
     },
 

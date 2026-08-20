@@ -46,6 +46,12 @@ export const user = pgTable(
     // BCP-47 locale claim from OIDC (e.g. "en", "en-US"); NULL for
     // sign-up paths that don't carry one (magic-link, password).
     locale: text('locale'),
+    // given_name / family_name OIDC claims, captured at signup and
+    // refreshed on every SSO sign-in. Team-only surfaces (admin user
+    // detail); every public surface keeps using `name` — the IdP's
+    // display name — so a person's legal name never leaks to the portal.
+    givenName: text('given_name'),
+    familyName: text('family_name'),
     // ISO-3166-1 alpha-2 country code captured from CDN-injected
     // headers (CF-IPCountry, X-Vercel-IP-Country, Fly-Client-IP-Country,
     // X-Country-Code) on session creation. NULL when no header is

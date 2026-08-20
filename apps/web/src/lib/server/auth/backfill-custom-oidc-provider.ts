@@ -143,4 +143,16 @@ export async function runStartupBackfills(): Promise<void> {
     resetAuth()
     await invalidateSettingsCache()
   }
+
+  // Populate given/family name from ID tokens already on disk. Outside
+  // the lock+tx above: it touches different tables, needs no auth reset,
+  // and is naturally idempotent (NULL-guarded), so a concurrent pod
+  // repeating it is harmless. Failures are logged, never fatal — a
+  // display-name nicety must not break server start.
+  try {
+    const { backfillOidcNames } = await import('./backfill-oidc-names')
+    await backfillOidcNames()
+  } catch (err) {
+    log.error({ err }, 'oidc name backfill failed')
+  }
 }

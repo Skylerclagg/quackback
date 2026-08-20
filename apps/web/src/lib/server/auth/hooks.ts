@@ -401,6 +401,29 @@ export async function handleSsoCallbackAfter(
       .set({ lastSsoSignInAt: new Date() })
       .where(eq(principalTable.userId, userIdTyped))
   })
+
+  // Refresh the team-only given/family name from the ID token on every
+  // SSO sign-in — mapProfileToUser only runs at account creation, so
+  // without this an IdP-side rename would stay stale forever. Best
+  // effort: a claim-read failure must not break the sign-in.
+  try {
+    const claims = await readSsoClaims(userIdTyped, providerId)
+    const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null)
+    const givenName = str(claims.given_name)
+    const familyName = str(claims.family_name)
+    if (givenName || familyName) {
+      const { user: userTable } = await import('@/lib/server/db')
+      await db
+        .update(userTable)
+        .set({
+          ...(givenName ? { givenName } : {}),
+          ...(familyName ? { familyName } : {}),
+        })
+        .where(eq(userTable.id, userIdTyped))
+    }
+  } catch (error) {
+    log.warn({ err: error }, 'sso name-claim sync failed')
+  }
 }
 
 /**

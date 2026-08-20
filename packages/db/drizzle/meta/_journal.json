@@ -932,6 +932,13 @@
       "when": 1785456000000,
       "tag": "0132_changelog_collections",
       "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1787184000000,
+      "tag": "0133_user_given_family_name",
+      "breakpoints": true
     }
   ]
 }

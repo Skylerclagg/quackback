@@ -694,6 +694,19 @@ export function UserDetail({
         <div className="border-t border-border/50 pt-4">
           <h3 className="text-sm font-medium mb-3">Account</h3>
           <div className="space-y-2 text-sm">
+            {/* IdP-asserted given/family name. Team-only: this pane is
+                admin-side; portal surfaces keep the display name. */}
+            {(user.givenName || user.familyName) && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <UserIcon className="h-4 w-4" />
+                <span>
+                  Full name{' '}
+                  <span className="text-foreground font-medium">
+                    {[user.givenName, user.familyName].filter(Boolean).join(' ')}
+                  </span>
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-muted-foreground">
               <CalendarIcon className="h-4 w-4" />
               <span>Joined portal {formatDate(user.joinedAt)}</span>

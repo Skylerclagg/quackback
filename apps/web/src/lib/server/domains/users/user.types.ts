@@ -156,6 +156,13 @@ export interface EngagedPost {
  */
 export interface PortalUserDetail extends PortalUserListItem {
   createdAt: Date // user.createdAt (account creation)
+  /**
+   * given_name / family_name OIDC claims. Team-only — rendered in the
+   * admin detail pane, never on portal surfaces (those use `name`, the
+   * IdP display name).
+   */
+  givenName: string | null
+  familyName: string | null
   /** All posts this user has engaged with (authored, commented, or voted on) */
   engagedPosts: EngagedPost[]
 }
