@@ -430,6 +430,36 @@ export interface EntraGroupSummary {
 }
 
 /**
+ * Look up one group's name by Object ID.
+ *
+ * A saved rule stores the Object ID, because that is what survives a
+ * rename — but a GUID tells an admin nothing when they reopen the rule
+ * a month later. Resolving the name on render keeps the stored value
+ * stable and the displayed one current. Returns null rather than
+ * throwing when the group is gone or unreadable; the caller falls back
+ * to showing the raw id.
+ */
+export async function getEntraGroupById(groupId: string): Promise<EntraGroupSummary | null> {
+  if (!ENTRA_GROUP_ID_RE.test(groupId)) return null
+  const access = await resolveEntraDirectoryAccess()
+  if (!access) return null
+
+  try {
+    const token = await getCachedGraphToken(access)
+    const res = await fetch(
+      `${GRAPH_BASE}/groups/${encodeURIComponent(groupId)}?$select=id,displayName`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!res.ok) return null
+    const group = (await res.json()) as { id?: string; displayName?: string | null }
+    return group.id ? { id: group.id, displayName: group.displayName ?? group.id } : null
+  } catch (error) {
+    log.warn({ err: error, group_id: groupId }, 'entra group name lookup failed')
+    return null
+  }
+}
+
+/**
  * Name-prefix search over the tenant's groups, for the rule-builder
  * dropdown. Uses `startswith` rather than `$search` so no
  * ConsistencyLevel header / advanced-query support is needed, and needs

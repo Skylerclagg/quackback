@@ -13,6 +13,7 @@ import { requireAuth } from './auth-helpers'
 import {
   resolveEntraDirectoryAccess,
   searchEntraGroups,
+  getEntraGroupById,
   diagnoseEntraGroup,
 } from '@/lib/server/integrations/entra/graph'
 import { db, user, sql } from '@/lib/server/db'
@@ -54,6 +55,27 @@ export const searchEntraGroupsFn = createServerFn({ method: 'GET' })
       return await searchEntraGroups(data.query)
     } catch (error) {
       log.error({ err: error }, 'entra group search failed')
+      throw error
+    }
+  })
+
+const groupByIdSchema = z.object({
+  groupId: z.string(),
+})
+
+/**
+ * Resolve a saved rule's group id back to its name, so the editor shows
+ * "Engineering" rather than a GUID. Null when the group is gone or
+ * unreadable — the caller then shows the id it has.
+ */
+export const getEntraGroupByIdFn = createServerFn({ method: 'GET' })
+  .validator(groupByIdSchema)
+  .handler(async ({ data }) => {
+    try {
+      await requireAuth({ roles: ['admin', 'member'] })
+      return await getEntraGroupById(data.groupId)
+    } catch (error) {
+      log.error({ err: error }, 'entra group lookup failed')
       throw error
     }
   })
