@@ -43,24 +43,117 @@ export interface EntraDirectoryAccess {
 export interface EntraGroupMember {
   id: string
   displayName: string | null
-  /**
-   * Best-known email: `mail` attribute first, then the emailAddress
-   * sign-in identity (self-registered External ID accounts often have
-   * no mail attribute at all — the fallback the portal-cloud reference
-   * uses for exactly this reason). Null when neither exists, e.g. a
-   * nested group or a device object.
-   */
+  /** Primary address for display/logging; null when none resolve. */
   email: string | null
+  /**
+   * Every address this member could have signed in under. Matching uses
+   * the whole set — see {@link resolveMemberEmails} for why one
+   * attribute isn't enough.
+   */
+  emails: string[]
 }
 
 interface GraphUserRow {
   id?: string
   displayName?: string | null
   mail?: string | null
+  userPrincipalName?: string | null
+  otherMails?: string[] | null
   identities?: Array<{
     signInType?: string | null
     issuerAssignedId?: string | null
   }> | null
+}
+
+/**
+ * Recover a B2B guest's real address from their synthetic UPN.
+ *
+ * Entra rewrites an invited user's email into the host tenant's
+ * namespace by replacing `@` with `_` and appending a marker:
+ *
+ *   alice@contoso.com → alice_contoso.com#EXT#@host.onmicrosoft.com
+ *
+ * The address is therefore still in there, just mangled. Splitting on
+ * the LAST underscore is unambiguous because only the `@` is rewritten
+ * — dots and any underscores in the original local part survive
+ * untouched, and an email domain cannot contain an underscore.
+ *
+ * This matters wherever a tenant invites its users rather than hosting
+ * them: every member arrives as a guest, and reading only `mail` /
+ * `otherMails` (frequently null for guests) resolves the whole group to
+ * nothing.
+ */
+export function decodeExternalUpn(upn: string): string | null {
+  const mangled = upn.split('#EXT#')[0]
+  const split = mangled.lastIndexOf('_')
+  if (split <= 0) return null
+  const local = mangled.slice(0, split)
+  const domain = mangled.slice(split + 1)
+  // A real domain has a dot; without one this isn't the encoding we think.
+  if (!local || !domain.includes('.')) return null
+  return `${local}@${domain}`
+}
+
+/**
+ * Every address a member could plausibly have signed in to Quackback
+ * with, lowercased and deduped.
+ *
+ * Returning all of them rather than picking one is deliberate. The
+ * directory and the app can disagree about a person's address, and
+ * which side is "right" varies by tenant shape:
+ *
+ *  - `mail` is the canonical attribute, but is populated only for users
+ *    with an Exchange Online mailbox.
+ *  - The `emailAddress` sign-in identity is how self-registered
+ *    External ID accounts carry theirs.
+ *  - `otherMails` is where an invited guest's real address often lives.
+ *  - `userPrincipalName` is the actual sign-in name in a workforce
+ *    tenant, and for an invited guest it is a synthetic value that
+ *    still encodes the address they were invited by.
+ *
+ * Meanwhile the app stores whatever the `email` claim held at sign-in,
+ * which for a guest may be the external address OR the tenant-namespaced
+ * one. Matching on the union means the segment resolves correctly
+ * whichever pair happens to line up, instead of depending on a guess
+ * about which single attribute is authoritative.
+ */
+export function resolveMemberEmails(row: GraphUserRow): string[] {
+  const found: string[] = []
+  const add = (v: unknown): void => {
+    if (typeof v !== 'string') return
+    const trimmed = v.trim().toLowerCase()
+    // `#EXT#` values are namespace artefacts, not addresses; the decoded
+    // form is added separately below.
+    if (!trimmed.includes('@') || trimmed.includes('#ext#')) return
+    if (!found.includes(trimmed)) found.push(trimmed)
+  }
+
+  add(row.mail)
+  add(row.identities?.find((i) => i.signInType === 'emailAddress')?.issuerAssignedId)
+  for (const other of row.otherMails ?? []) add(other)
+
+  const upn = typeof row.userPrincipalName === 'string' ? row.userPrincipalName : null
+  if (upn) {
+    // A self-service signup gets a GUID for a UPN
+    // (`<guid>@tenant.onmicrosoft.com`) — a directory handle with no
+    // relationship to any address. Adding it would put a value in the
+    // match list that can never match, so skip it and let `mail` or the
+    // sign-in identity speak for these users.
+    if (!isSyntheticUpn(upn)) add(upn)
+    if (upn.includes('#EXT#')) add(decodeExternalUpn(upn))
+  }
+
+  return found
+}
+
+/** A UPN whose local part is a bare GUID identifies the directory object, not a person. */
+function isSyntheticUpn(upn: string): boolean {
+  return ENTRA_GROUP_ID_RE.test(upn.split('@')[0] ?? '')
+}
+
+/** Primary address for display — the first candidate, or null when none resolve. */
+export function resolveMemberEmail(row: GraphUserRow): string | null {
+  return resolveMemberEmails(row)[0] ?? null
 }
 
 interface GraphPage {
@@ -214,8 +307,13 @@ export async function listEntraGroupMembers(
 
   const members: EntraGroupMember[] = []
   let url: string | null =
-    `${GRAPH_BASE}/groups/${encodeURIComponent(groupId)}/members` +
-    `?$select=id,displayName,mail,identities&$top=999`
+    `${GRAPH_BASE}/groups/${encodeURIComponent(groupId)}/members/microsoft.graph.user` +
+    `?$select=id,displayName,mail,userPrincipalName,otherMails,identities&$top=999`
+  // The `/microsoft.graph.user` cast restricts a polymorphic
+  // directoryObject collection to user objects, so nested groups,
+  // devices and service principals are dropped server-side instead of
+  // arriving as members with no address, and the $select applies to a
+  // single known type.
 
   for (let page = 0; url !== null; page++) {
     if (page >= MAX_PAGES) {
@@ -228,10 +326,8 @@ export async function listEntraGroupMembers(
       members.push({
         id: row.id,
         displayName: row.displayName ?? null,
-        email:
-          row.mail ??
-          row.identities?.find((i) => i.signInType === 'emailAddress')?.issuerAssignedId ??
-          null,
+        email: resolveMemberEmail(row),
+        emails: resolveMemberEmails(row),
       })
     }
     url = data['@odata.nextLink'] ?? null
@@ -300,7 +396,26 @@ export async function getEntraGroupMemberEmails(groupId: string): Promise<string
 
   const token = await getCachedGraphToken(access)
   const members = await listEntraGroupMembers(token, groupId)
-  const emails = members.map((m) => m.email?.toLowerCase()).filter((e): e is string => !!e)
+  // Union of every candidate address, not one per member: the app may
+  // have stored any of the forms the directory exposes.
+  const emails = [...new Set(members.flatMap((m) => m.emails))]
+
+  // A group with members but no resolvable addresses matches nobody, and
+  // does so silently — the segment just stays empty with no error. That
+  // is the hardest shape of this feature to debug from the outside, so
+  // say it plainly in the logs.
+  const withAddress = members.filter((m) => m.emails.length > 0).length
+  if (members.length > 0 && emails.length === 0) {
+    log.warn(
+      { group_id: groupId, member_count: members.length },
+      'entra group has members but none expose a usable email — segment will match nobody'
+    )
+  } else if (withAddress < members.length) {
+    log.info(
+      { group_id: groupId, resolved: withAddress, total: members.length },
+      'some entra group members have no usable email (nested groups, devices, or no mail/UPN)'
+    )
+  }
 
   groupEmailCache.set(groupId, { emails, expiresAt: Date.now() + GROUP_CACHE_TTL_MS })
   return emails

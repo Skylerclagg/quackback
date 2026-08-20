@@ -22,6 +22,9 @@ const {
   isEntraProvider,
   getEntraGroupMemberEmails,
   searchEntraGroups,
+  resolveMemberEmail,
+  resolveMemberEmails,
+  decodeExternalUpn,
   __clearEntraCaches,
 } = await import('../graph')
 
@@ -125,6 +128,128 @@ describe('isEntraProvider', () => {
   })
 })
 
+describe('resolveMemberEmail — workforce vs external tenants', () => {
+  it('prefers mail when present', () => {
+    expect(resolveMemberEmail({ mail: 'a@x.com', userPrincipalName: 'upn@x.com' })).toBe('a@x.com')
+  })
+
+  // The regression this pins: in a workforce tenant `mail` is populated
+  // only for mailbox-holders, so a large share of real users arrive with
+  // mail=null. Without the UPN fallback they resolved to null, dropped
+  // out of the email list, and the segment matched nobody.
+  it('falls back to userPrincipalName when the user has no mailbox', () => {
+    expect(resolveMemberEmail({ mail: null, userPrincipalName: 'nomailbox@x.com' })).toBe(
+      'nomailbox@x.com'
+    )
+  })
+
+  it('prefers the emailAddress identity over the UPN', () => {
+    expect(
+      resolveMemberEmail({
+        mail: null,
+        userPrincipalName: 'upn@x.com',
+        identities: [{ signInType: 'emailAddress', issuerAssignedId: 'real@x.com' }],
+      })
+    ).toBe('real@x.com')
+  })
+
+  it('uses otherMails for a guest before falling to their synthetic UPN', () => {
+    expect(
+      resolveMemberEmail({
+        mail: null,
+        otherMails: ['guest@contoso.com'],
+        userPrincipalName: 'guest_contoso.com#EXT#@tenant.onmicrosoft.com',
+      })
+    ).toBe('guest@contoso.com')
+  })
+
+  it('decodes a guest UPN rather than discarding it', () => {
+    // The raw #EXT# value is never usable, but it still encodes the
+    // address the person was invited by — which is what the app is
+    // likely to have stored.
+    expect(
+      resolveMemberEmail({
+        mail: null,
+        userPrincipalName: 'guest_contoso.com#EXT#@tenant.onmicrosoft.com',
+      })
+    ).toBe('guest@contoso.com')
+  })
+
+  it('returns null for a member object with no address at all', () => {
+    expect(resolveMemberEmail({ displayName: 'Nested group' })).toBeNull()
+  })
+
+  it('ignores values that are not addresses', () => {
+    expect(resolveMemberEmail({ mail: 'not-an-email', userPrincipalName: null })).toBeNull()
+  })
+})
+
+describe('resolveMemberEmails — union matching', () => {
+  it('returns every distinct address a member could have signed in under', () => {
+    expect(
+      resolveMemberEmails({
+        mail: 'Primary@X.com',
+        otherMails: ['alt@x.com'],
+        userPrincipalName: 'upn@x.com',
+      })
+    ).toEqual(['primary@x.com', 'alt@x.com', 'upn@x.com'])
+  })
+
+  // Self-service signups get `<guid>@tenant.onmicrosoft.com` for a UPN.
+  // It can never match a stored address, so it must not enter the list.
+  it('drops a GUID UPN while keeping the real address', () => {
+    expect(
+      resolveMemberEmails({
+        mail: null,
+        userPrincipalName: 'dfc434ff-3409-4375-a148-c786d196eb32@tenant.onmicrosoft.com',
+        identities: [{ signInType: 'emailAddress', issuerAssignedId: 'real@x.com' }],
+      })
+    ).toEqual(['real@x.com'])
+  })
+
+  it('includes both the raw mail and the decoded guest address', () => {
+    expect(
+      resolveMemberEmails({
+        mail: 'invited@contoso.com',
+        userPrincipalName: 'alice_contoso.com#EXT#@tenant.onmicrosoft.com',
+      })
+    ).toEqual(['invited@contoso.com', 'alice@contoso.com'])
+  })
+
+  it('never emits a raw #EXT# value', () => {
+    const emails = resolveMemberEmails({
+      userPrincipalName: 'alice_contoso.com#EXT#@tenant.onmicrosoft.com',
+    })
+    expect(emails.some((e) => e.includes('#ext#'))).toBe(false)
+    expect(emails).toContain('alice@contoso.com')
+  })
+
+  it('is empty for a member with no usable address', () => {
+    expect(resolveMemberEmails({ displayName: 'Device' })).toEqual([])
+  })
+})
+
+describe('decodeExternalUpn', () => {
+  it('splits on the last underscore so the local part keeps its own', () => {
+    expect(decodeExternalUpn('first_last_example.org#EXT#@tenant.onmicrosoft.com')).toBe(
+      'first_last@example.org'
+    )
+  })
+
+  it('preserves dots in the local part', () => {
+    expect(decodeExternalUpn('first.last_example.org#EXT#@tenant.onmicrosoft.com')).toBe(
+      'first.last@example.org'
+    )
+  })
+
+  it('returns null when the shape is not the guest encoding', () => {
+    expect(decodeExternalUpn('nounderscore#EXT#@tenant.onmicrosoft.com')).toBeNull()
+    expect(decodeExternalUpn('_leading#EXT#@tenant.onmicrosoft.com')).toBeNull()
+    // No dot in the would-be domain -> not the encoding.
+    expect(decodeExternalUpn('alice_localhost#EXT#@tenant.onmicrosoft.com')).toBeNull()
+  })
+})
+
 describe('getGraphToken', () => {
   it('exchanges client credentials for a token', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: 'tok' }))
@@ -188,6 +313,7 @@ describe('listEntraGroupMembers', () => {
     )
     const members = await listEntraGroupMembers('tok', GROUP_ID)
     expect(members[0].email).toBe('real@x.com')
+    expect(members[0].emails).toContain('real@x.com')
   })
 
   it('reports null email for non-user member objects (nested groups, devices)', async () => {
@@ -196,6 +322,7 @@ describe('listEntraGroupMembers', () => {
     )
     const members = await listEntraGroupMembers('tok', GROUP_ID)
     expect(members[0].email).toBeNull()
+    expect(members[0].emails).toEqual([])
   })
 
   it('retries a throttled page honoring Retry-After, then succeeds', async () => {
