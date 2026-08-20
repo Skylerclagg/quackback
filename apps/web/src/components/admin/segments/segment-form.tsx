@@ -34,7 +34,11 @@ import type { FieldOperator } from '@/lib/shared/segment-builtin-fields'
 import { SearchableInput } from '@/components/ui/searchable-input'
 import { SegmentImportSection } from '@/components/admin/segments/segment-import-section'
 import { fetchSegmentAttributeValuesFn } from '@/lib/server/functions/admin'
-import { getEntraAvailabilityFn, searchEntraGroupsFn } from '@/lib/server/functions/entra'
+import {
+  getEntraAvailabilityFn,
+  searchEntraGroupsFn,
+  previewEntraGroupFn,
+} from '@/lib/server/functions/entra'
 import { useQuery } from '@tanstack/react-query'
 
 /**
@@ -144,6 +148,56 @@ function getOperatorsForAttribute(
   ]
 }
 
+interface EntraPreview {
+  addresses: number
+  matched: number
+  unmatchedSample: string[]
+  error?: string
+}
+
+/**
+ * Outcome of a group dry-run, phrased so each failure points somewhere.
+ * An empty segment looks the same whether the group is empty, its
+ * members expose no address, or those addresses match no account here —
+ * this separates the three.
+ */
+function EntraGroupPreview({ result }: { result: EntraPreview }) {
+  if (result.error) {
+    return <p className="text-xs text-destructive">{result.error}</p>
+  }
+  if (result.addresses === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No email addresses came back for this group. Either it has no members, or the members expose
+        no address Graph will return.
+      </p>
+    )
+  }
+  return (
+    <div className="text-xs space-y-1">
+      <p className={result.matched === 0 ? 'text-destructive' : 'text-muted-foreground'}>
+        <span className="font-medium text-foreground">{result.matched}</span> of{' '}
+        <span className="font-medium text-foreground">{result.addresses}</span> group addresses
+        match an existing account
+        {result.matched === 0 && ' — this rule would add nobody'}.
+      </p>
+      {result.unmatchedSample.length > 0 && (
+        <details className="text-muted-foreground">
+          <summary className="cursor-pointer">Examples that didn&apos;t match</summary>
+          <ul className="mt-1 space-y-0.5 font-mono">
+            {result.unmatchedSample.map((email) => (
+              <li key={email}>{email}</li>
+            ))}
+          </ul>
+          <p className="mt-1 font-sans">
+            These people either have no account here yet, or signed in under a different address.
+          </p>
+        </details>
+      )}
+    </div>
+  )
+}
+
 function RuleConditionRow({
   condition,
   onChange,
@@ -161,6 +215,25 @@ function RuleConditionRow({
     : null
   const builtinField = BUILTIN_FIELD_MAP.get(condition.attribute)
   const entraAvailable = useEntraAvailability()
+  const [preview, setPreview] = useState<EntraPreview | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  const runPreview = async () => {
+    setPreviewing(true)
+    try {
+      const result = await previewEntraGroupFn({ data: { groupId: condition.value } })
+      setPreview(result)
+    } catch (error) {
+      setPreview({
+        addresses: 0,
+        matched: 0,
+        unmatchedSample: [],
+        error: error instanceof Error ? error.message : 'Could not reach Microsoft Graph.',
+      })
+    } finally {
+      setPreviewing(false)
+    }
+  }
 
   const operators = getOperatorsForAttribute(condition.attribute, customAttributes)
 
@@ -334,17 +407,35 @@ function RuleConditionRow({
           writes the GUID. Pasting a GUID directly still works — and is
           the fallback when Graph search is denied. */}
       {!isPresenceOp && condition.attribute === 'entra_group' && (
-        <SearchableInput
-          className="flex-1"
-          value={condition.value}
-          onChange={(v) => onChange({ ...condition, value: v })}
-          placeholder="Search groups by name…"
-          emptyMessage="No matching groups — you can paste the group's Object ID instead"
-          fetchOptions={async (query) => {
-            const groups = await searchEntraGroupsFn({ data: { query } })
-            return groups.map((g) => ({ value: g.id, label: g.displayName, meta: g.id }))
-          }}
-        />
+        <div className="flex-1 space-y-1.5">
+          <div className="flex items-start gap-2">
+            <SearchableInput
+              className="flex-1"
+              value={condition.value}
+              onChange={(v) => {
+                onChange({ ...condition, value: v })
+                setPreview(null)
+              }}
+              placeholder="Search groups by name…"
+              emptyMessage="No matching groups — you can paste the group's Object ID instead"
+              fetchOptions={async (query) => {
+                const groups = await searchEntraGroupsFn({ data: { query } })
+                return groups.map((g) => ({ value: g.id, label: g.displayName, meta: g.id }))
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 text-xs"
+              disabled={!condition.value || previewing}
+              onClick={runPreview}
+            >
+              {previewing ? 'Testing…' : 'Test'}
+            </Button>
+          </div>
+          {preview && <EntraGroupPreview result={preview} />}
+        </div>
       )}
       {!isPresenceOp && !allowedValues && !isBoolean && useSearchableInput && (
         <SearchableInput
