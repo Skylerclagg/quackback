@@ -149,9 +149,13 @@ function getOperatorsForAttribute(
 }
 
 interface EntraPreview {
+  members?: number
+  uncastMembers?: number
   addresses: number
   matched: number
   unmatchedSample: string[]
+  attributes?: { mail: number; upn: number; identities: number; otherMails: number }
+  raw?: { cast: string; uncast: string }
   error?: string
 }
 
@@ -161,6 +165,33 @@ interface EntraPreview {
  * members expose no address, or those addresses match no account here —
  * this separates the three.
  */
+
+/**
+ * Verbatim first page from Graph, collapsed by default.
+ *
+ * Shown because every wrong guess about this integration has come from
+ * inferring the response shape instead of reading it. Contains real
+ * directory data, so it is admin-only, capped at three members, and
+ * deliberately something to review before sharing.
+ */
+function EntraRawDump({ raw }: { raw?: { cast: string; uncast: string } }) {
+  if (!raw) return null
+  return (
+    <details className="text-muted-foreground">
+      <summary className="cursor-pointer">
+        Raw Graph response (contains real data — redact before sharing)
+      </summary>
+      <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted/50 p-2 text-[10px] leading-relaxed">
+        {`— with user filter —
+${raw.cast}
+
+— without user filter —
+${raw.uncast}`}
+      </pre>
+    </details>
+  )
+}
+
 function EntraGroupPreview({ result }: { result: EntraPreview }) {
   if (result.error) {
     return <p className="text-xs text-destructive">{result.error}</p>
@@ -181,6 +212,7 @@ function EntraGroupPreview({ result }: { result: EntraPreview }) {
         match an existing account
         {result.matched === 0 && ' — this rule would add nobody'}.
       </p>
+      <EntraRawDump raw={result.raw} />
       {result.unmatchedSample.length > 0 && (
         <details className="text-muted-foreground">
           <summary className="cursor-pointer">Examples that didn&apos;t match</summary>

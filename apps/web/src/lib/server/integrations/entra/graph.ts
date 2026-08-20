@@ -51,6 +51,8 @@ export interface EntraGroupMember {
    * attribute isn't enough.
    */
   emails: string[]
+  /** Raw Graph row, retained only for the admin diagnostic. */
+  raw?: GraphUserRow
 }
 
 interface GraphUserRow {
@@ -328,6 +330,7 @@ export async function listEntraGroupMembers(
         displayName: row.displayName ?? null,
         email: resolveMemberEmail(row),
         emails: resolveMemberEmails(row),
+        raw: row,
       })
     }
     url = data['@odata.nextLink'] ?? null
@@ -512,5 +515,88 @@ async function fetchGraphPage(token: string, url: string, groupId: string): Prom
     const delayMs =
       Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2 ** (attempt - 1) * 1000
     await new Promise((resolve) => setTimeout(resolve, delayMs))
+  }
+}
+
+export interface EntraGroupDiagnostic {
+  /** Member objects Graph returned (after the user-type cast). */
+  memberCount: number
+  /** Same query WITHOUT the user-type cast, to isolate the cast itself. */
+  uncastMemberCount: number
+  /** How many exposed at least one usable address. */
+  withAddress: number
+  /** Per-attribute presence, to show WHICH field the tenant populates. */
+  withMail: number
+  withUpn: number
+  withIdentities: number
+  withOtherMails: number
+  /** Distinct resolved addresses. */
+  emails: string[]
+  /** Verbatim first-page JSON from both queries, pre-serialised. */
+  rawCast: string
+  rawUncast: string
+}
+
+/** First page of a Graph URL, verbatim — no parsing, no interpretation. */
+async function fetchRawPage(token: string, url: string): Promise<string> {
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const body = (await res.json().catch(() => null)) as unknown
+    return JSON.stringify({ status: res.status, body }, null, 2)
+  } catch (error) {
+    return JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/**
+ * Uncached, attribute-level view of what Graph actually returns for a
+ * group, including the verbatim first page.
+ *
+ * The email-only path reports one number, which cannot distinguish an
+ * empty group from one whose members Graph returns without the
+ * attribute carrying their address — the difference between "nobody is
+ * in this group" and "this app cannot see their addresses". This names
+ * which of those it is, and runs the query both WITH and WITHOUT the
+ * `microsoft.graph.user` cast so a difference between them implicates
+ * the cast rather than the directory.
+ */
+export async function diagnoseEntraGroup(groupId: string): Promise<EntraGroupDiagnostic> {
+  const access = await resolveEntraDirectoryAccess()
+  if (!access) {
+    throw new ValidationError(
+      'ENTRA_NOT_CONFIGURED',
+      'No enabled Entra identity provider is configured.'
+    )
+  }
+  const token = await getCachedGraphToken(access)
+  const members = await listEntraGroupMembers(token, groupId)
+
+  const select = '$select=id,displayName,mail,userPrincipalName,otherMails,identities'
+  const base = `${GRAPH_BASE}/groups/${encodeURIComponent(groupId)}/members`
+  const [rawCast, rawUncast] = await Promise.all([
+    fetchRawPage(token, `${base}/microsoft.graph.user?${select}&$top=3`),
+    fetchRawPage(token, `${base}?${select}&$top=3`),
+  ])
+
+  const countOf = (raw: string): number => {
+    try {
+      const parsed = JSON.parse(raw) as { body?: { value?: unknown[] } }
+      return Array.isArray(parsed.body?.value) ? parsed.body.value.length : 0
+    } catch {
+      return 0
+    }
+  }
+
+  return {
+    memberCount: members.length,
+    uncastMemberCount: countOf(rawUncast),
+    withAddress: members.filter((m) => m.emails.length > 0).length,
+    withMail: members.filter((m) => m.raw?.mail).length,
+    withUpn: members.filter((m) => m.raw?.userPrincipalName).length,
+    withIdentities: members.filter((m) => (m.raw?.identities?.length ?? 0) > 0).length,
+    withOtherMails: members.filter((m) => (m.raw?.otherMails?.length ?? 0) > 0).length,
+    emails: [...new Set(members.flatMap((m) => m.emails))],
+    rawCast,
+    rawUncast,
   }
 }

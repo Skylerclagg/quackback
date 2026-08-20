@@ -13,7 +13,7 @@ import { requireAuth } from './auth-helpers'
 import {
   resolveEntraDirectoryAccess,
   searchEntraGroups,
-  getEntraGroupMemberEmails,
+  diagnoseEntraGroup,
 } from '@/lib/server/integrations/entra/graph'
 import { db, user, sql } from '@/lib/server/db'
 import { logger } from '@/lib/server/logger'
@@ -84,10 +84,24 @@ export const previewEntraGroupFn = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     try {
       await requireAuth({ roles: ['admin'] })
-      const emails = await getEntraGroupMemberEmails(data.groupId)
+      const diag = await diagnoseEntraGroup(data.groupId)
+      const emails = diag.emails
 
       if (emails.length === 0) {
-        return { addresses: 0, matched: 0, unmatchedSample: [] as string[] }
+        return {
+          members: diag.memberCount,
+          addresses: 0,
+          matched: 0,
+          unmatchedSample: [] as string[],
+          attributes: {
+            mail: diag.withMail,
+            upn: diag.withUpn,
+            identities: diag.withIdentities,
+            otherMails: diag.withOtherMails,
+          },
+          uncastMembers: diag.uncastMemberCount,
+          raw: { cast: diag.rawCast, uncast: diag.rawUncast },
+        }
       }
 
       // Mirror of the evaluator's predicate (segment.evaluation.ts).
@@ -105,11 +119,20 @@ export const previewEntraGroupFn = createServerFn({ method: 'GET' })
       const unmatched = emails.filter((e) => !matchedSet.has(e))
 
       return {
+        members: diag.memberCount,
         addresses: emails.length,
         matched: matchedSet.size,
         // Enough to spot a pattern (wrong domain, wrong namespace)
         // without dumping a directory into the browser.
         unmatchedSample: unmatched.slice(0, 5),
+        attributes: {
+          mail: diag.withMail,
+          upn: diag.withUpn,
+          identities: diag.withIdentities,
+          otherMails: diag.withOtherMails,
+        },
+        uncastMembers: diag.uncastMemberCount,
+        raw: { cast: diag.rawCast, uncast: diag.rawUncast },
       }
     } catch (error) {
       log.error({ err: error }, 'entra group preview failed')
