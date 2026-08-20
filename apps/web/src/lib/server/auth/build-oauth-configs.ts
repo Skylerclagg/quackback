@@ -28,6 +28,34 @@ import type { IdentityProvider } from '@/lib/server/domains/settings/identity-pr
  */
 export const DEFAULT_OIDC_SCOPES = ['openid', 'email', 'profile'] as const
 
+/**
+ * Scopes the app cannot function without, unioned into every provider's
+ * list even when an explicit one is stored.
+ *
+ * `openid` makes the exchange OIDC at all. `profile` carries the name
+ * claims: `user.name` is NOT NULL and every surface renders it, and
+ * `given_name` / `family_name` ride the same scope. A stored scope
+ * string that omits either — easy to inherit, since the legacy
+ * custom-oidc credential carried a free-text `scopes` field that the
+ * provider editor no longer exposes for review — yields an IdP response
+ * the app can't build a user from. Adding them back is corrective, not
+ * an override of a deliberate choice.
+ */
+const REQUIRED_OIDC_SCOPES = ['openid', 'profile'] as const
+
+/** Configured scopes (whitespace-separated) unioned with the required minimum, order-stable. */
+export function resolveScopes(configured: string | null | undefined): string[] {
+  const parsed = configured ? configured.split(/\s+/).filter(Boolean) : [...DEFAULT_OIDC_SCOPES]
+  const seen = new Set(parsed)
+  for (const required of REQUIRED_OIDC_SCOPES) {
+    if (!seen.has(required)) {
+      parsed.push(required)
+      seen.add(required)
+    }
+  }
+  return parsed
+}
+
 /** A single entry in the genericOAuth plugin's `config` array. */
 export interface GenericOAuthConfig {
   providerId: string
@@ -123,9 +151,7 @@ export async function buildGenericOAuthConfigs({
       ...(discoveryUrl ? { discoveryUrl } : {}),
       ...(authorizationUrl ? { authorizationUrl } : {}),
       ...(tokenUrl ? { tokenUrl } : {}),
-      scopes: provider.scopes
-        ? provider.scopes.split(/\s+/).filter(Boolean)
-        : [...DEFAULT_OIDC_SCOPES],
+      scopes: resolveScopes(provider.scopes),
       // PKCE on every provider. OAuth 2.1 IdPs require code_challenge and
       // reject without it; RFC 7636 §5 makes the params backwards-compatible
       // (IdPs without PKCE support simply ignore them).
