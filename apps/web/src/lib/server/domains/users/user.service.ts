@@ -18,6 +18,7 @@ import {
   ilike,
   inArray,
   isNull,
+  ne,
   desc,
   asc,
   sql,
@@ -163,8 +164,24 @@ export async function listPortalUsers(
       .groupBy(votes.principalId)
       .as('vote_counts')
 
-    // Build conditions array - filter for role='user' (portal users only)
-    const conditions = [eq(principal.role, 'user')]
+    // Portal users only (role='user') — EXCEPT when filtering by segment.
+    //
+    // Segment membership is deliberately open to any human principal,
+    // teammates included (see segment.evaluation.ts), and the member
+    // count on the segments page counts every user_segments row. So a
+    // role='user' filter here made the two disagree: a segment would
+    // report N members and then list fewer, with the admins and members
+    // silently missing from the very segment they belong to.
+    //
+    // Widened by principal TYPE rather than by dropping the role
+    // condition: service principals default to role='member', so
+    // dropping it would leak API keys and integrations into a list of
+    // people. Anonymous visitors can hold segment rows too, and stay
+    // governed by `includeAnonymous` below.
+    const filteringBySegment = Boolean(segmentIds && segmentIds.length > 0)
+    const conditions = filteringBySegment
+      ? [ne(principal.type, 'service')]
+      : [eq(principal.role, 'user')]
 
     // Exclude anonymous users by default (principal.type='anonymous')
     if (!includeAnonymous) {

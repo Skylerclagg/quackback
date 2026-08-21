@@ -16,17 +16,17 @@ import type { PrincipalId } from '@quackback/ids'
 
 // --- Hoisted mock state (available inside vi.mock factories) ---
 
-const { mockIlike, mockEq, mockInArray, mockSql, mockOr, mockAnd, selectCallCount } = vi.hoisted(
-  () => ({
+const { mockIlike, mockEq, mockNe, mockInArray, mockSql, mockOr, mockAnd, selectCallCount } =
+  vi.hoisted(() => ({
     mockIlike: vi.fn(() => 'ilike_result'),
     mockEq: vi.fn(() => 'eq_result'),
+    mockNe: vi.fn(() => 'ne_result'),
     mockInArray: vi.fn(() => 'inArray_result'),
     mockSql: vi.fn(() => ({ as: vi.fn().mockReturnValue('mock_sql_result') })),
     mockOr: vi.fn((...args: unknown[]) => args),
     mockAnd: vi.fn((...args: unknown[]) => args),
     selectCallCount: { count: 0 },
-  })
-)
+  }))
 
 // Mock user data that the query chain resolves to
 const mockUserRows = [
@@ -94,6 +94,7 @@ vi.mock('@/lib/server/db', () => ({
     update: vi.fn(),
   },
   eq: mockEq,
+  ne: mockNe,
   and: mockAnd,
   or: mockOr,
   ilike: mockIlike,
@@ -106,6 +107,7 @@ vi.mock('@/lib/server/db', () => ({
     id: 'principal.id',
     userId: 'principal.user_id',
     role: 'principal.role',
+    type: 'principal.type',
     createdAt: 'principal.created_at',
   },
   user: {
@@ -242,6 +244,42 @@ describe('listPortalUsers', () => {
     })
 
     expect(mockInArray).toHaveBeenCalled()
+  })
+
+  it('includes team members when filtering by segment', async () => {
+    // Segments are open to admins and members, and the segments page
+    // counts every membership row regardless of role. Restricting the
+    // list to role='user' made the two disagree: the segment reported N
+    // members and then listed fewer, with teammates missing from the
+    // segment they belong to.
+    const { listPortalUsers } = await import('../user.service')
+    await listPortalUsers({
+      segmentIds: ['seg_123' as unknown as import('@quackback/ids').SegmentId],
+    })
+
+    expect(mockEq).not.toHaveBeenCalledWith('principal.role', 'user')
+    expect(mockNe).toHaveBeenCalledWith('principal.type', 'service')
+  })
+
+  it('excludes service principals when the segment filter widens the role', async () => {
+    // Service principals default to role='member', so widening by
+    // dropping the role condition alone would list API keys and
+    // integrations as if they were people.
+    const { listPortalUsers } = await import('../user.service')
+    await listPortalUsers({
+      segmentIds: ['seg_123' as unknown as import('@quackback/ids').SegmentId],
+      includeAnonymous: true,
+    })
+
+    expect(mockNe).toHaveBeenCalledWith('principal.type', 'service')
+  })
+
+  it('still restricts to portal users when no segment filter is applied', async () => {
+    const { listPortalUsers } = await import('../user.service')
+    await listPortalUsers({})
+
+    expect(mockEq).toHaveBeenCalledWith('principal.role', 'user')
+    expect(mockNe).not.toHaveBeenCalledWith('principal.type', 'service')
   })
 
   it('should use sql for custom attribute eq filter', async () => {
