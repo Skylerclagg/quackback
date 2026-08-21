@@ -43,6 +43,13 @@ export interface EntraDirectoryAccess {
 export interface EntraGroupMember {
   id: string
   displayName: string | null
+  /**
+   * Directory name parts, kept so an account whose IdP never sent
+   * `given_name` / `family_name` claims can still be named. See
+   * profile-sync.ts.
+   */
+  givenName: string | null
+  familyName: string | null
   /** Primary address for display/logging; null when none resolve. */
   email: string | null
   /**
@@ -58,6 +65,9 @@ export interface EntraGroupMember {
 interface GraphUserRow {
   id?: string
   displayName?: string | null
+  /** Directory first name. Graph spells the surname `surname`, not `familyName`. */
+  givenName?: string | null
+  surname?: string | null
   mail?: string | null
   userPrincipalName?: string | null
   otherMails?: string[] | null
@@ -310,7 +320,7 @@ export async function listEntraGroupMembers(
   const members: EntraGroupMember[] = []
   let url: string | null =
     `${GRAPH_BASE}/groups/${encodeURIComponent(groupId)}/members/microsoft.graph.user` +
-    `?$select=id,displayName,mail,userPrincipalName,otherMails,identities&$top=999`
+    `?$select=id,displayName,givenName,surname,mail,userPrincipalName,otherMails,identities&$top=999`
   // The `/microsoft.graph.user` cast restricts a polymorphic
   // directoryObject collection to user objects, so nested groups,
   // devices and service principals are dropped server-side instead of
@@ -328,6 +338,8 @@ export async function listEntraGroupMembers(
       members.push({
         id: row.id,
         displayName: row.displayName ?? null,
+        givenName: row.givenName ?? null,
+        familyName: row.surname ?? null,
         email: resolveMemberEmail(row),
         emails: resolveMemberEmails(row),
         raw: row,
@@ -415,6 +427,14 @@ export async function getEntraGroupMemberEmails(groupId: string): Promise<string
     )
     throw new ForbiddenError('ENTRA_GRAPH_FORBIDDEN', GRAPH_USER_READ_HINT)
   }
+
+  // The response that resolves membership also carries the names, and
+  // for a tenant that emits no name claims it is the only place they
+  // exist. Reached only on a cache miss, so at most once per group per
+  // TTL, and deliberately awaited: it must finish before the sweep can
+  // act on the membership it just computed. Never throws.
+  const { syncDirectoryProfilesSafely } = await import('./profile-sync')
+  await syncDirectoryProfilesSafely(members, groupId)
 
   // A group with members but no resolvable addresses matches nobody, and
   // does so silently — the segment just stays empty with no error. That
@@ -616,7 +636,8 @@ export async function diagnoseEntraGroup(groupId: string): Promise<EntraGroupDia
   const token = await getCachedGraphToken(access)
   const members = await listEntraGroupMembers(token, groupId)
 
-  const select = '$select=id,displayName,mail,userPrincipalName,otherMails,identities'
+  const select =
+    '$select=id,displayName,givenName,surname,mail,userPrincipalName,otherMails,identities'
   const base = `${GRAPH_BASE}/groups/${encodeURIComponent(groupId)}/members`
   const [rawCast, rawUncast] = await Promise.all([
     fetchRawPage(token, `${base}/microsoft.graph.user?${select}&$top=3`),
