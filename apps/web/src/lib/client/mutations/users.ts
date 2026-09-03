@@ -13,6 +13,7 @@ import {
   deletePortalUserFn,
   mergeLeadIntoUserFn,
   updatePortalUserFn,
+  updateMemberRoleFn,
 } from '@/lib/server/functions/admin'
 import { usersKeys } from '@/lib/client/hooks/use-users-queries'
 import { toast } from 'sonner'
@@ -51,6 +52,27 @@ export function useUpdatePortalUser() {
       queryClient.invalidateQueries({ queryKey: usersKeys.lists() })
       queryClient.invalidateQueries({ queryKey: usersKeys.details() })
       queryClient.invalidateQueries({ queryKey: ['admin', 'user-duplicates'] })
+    },
+  })
+}
+
+/**
+ * Move a person between portal and team roles. Promoting a portal user into
+ * the team is the case the user detail pane needs; the team settings menu
+ * uses the same server function for admin/member changes. Both the users
+ * lists and the team roster change, so both caches are dropped.
+ */
+export function useUpdatePrincipalRole() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: { principalId: string; role: 'admin' | 'member' }) =>
+      updateMemberRoleFn({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: usersKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: usersKeys.details() })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'team'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'team', 'members'] })
     },
   })
 }

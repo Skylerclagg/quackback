@@ -287,6 +287,27 @@ async function main() {
     }
   }
 
+  // ── Phase 7: placeholder display names → given + family
+  // Entra External ID hands self-service sign-ups the literal displayName
+  // "unknown". Where the parts exist, the display name is rebuilt from them;
+  // the principal's cached copy follows when that column exists.
+  const placeholders = await sql`
+    SELECT id, name, given_name, family_name FROM "user"
+    WHERE lower(trim(name)) IN ('unknown', '') AND coalesce(given_name, family_name) IS NOT NULL
+  `
+  log(`${placeholders.length} placeholder display name(s) -> given + family`)
+  if (APPLY && placeholders.length > 0) {
+    const [{ has_col }] = await sql`
+      SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_name = 'principal' AND column_name = 'display_name') AS has_col
+    `
+    for (const u of placeholders) {
+      const derived = [u.given_name, u.family_name].filter(Boolean).join(' ').trim()
+      await sql`UPDATE "user" SET name = ${derived} WHERE id = ${u.id}`
+      if (has_col) await sql`UPDATE principal SET display_name = ${derived} WHERE user_id = ${u.id}`
+    }
+  }
+
   log('done.', APPLY ? 'Changes committed.' : 'Re-run with --apply to commit.')
 }
 

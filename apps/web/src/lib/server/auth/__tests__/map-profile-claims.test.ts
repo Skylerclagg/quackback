@@ -93,3 +93,21 @@ describe('mapProfileClaims — given/family name', () => {
     expect('givenName' in mapProfileClaims(undefined)).toBe(false)
   })
 })
+
+describe('display name placeholders', () => {
+  it('derives a display name when Entra sends the literal "unknown"', () => {
+    const mapped = mapProfileClaims({ name: 'unknown', given_name: 'Skyler', family_name: 'Clagg' })
+    expect(mapped.name).toBe('Skyler Clagg')
+  })
+
+  it('derives one from a blank name claim too', () => {
+    expect(mapProfileClaims({ name: '  ', given_name: 'Skyler' }).name).toBe('Skyler')
+  })
+
+  it('never overrides a real name claim, and omits the key when nothing can stand in', () => {
+    expect(
+      mapProfileClaims({ name: 'S. Clagg', given_name: 'Skyler', family_name: 'Clagg' })
+    ).not.toHaveProperty('name')
+    expect(mapProfileClaims({ name: 'unknown' })).not.toHaveProperty('name')
+  })
+})

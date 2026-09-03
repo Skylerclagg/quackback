@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { CameraIcon, ArrowPathIcon, TrashIcon } from '@heroicons/react/24/solid'
-import { useSuspenseQuery } from '@tanstack/react-query'
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import type { UserId } from '@quackback/ids'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,9 @@ import { ImageCropper } from '@/components/ui/image-cropper'
 import { authClient } from '@/lib/client/auth-client'
 import { useRouter } from '@tanstack/react-router'
 import { updateProfileNameFn } from '@/lib/server/functions/user'
+import { getMyNameStatusFn, updateMyNameFn } from '@/lib/server/functions/profile-name'
+import { nameStatusQueryKey } from '@/components/portal/name-prompt'
+import { describeNameWriteBack } from '@/lib/shared/entra-writeback-message'
 import { useUploadAvatar, useDeleteAvatar } from '@/lib/client/mutations/avatar'
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { PasswordForm } from '@/components/settings/password-form'
@@ -39,6 +42,19 @@ export function ProfileForm({ user }: ProfileFormProps) {
   const deleteMutation = useDeleteAvatar(userId)
 
   const [name, setName] = useState(user.name)
+  // First/last name live beside the display name; see profile-name.ts.
+  const { data: names } = useQuery({
+    queryKey: nameStatusQueryKey,
+    queryFn: () => getMyNameStatusFn(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const [givenName, setGivenName] = useState('')
+  const [familyName, setFamilyName] = useState('')
+  useEffect(() => {
+    if (!names) return
+    setGivenName(names.givenName ?? '')
+    setFamilyName(names.familyName ?? '')
+  }, [names])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -119,30 +135,49 @@ export function ProfileForm({ user }: ProfileFormProps) {
     e.preventDefault()
 
     if (name.trim().length < 2) {
-      toast.error('Name must be at least 2 characters')
+      toast.error('Display name must be at least 2 characters')
       return
     }
 
-    if (name === user.name) {
+    const displayNameChanged = name.trim() !== user.name
+    const partsChanged =
+      givenName.trim() !== (names?.givenName ?? '') ||
+      familyName.trim() !== (names?.familyName ?? '')
+    if (!displayNameChanged && !partsChanged) {
       toast.info('No changes to save')
+      return
+    }
+    if (partsChanged && (!givenName.trim() || !familyName.trim())) {
+      toast.error('Enter both a first and a last name')
       return
     }
 
     setIsSubmitting(true)
 
     try {
-      await updateProfileNameFn({ data: { name: name.trim() } })
+      if (displayNameChanged) {
+        await updateProfileNameFn({ data: { name: name.trim() } })
 
-      // Update better-auth session with new name
-      await authClient.updateUser(
-        { name: name.trim() },
-        {
-          onSuccess: () => {
-            router.invalidate()
-          },
-        }
-      )
-      toast.success('Profile updated')
+        // Update better-auth session with new name
+        await authClient.updateUser(
+          { name: name.trim() },
+          {
+            onSuccess: () => {
+              router.invalidate()
+            },
+          }
+        )
+      }
+      if (partsChanged) {
+        // First/last name; for Entra accounts this also updates the person's
+        // own directory profile, and the toast says whether it did.
+        const result = await updateMyNameFn({
+          data: { givenName: givenName.trim(), familyName: familyName.trim() },
+        })
+        toast.success(describeNameWriteBack(result.entra))
+      } else {
+        toast.success('Profile updated')
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update profile')
     } finally {
@@ -222,7 +257,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label htmlFor="name" className="text-sm font-medium">
-                  Full name
+                  Display name
                 </label>
                 <Input
                   id="name"
@@ -232,6 +267,34 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 />
               </div>
               <EmailField />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="given-name" className="text-sm font-medium">
+                  First name
+                </label>
+                <Input
+                  id="given-name"
+                  value={givenName}
+                  onChange={(e) => setGivenName(e.target.value)}
+                  autoComplete="given-name"
+                  maxLength={64}
+                  disabled={isSubmitting || !names}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="family-name" className="text-sm font-medium">
+                  Last name
+                </label>
+                <Input
+                  id="family-name"
+                  value={familyName}
+                  onChange={(e) => setFamilyName(e.target.value)}
+                  autoComplete="family-name"
+                  maxLength={64}
+                  disabled={isSubmitting || !names}
+                />
+              </div>
             </div>
             <div className="flex justify-end">
               <Button type="submit" disabled={isSubmitting}>

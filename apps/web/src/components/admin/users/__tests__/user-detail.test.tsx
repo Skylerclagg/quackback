@@ -77,6 +77,12 @@ vi.mock('@/lib/client/hooks/use-segments-queries', () => ({
 
 vi.mock('@/lib/client/mutations', () => ({
   useUpdatePortalUser: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdatePrincipalRole: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
   useRemoveUsersFromSegment: () => ({ mutateAsync: vi.fn() }),
   useAssignUsersToSegment: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
   useMergeLeadIntoUser: () => ({ mutate: vi.fn(), isPending: false }),

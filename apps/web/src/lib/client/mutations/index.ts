@@ -94,6 +94,7 @@ export {
   useMergeLeadIntoUser,
   useRemovePortalUser,
   useUpdatePortalUser,
+  useUpdatePrincipalRole,
 } from './users'
 
 // Avatar mutations

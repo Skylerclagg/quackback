@@ -97,6 +97,9 @@ bun scripts/cutover/04-transform.ts --apply    # commit
   `changelog_id`; the port models a collection as a category with a `slug`.
   Each fork collection becomes a slugged category and its entries are linked.
   Production had none, so here this only reports zero.
+- **Repairs placeholder display names.** Entra External ID gives self-service
+  sign-ups the literal display name "unknown"; where a first/last name exists
+  the display name is rebuilt from them. The app now does the same at sign-in.
 
 ## What does not survive
 

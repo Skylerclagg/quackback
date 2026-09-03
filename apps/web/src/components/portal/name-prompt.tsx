@@ -1,12 +1,13 @@
 /**
- * One-time ask for a first and last name when the account has none.
+ * One-time ask for names when the account is missing them.
  *
- * Shown to signed-in portal visitors whose identity provider sent no
- * given/family name. "Not now" is remembered for the browser session so the
- * dialog doesn't chase people around the site; it comes back next visit until
- * the names exist. For Entra accounts the answer is also written back to the
- * person's own directory profile (see integrations/entra/name-writeback.ts),
- * and the toast says plainly whether that happened.
+ * Shown to signed-in portal visitors whose identity provider sent no first or
+ * last name, or a placeholder display name (Entra External ID's "unknown").
+ * "Not now" is remembered for the browser session so the dialog doesn't chase
+ * people around the site; it comes back next visit until the names exist. For
+ * Entra accounts the first/last name is also written back to the person's own
+ * directory profile (see integrations/entra/name-writeback.ts), and the toast
+ * says plainly whether that happened.
  */
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -24,7 +25,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getMyNameStatusFn, updateMyNameFn } from '@/lib/server/functions/profile-name'
-import type { NameWriteBackResult } from '@/lib/server/integrations/entra/name-writeback'
+import { describeNameWriteBack } from '@/lib/shared/entra-writeback-message'
+import { displayNameFromParts } from '@/lib/shared/display-name'
 
 const DISMISS_KEY = 'quackback:name-prompt-dismissed'
 export const nameStatusQueryKey = ['portal', 'me', 'name'] as const
@@ -44,45 +46,6 @@ function writeDismissed(): void {
   }
 }
 
-/** Plain-language outcome of the Entra write-back for the toast. */
-function describeWriteBack(intl: ReturnType<typeof useIntl>, result: NameWriteBackResult): string {
-  switch (result.status) {
-    case 'synced':
-      return intl.formatMessage({
-        id: 'portal.namePrompt.synced',
-        defaultMessage: 'Name saved and updated in your Microsoft account.',
-      })
-    case 'failed':
-      return intl.formatMessage(
-        {
-          id: 'portal.namePrompt.failed',
-          defaultMessage: 'Name saved here. Microsoft rejected the update: {reason}',
-        },
-        { reason: result.reason }
-      )
-    case 'skipped':
-      switch (result.reason) {
-        case 'token-expired':
-          return intl.formatMessage({
-            id: 'portal.namePrompt.tokenExpired',
-            defaultMessage:
-              'Name saved here. Sign out and back in to also update your Microsoft profile.',
-          })
-        case 'scope-missing':
-          return intl.formatMessage({
-            id: 'portal.namePrompt.scopeMissing',
-            defaultMessage:
-              "Name saved here. Your Microsoft profile wasn't updated: the sign-in provider doesn't grant permission to edit it.",
-          })
-        default:
-          return intl.formatMessage({
-            id: 'portal.namePrompt.saved',
-            defaultMessage: 'Name saved.',
-          })
-      }
-  }
-}
-
 export function PortalNamePrompt({ enabled }: { enabled: boolean }) {
   const intl = useIntl()
   const queryClient = useQueryClient()
@@ -96,21 +59,37 @@ export function PortalNamePrompt({ enabled }: { enabled: boolean }) {
   const [open, setOpen] = useState(false)
   const [givenName, setGivenName] = useState('')
   const [familyName, setFamilyName] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [displayNameTouched, setDisplayNameTouched] = useState(false)
 
   useEffect(() => {
     if (!data) return
-    // Best-effort prefill from the display name: first word, then the rest.
-    const [first = '', ...rest] = data.displayName.trim().split(/\s+/)
-    setGivenName(data.givenName ?? first)
-    setFamilyName(data.familyName ?? rest.join(' '))
+    // Best-effort prefill: the stored parts, else the display name split into
+    // first word and the rest. A placeholder display name ("unknown") is not
+    // worth keeping, so it starts from the parts instead.
+    const usableDisplay = data.displayNameIsPlaceholder ? '' : data.displayName.trim()
+    const [first = '', ...rest] = usableDisplay.split(/\s+/)
+    const given = data.givenName ?? first
+    const family = data.familyName ?? rest.join(' ')
+    setGivenName(given)
+    setFamilyName(family)
+    setDisplayName(usableDisplay || (displayNameFromParts(given, family) ?? ''))
+    setDisplayNameTouched(false)
     if (data.needsName && !dismissed) setOpen(true)
   }, [data, dismissed])
 
+  // Until the person edits it, the display name follows the parts.
+  useEffect(() => {
+    if (displayNameTouched) return
+    if (!data || !data.displayNameIsPlaceholder) return
+    setDisplayName(displayNameFromParts(givenName, familyName) ?? '')
+  }, [givenName, familyName, displayNameTouched, data])
+
   const save = useMutation({
-    mutationFn: (input: { givenName: string; familyName: string }) =>
+    mutationFn: (input: { givenName: string; familyName: string; displayName: string }) =>
       updateMyNameFn({ data: input }),
     onSuccess: (result) => {
-      toast.success(describeWriteBack(intl, result.entra))
+      toast.success(describeNameWriteBack(result.entra))
       void queryClient.invalidateQueries({ queryKey: nameStatusQueryKey })
       setOpen(false)
     },
@@ -130,7 +109,11 @@ export function PortalNamePrompt({ enabled }: { enabled: boolean }) {
     setOpen(false)
   }
 
-  const canSave = givenName.trim().length > 0 && familyName.trim().length > 0 && !save.isPending
+  const canSave =
+    givenName.trim().length > 0 &&
+    familyName.trim().length > 0 &&
+    displayName.trim().length >= 2 &&
+    !save.isPending
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && dismiss()}>
@@ -138,7 +121,12 @@ export function PortalNamePrompt({ enabled }: { enabled: boolean }) {
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            if (canSave) save.mutate({ givenName: givenName.trim(), familyName: familyName.trim() })
+            if (canSave)
+              save.mutate({
+                givenName: givenName.trim(),
+                familyName: familyName.trim(),
+                displayName: displayName.trim(),
+              })
           }}
           className="space-y-4"
         >
@@ -153,7 +141,7 @@ export function PortalNamePrompt({ enabled }: { enabled: boolean }) {
               {intl.formatMessage({
                 id: 'portal.namePrompt.description',
                 defaultMessage:
-                  'Your account is missing a first or last name. Add them so the team knows who they are talking to.',
+                  'Your account is missing a name. Add it so the team knows who they are talking to.',
               })}
             </DialogDescription>
           </DialogHeader>
@@ -191,6 +179,31 @@ export function PortalNamePrompt({ enabled }: { enabled: boolean }) {
                 required
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="name-prompt-display">
+              {intl.formatMessage({
+                id: 'portal.namePrompt.displayName',
+                defaultMessage: 'Display name',
+              })}
+            </Label>
+            <Input
+              id="name-prompt-display"
+              value={displayName}
+              onChange={(e) => {
+                setDisplayNameTouched(true)
+                setDisplayName(e.target.value)
+              }}
+              maxLength={100}
+              autoComplete="nickname"
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              {intl.formatMessage({
+                id: 'portal.namePrompt.displayNameHint',
+                defaultMessage: 'Shown on your posts and comments.',
+              })}
+            </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={dismiss} disabled={save.isPending}>

@@ -18,6 +18,7 @@
  * with identity resolution so the two cannot disagree about it.
  */
 import { isAffirmativeClaim } from '@/lib/shared/oidc-claim-mapping'
+import { displayNameFromParts, isPlaceholderDisplayName } from '@/lib/shared/display-name'
 
 /**
  * Declared as a type alias rather than an interface deliberately: Better-Auth
@@ -33,6 +34,12 @@ export type MappedProfileClaims = {
   givenName?: string
   /** OIDC `family_name`. Present ONLY when the claim carried a value. */
   familyName?: string
+  /**
+   * Display name, present ONLY when the IdP's `name` claim was blank or a
+   * placeholder (Entra External ID sends "unknown") and given/family could
+   * stand in for it. A real `name` claim is never overridden here.
+   */
+  name?: string
 }
 
 /**
@@ -49,7 +56,13 @@ function readNameClaim(value: unknown): string | null {
 
 export function mapProfileClaims(profile: unknown): MappedProfileClaims {
   const p = profile as
-    | { locale?: unknown; email_verified?: unknown; given_name?: unknown; family_name?: unknown }
+    | {
+        locale?: unknown
+        email_verified?: unknown
+        given_name?: unknown
+        family_name?: unknown
+        name?: unknown
+      }
     | null
     | undefined
 
@@ -71,6 +84,14 @@ export function mapProfileClaims(profile: unknown): MappedProfileClaims {
 
   const familyName = readNameClaim(p?.family_name)
   if (familyName) mapped.familyName = familyName
+
+  // Entra External ID hands self-service sign-ups the literal displayName
+  // "unknown". That is not a name, so stand in the parts we do have; a real
+  // `name` claim is left for the resolver to apply untouched.
+  if (isPlaceholderDisplayName(readNameClaim(p?.name))) {
+    const derived = displayNameFromParts(givenName, familyName)
+    if (derived) mapped.name = derived
+  }
 
   return mapped
 }

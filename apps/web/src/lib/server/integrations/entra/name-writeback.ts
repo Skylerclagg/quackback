@@ -104,8 +104,15 @@ async function refreshDelegatedToken(
  */
 export async function writeNameBackToEntra(
   userId: UserId,
-  name: { givenName: string; familyName: string }
+  name: { givenName?: string | null; familyName?: string | null }
 ): Promise<NameWriteBackResult> {
+  // Graph's field for a family name is `surname`. Only the parts that were
+  // actually provided are sent, so a first-name-only save cannot blank the
+  // surname in the directory.
+  const patch: Record<string, string> = {}
+  if (name.givenName?.trim()) patch.givenName = name.givenName.trim()
+  if (name.familyName?.trim()) patch.surname = name.familyName.trim()
+  if (Object.keys(patch).length === 0) return { status: 'skipped', reason: 'no-entra-account' }
   try {
     const { listIdentityProviders } =
       await import('@/lib/server/domains/settings/identity-providers.service')
@@ -148,8 +155,7 @@ export async function writeNameBackToEntra(
     const res = await fetch(GRAPH_ME, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      // Graph's field for a family name is `surname`.
-      body: JSON.stringify({ givenName: name.givenName, surname: name.familyName }),
+      body: JSON.stringify(patch),
     })
     if (res.ok) {
       log.info({ user_id: userId }, 'entra profile name updated')

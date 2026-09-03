@@ -1,10 +1,12 @@
 /**
- * A person's own first/last name (`user.givenName` / `user.familyName`).
+ * A person's own names: display name (`user.name`), first name
+ * (`user.givenName`) and last name (`user.familyName`).
  *
  * Normally these arrive as OIDC claims at sign-in. When the identity provider
- * sends none, the portal asks the person once and, for Entra accounts, offers
- * to write the answer back to their directory profile so the next sign-in
- * carries it. Any signed-in user may edit their own names; nothing else.
+ * sends none — or a placeholder such as Entra External ID's "unknown" — the
+ * portal asks the person once and, for Entra accounts, writes the answer back
+ * to their directory profile so the next sign-in carries it. Any signed-in
+ * user may edit their own names; nothing else.
  */
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
@@ -16,14 +18,19 @@ import {
   writeNameBackToEntra,
   type NameWriteBackResult,
 } from '@/lib/server/integrations/entra/name-writeback'
+import { displayNameFromParts, isPlaceholderDisplayName } from '@/lib/shared/display-name'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'profile-name' })
 
-const nameSchema = z.object({
-  givenName: z.string().trim().min(1).max(64),
-  familyName: z.string().trim().min(1).max(64),
-})
+const namePart = z.string().trim().min(1).max(64)
+const nameSchema = z
+  .object({
+    givenName: namePart.optional(),
+    familyName: namePart.optional(),
+    displayName: z.string().trim().min(2).max(100).optional(),
+  })
+  .refine((v) => v.givenName || v.familyName || v.displayName, 'Nothing to save')
 
 async function requireSessionUserId(): Promise<UserId> {
   const session = await getSession()
@@ -39,17 +46,21 @@ export const getMyNameStatusFn = createServerFn({ method: 'GET' }).handler(async
     .from(user)
     .where(eq(user.id, userId))
     .limit(1)
+  const displayName = row?.name ?? ''
+  const displayNameIsPlaceholder = isPlaceholderDisplayName(displayName)
   return {
-    displayName: row?.name ?? '',
+    displayName,
+    displayNameIsPlaceholder,
     givenName: row?.givenName ?? null,
     familyName: row?.familyName ?? null,
-    needsName: !row?.givenName || !row?.familyName,
+    needsName: !row?.givenName || !row?.familyName || displayNameIsPlaceholder,
   }
 })
 
 /**
- * Save first/last name, then try the Entra write-back. The local save is the
- * contract; the write-back result is reported, never a reason to fail.
+ * Save whichever names were provided, then try the Entra write-back for the
+ * first/last name. The local save is the contract; the write-back result is
+ * reported, never a reason to fail.
  */
 export const updateMyNameFn = createServerFn({ method: 'POST' })
   .validator(nameSchema)
@@ -57,32 +68,46 @@ export const updateMyNameFn = createServerFn({ method: 'POST' })
     async ({
       data,
     }): Promise<{
-      givenName: string
-      familyName: string
+      givenName: string | null
+      familyName: string | null
       displayName: string
       entra: NameWriteBackResult
     }> => {
       const userId = await requireSessionUserId()
       const [current] = await db
-        .select({ name: user.name })
+        .select({ name: user.name, givenName: user.givenName, familyName: user.familyName })
         .from(user)
         .where(eq(user.id, userId))
         .limit(1)
       if (!current) throw new Error('Authentication required')
 
-      // A blank display name (an IdP that sent no `name` claim) is filled in
-      // from the parts; a display name the person already has is left alone.
-      const displayName = current.name.trim() || `${data.givenName} ${data.familyName}`
+      const givenName = data.givenName ?? current.givenName
+      const familyName = data.familyName ?? current.familyName
+      // A display name the person typed wins. Otherwise a blank or placeholder
+      // display name (an IdP that sent "unknown") is filled in from the parts,
+      // and a real one is left alone.
+      const displayName =
+        data.displayName ??
+        (isPlaceholderDisplayName(current.name)
+          ? (displayNameFromParts(givenName, familyName) ?? current.name)
+          : current.name)
+
       await db
         .update(user)
-        .set({ givenName: data.givenName, familyName: data.familyName, name: displayName })
+        .set({ givenName, familyName, name: displayName })
         .where(eq(user.id, userId))
       if (displayName !== current.name) {
         await syncPrincipalProfile(userId, { displayName })
       }
-      log.info({ user_id: userId }, 'profile given/family name updated')
+      log.info({ user_id: userId }, 'profile names updated')
 
-      const entra = await writeNameBackToEntra(userId, data)
-      return { givenName: data.givenName, familyName: data.familyName, displayName, entra }
+      const entra =
+        data.givenName || data.familyName
+          ? await writeNameBackToEntra(userId, {
+              givenName: data.givenName,
+              familyName: data.familyName,
+            })
+          : ({ status: 'skipped', reason: 'no-entra-account' } as const)
+      return { givenName, familyName, displayName, entra }
     }
   )

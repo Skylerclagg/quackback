@@ -19,6 +19,7 @@ import {
   EllipsisHorizontalIcon,
   NoSymbolIcon,
   ArrowsRightLeftIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/solid'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -57,7 +58,16 @@ import {
 import { ChangelogSubscriptionControl } from '@/components/admin/users/changelog-subscription-control'
 import { DuplicateUsersWarning } from '@/components/admin/users/duplicate-users-warning'
 import { MergeLeadControl } from '@/components/admin/users/merge-lead-control'
-import { useUpdatePortalUser } from '@/lib/client/mutations'
+import { useUpdatePortalUser, useUpdatePrincipalRole } from '@/lib/client/mutations'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { listConversationsForUserFn, getConversationFn } from '@/lib/server/functions/conversation'
 import type { PrincipalId } from '@quackback/ids'
 
@@ -486,6 +496,7 @@ export function UserDetail({
   // Check if current user can manage portal users
   const canManageUsers = currentMemberRole === 'admin'
   const { blocked, unblock } = usePersonBlockActions(user?.principalId as PrincipalId | undefined)
+  const [addToTeamOpen, setAddToTeamOpen] = useState(false)
   const conversationsQuery = useInfiniteQuery({
     queryKey: ['admin', 'user-conversations', user?.principalId, 'all'],
     enabled: supportInboxEnabled && !!user?.principalId,
@@ -705,6 +716,12 @@ export function UserDetail({
                         Merge
                       </DropdownMenuItem>
                     )}
+                    {!user.isLead && (
+                      <DropdownMenuItem onSelect={() => setAddToTeamOpen(true)}>
+                        <UserPlusIcon className="h-4 w-4" />
+                        Add to team…
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       variant="destructive"
@@ -754,6 +771,15 @@ export function UserDetail({
                 onMerged={onClose}
                 open={mergeOpen}
                 onOpenChange={setMergeOpen}
+              />
+            )}
+            {!user.isLead && (
+              <AddToTeamDialog
+                open={addToTeamOpen}
+                onOpenChange={setAddToTeamOpen}
+                principalId={user.principalId as PrincipalId}
+                personName={user.name}
+                onPromoted={onClose}
               />
             )}
             <ConfirmDialog
@@ -918,5 +944,88 @@ function FactCell({
       </div>
       <div className="text-[11px] leading-[15px] text-muted-foreground">{label}</div>
     </div>
+  )
+}
+
+/**
+ * Promote a portal user into the team (fork feature, `9e77c629f`). The detail
+ * pane only ever shows portal users, so this is always a promotion; moving
+ * back happens from Settings → Team ("Remove from team"). Promotion takes a
+ * seat, which the server checks.
+ */
+function AddToTeamDialog({
+  open,
+  onOpenChange,
+  principalId,
+  personName,
+  onPromoted,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  principalId: PrincipalId
+  personName: string | null
+  onPromoted: () => void
+}) {
+  const [role, setRole] = useState<'admin' | 'member'>('member')
+  const updateRole = useUpdatePrincipalRole()
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add {personName || 'this user'} to the team?</DialogTitle>
+          <DialogDescription>
+            {role === 'admin'
+              ? 'They will get full admin access, including settings and the ability to manage other team members. They will no longer appear under Users.'
+              : 'They will get access to the admin area to manage feedback, roadmaps, and the changelog. They will no longer appear under Users.'}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="add-to-team-role">Add as</Label>
+          <select
+            id="add-to-team-role"
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={role}
+            onChange={(event) => setRole(event.target.value as 'admin' | 'member')}
+          >
+            <option value="member">Member</option>
+            <option value="admin">Admin</option>
+          </select>
+          {updateRole.isError && (
+            <p className="text-xs text-destructive">{updateRole.error.message}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={updateRole.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={updateRole.isPending}
+            onClick={() =>
+              updateRole.mutate(
+                { principalId, role },
+                {
+                  onSuccess: () => {
+                    onOpenChange(false)
+                    // The promoted principal no longer matches the portal-user
+                    // query, so the pane would show a permanent skeleton if
+                    // left open.
+                    onPromoted()
+                  },
+                }
+              )
+            }
+          >
+            {updateRole.isPending ? 'Adding…' : 'Add to team'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

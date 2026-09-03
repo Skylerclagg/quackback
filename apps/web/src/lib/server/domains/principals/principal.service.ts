@@ -293,10 +293,23 @@ export async function updateMemberRole(
       throw new NotFoundError('MEMBER_NOT_FOUND', 'Team member not found')
     }
 
-    // Ensure target is a customer teammate. Cloud support (type=support) is an
-    // admin for privilege but is not on the customer roster.
-    if (!isTeamMember(targetMember.role) || targetMember.type === 'support') {
+    // Cloud support (type=support) is an admin for privilege but is not on the
+    // customer roster.
+    if (targetMember.type === 'support') {
       throw new NotFoundError('MEMBER_NOT_FOUND', 'Team member not found')
+    }
+    // Promotion INTO the team (a portal user becoming member/admin) is for
+    // people only: anonymous principals have no account to sign in with, and a
+    // service principal (API key, integration) is not a seat. Existing team
+    // roles, including those carried by service principals, keep changing as
+    // before. A promotion takes a seat, so the same cap the invite flow
+    // applies is checked here.
+    if (!isTeamMember(targetMember.role)) {
+      if (targetMember.type !== 'user') {
+        throw new NotFoundError('MEMBER_NOT_FOUND', 'Team member not found')
+      }
+      const { enforceSeatLimit } = await import('./seat-limit')
+      await enforceSeatLimit()
     }
 
     // If demoting an admin to member, ensure at least one human admin remains
