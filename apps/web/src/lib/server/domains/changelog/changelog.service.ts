@@ -41,6 +41,7 @@ import {
 import { scheduleDispatch, cancelScheduledDispatch } from '@/lib/server/events/scheduler'
 import { setEntryCategories, getCategoriesForEntries } from './changelog-category.service'
 import { embedChangelogEntryOnPublish } from './changelog-embedding.service'
+import { violatesPublishedLock, type UpdateChangelogOptions } from './changelog.publish-lock'
 import { logger } from '@/lib/server/logger'
 
 import { isSameDay } from 'date-fns'
@@ -202,7 +203,8 @@ export async function createChangelog(
  */
 export async function updateChangelog(
   id: ChangelogId,
-  input: UpdateChangelogInput
+  input: UpdateChangelogInput,
+  options: UpdateChangelogOptions = {}
 ): Promise<ChangelogEntryWithDetails> {
   // Get existing entry (exclude soft-deleted)
   const existing = await db.query.changelogEntries.findFirst({
@@ -210,6 +212,22 @@ export async function updateChangelog(
   })
   if (!existing) {
     throw new NotFoundError('CHANGELOG_NOT_FOUND', `Changelog entry with ID ${id} not found`)
+  }
+
+  // A live entry is frozen: while it is published the only accepted change is
+  // taking it off the changelog again. Hand edits go draft → edit → publish so
+  // nothing half-finished shows on the portal. External-source sync is the one
+  // caller allowed through, because the source page is the truth for those
+  // entries. See changelog.publish-lock.ts.
+  if (
+    !options.allowPublishedEdits &&
+    computeStatus(existing.publishedAt) === 'published' &&
+    violatesPublishedLock(input)
+  ) {
+    throw new ValidationError(
+      'CHANGELOG_PUBLISHED_LOCKED',
+      'This entry is published. Unpublish it before editing.'
+    )
   }
 
   // Validate input

@@ -12,6 +12,8 @@ interface ChangelogFormFieldsProps {
   contentJson: JSONContent | null
   onContentChange: (json: JSONContent, html: string, markdown: string) => void
   error?: string
+  /** Read-only rendering for a live entry; the modal unlocks it on unpublish. */
+  disabled?: boolean
 }
 
 export function ChangelogFormFields({
@@ -19,11 +21,15 @@ export function ChangelogFormFields({
   contentJson,
   onContentChange,
   error,
+  disabled = false,
 }: ChangelogFormFieldsProps) {
   const { upload: uploadImage } = useImageUpload({ prefix: 'changelog' })
 
   return (
-    <div className="px-4 sm:px-6 py-4 space-y-4 flex flex-col min-h-full">
+    <fieldset
+      disabled={disabled}
+      className="px-4 sm:px-6 py-4 space-y-4 flex flex-col min-h-full min-w-0"
+    >
       {error && <FormError message={error} className="px-3 py-2" />}
 
       <TitleInput control={form.control} placeholder="What's new?" autoFocus />
@@ -57,12 +63,13 @@ export function ChangelogFormFields({
                   quackbackEmbeds: true,
                 }}
                 onImageUpload={uploadImage}
+                disabled={disabled}
               />
             </FormControl>
             <FormMessage />
           </FormItem>
         )}
       />
-    </div>
+    </fieldset>
   )
 }

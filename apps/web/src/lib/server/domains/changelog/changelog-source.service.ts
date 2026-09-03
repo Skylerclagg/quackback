@@ -245,12 +245,16 @@ async function upsertRelease(
     ) {
       return 'unchanged'
     }
-    await updateChangelog(existing.id, {
-      title: release.title,
-      content: release.markdown,
-      contentJson,
-      ...(release.date ? { displayDate: release.date } : {}),
-    })
+    await updateChangelog(
+      existing.id,
+      {
+        title: release.title,
+        content: release.markdown,
+        contentJson,
+        ...(release.date ? { displayDate: release.date } : {}),
+      },
+      { allowPublishedEdits: true }
+    )
     if (orderChanged) {
       await db
         .update(changelogEntries)

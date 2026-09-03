@@ -64,6 +64,8 @@ interface ChangelogMetadataSidebarContentProps {
   onDisplayDateClear?: () => void
   featuredImageUrl?: string | null
   onFeaturedImageChange?: (url: string | null) => void
+  /** Live entry: every control is disabled until the entry is unpublished. */
+  locked?: boolean
 }
 
 const PUBLISH_STATUS_OPTIONS: readonly StatusOption[] = [
@@ -96,6 +98,7 @@ export function ChangelogMetadataSidebarContent({
   onDisplayDateClear = () => {},
   featuredImageUrl = null,
   onFeaturedImageChange = () => {},
+  locked = false,
 }: ChangelogMetadataSidebarContentProps) {
   const [postsOpen, setPostsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -191,7 +194,10 @@ export function ChangelogMetadataSidebarContent({
   }
 
   return (
-    <div className="space-y-5">
+    <fieldset
+      disabled={locked}
+      className={cn('space-y-5 min-w-0', locked && 'pointer-events-none opacity-60')}
+    >
       {/* Status - uses shared StatusSelect component */}
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">Status</span>
@@ -475,6 +481,6 @@ export function ChangelogMetadataSidebarContent({
           <p className="text-xs text-muted-foreground/60 italic pl-6">No posts linked yet</p>
         )}
       </div>
-    </div>
+    </fieldset>
   )
 }

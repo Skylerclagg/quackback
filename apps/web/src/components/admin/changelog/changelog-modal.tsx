@@ -13,6 +13,8 @@ import { updateChangelogSchema } from '@/lib/shared/schemas/changelog'
 import type { TiptapContent } from '@/lib/shared/schemas/posts'
 import { useDeleteChangelog, useUpdateChangelog } from '@/lib/client/mutations/changelog'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { toast } from 'sonner'
+import { LockClosedIcon } from '@heroicons/react/24/outline'
 import { listChangelogSourcesFn } from '@/lib/server/functions/changelog-sources'
 import { TrashIcon } from '@heroicons/react/24/solid'
 import { changelogQueries } from '@/lib/client/queries/changelog'
@@ -93,6 +95,8 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
   const importedFrom = entry?.sourceId
     ? (sourcesQuery.data?.find((src) => src.id === entry.sourceId)?.name ?? 'an external changelog')
     : null
+  // A live entry is frozen; the footer's primary action becomes Unpublish.
+  const locked = entry?.status === 'published'
 
   const form = useForm({
     resolver: standardSchemaResolver(updateChangelogSchema),
@@ -158,7 +162,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
     setSegmentIdsTouched(true)
   }
 
-  const handleSubmit = form.handleSubmit((data) => {
+  const submitEdits = form.handleSubmit((data) => {
     const displayDatePayload = displayDateTouched
       ? displayDateOverride === undefined
         ? null
@@ -199,9 +203,35 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
     )
   })
 
+  const handleUnpublish = () => {
+    updateChangelogMutation.mutate(
+      { id: entryId, publishState: { type: 'draft' } },
+      {
+        onSuccess: () => {
+          setPublishState({ type: 'draft' })
+          toast.success('Entry unpublished', {
+            description: 'It is a draft again. Edit it, then publish when you are ready.',
+          })
+        },
+      }
+    )
+  }
+
+  // While locked the form's submit is the unpublish action, so the primary
+  // button and Cmd+Enter both do the one thing a live entry allows.
+  const handleSubmit = (event?: React.BaseSyntheticEvent) => {
+    if (locked) {
+      event?.preventDefault()
+      handleUnpublish()
+      return Promise.resolve()
+    }
+    return submitEdits(event)
+  }
+
   const handleKeyDown = useKeyboardSubmit(handleSubmit)
 
   const getSubmitButtonText = () => {
+    if (locked) return updateChangelogMutation.isPending ? 'Unpublishing...' : 'Unpublish'
     if (updateChangelogMutation.isPending) {
       return publishState.type === 'published' ? 'Publishing...' : 'Saving...'
     }
@@ -238,14 +268,27 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         <div className="flex flex-1 min-h-0">
           {/* Left: Content editor */}
           <div className="flex-1 overflow-y-auto">
-            {importedFrom && (
-              <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-                Imported from {importedFrom}. Title, notes and date follow the source page and
-                refresh on each sync; status, labels and audience are yours to set here.
-              </p>
-            )}
+            <div className="px-4 sm:px-6 pt-4 space-y-2 empty:hidden">
+              {locked && (
+                <div className="flex items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <LockClosedIcon className="h-4 w-4 shrink-0" />
+                  <p>
+                    This entry is live, so its fields are read-only. Unpublish it to make changes;
+                    it returns to a draft and leaves the public changelog until you publish it
+                    again.
+                  </p>
+                </div>
+              )}
+              {importedFrom && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                  Imported from {importedFrom}. Title, notes and date follow the source page and
+                  refresh on each sync; status, labels and audience are yours to set here.
+                </p>
+              )}
+            </div>
             <ChangelogFormFields
               form={form}
+              disabled={locked}
               contentJson={contentJson}
               onContentChange={handleContentChange}
               error={
@@ -258,6 +301,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
           <ChangelogMetadataSidebar
             publishState={publishState}
             onPublishStateChange={setPublishState}
+            locked={locked}
             linkedPostIds={linkedPostIds}
             onLinkedPostsChange={setLinkedPostIds}
             categoryIds={categoryIds}
@@ -286,6 +330,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         <ModalFooter
           onCancel={onClose}
           submitLabel={getSubmitButtonText()}
+          hintAction={locked ? 'to unpublish' : 'to save'}
           isPending={updateChangelogMutation.isPending}
         >
           <Button
@@ -327,6 +372,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
                 <ChangelogMetadataSidebarContent
                   publishState={publishState}
                   onPublishStateChange={setPublishState}
+                  locked={locked}
                   linkedPostIds={linkedPostIds}
                   onLinkedPostsChange={setLinkedPostIds}
                   categoryIds={categoryIds}

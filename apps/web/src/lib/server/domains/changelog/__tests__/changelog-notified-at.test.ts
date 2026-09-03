@@ -347,7 +347,13 @@ describe('updateChangelog wiring', () => {
     const { updateChangelog } = await import('../changelog.service')
     const { dispatchChangelogPublished } = await import('@/lib/server/events/dispatch')
 
-    await updateChangelog(ENTRY_ID, { publishState: { type: 'published' } })
+    // The published lock refuses re-publishing for hand edits; the claim is the
+    // second line of defence for any caller allowed through.
+    await updateChangelog(
+      ENTRY_ID,
+      { publishState: { type: 'published' } },
+      { allowPublishedEdits: true }
+    )
     await flush()
 
     expect(dispatchChangelogPublished).not.toHaveBeenCalled()

@@ -144,6 +144,7 @@ Examples:
   registerTool<UpdateChangelogArgs>(server, auth, {
     name: 'update_changelog',
     description: `Update title, content, publish state, and/or linked posts on an existing changelog entry.
+Published entries are frozen: set the entry back to draft first, then edit, then publish again. A published entry cannot be re-published or re-dated in place.
 
 Examples:
 - Update title: update_changelog({ changelogId: "changelog_01abc...", title: "v2.0 Release" })

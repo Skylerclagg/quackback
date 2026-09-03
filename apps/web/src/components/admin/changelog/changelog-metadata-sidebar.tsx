@@ -32,6 +32,7 @@ interface ChangelogMetadataSidebarProps {
   onDisplayDateClear?: () => void
   featuredImageUrl?: string | null
   onFeaturedImageChange?: (url: string | null) => void
+  locked?: boolean
 }
 
 export function ChangelogMetadataSidebar({
@@ -58,6 +59,7 @@ export function ChangelogMetadataSidebar({
   onDisplayDateClear,
   featuredImageUrl,
   onFeaturedImageChange,
+  locked,
 }: ChangelogMetadataSidebarProps) {
   return (
     <SidebarContainer className="overflow-y-auto">
@@ -85,6 +87,7 @@ export function ChangelogMetadataSidebar({
         onDisplayDateClear={onDisplayDateClear}
         featuredImageUrl={featuredImageUrl}
         onFeaturedImageChange={onFeaturedImageChange}
+        locked={locked}
       />
     </SidebarContainer>
   )

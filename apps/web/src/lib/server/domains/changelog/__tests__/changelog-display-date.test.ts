@@ -82,7 +82,8 @@ describe('displayDate', () => {
       .mockResolvedValueOnce(baseEntry())
       .mockResolvedValueOnce(baseEntry({ displayDate: pastDisplay }))
 
-    await updateChangelog(ENTRY_ID, { displayDate: pastDisplay })
+    // The fixture is published; only external-source sync may edit live entries.
+    await updateChangelog(ENTRY_ID, { displayDate: pastDisplay }, { allowPublishedEdits: true })
 
     expect(mockUpdateSet).toHaveBeenCalledWith(
       expect.objectContaining({ displayDate: pastDisplay })
@@ -96,7 +97,11 @@ describe('displayDate', () => {
     mockEntryFindFirst.mockResolvedValueOnce(baseEntry())
 
     await expect(
-      updateChangelog(ENTRY_ID, { displayDate: new Date(Date.now() + 60_000) })
+      updateChangelog(
+        ENTRY_ID,
+        { displayDate: new Date(Date.now() + 60_000) },
+        { allowPublishedEdits: true }
+      )
     ).rejects.toBeInstanceOf(ValidationError)
     expect(mockUpdateSet).not.toHaveBeenCalled()
   })
@@ -107,7 +112,7 @@ describe('displayDate', () => {
 
     mockEntryFindFirst.mockResolvedValueOnce(baseEntry()).mockResolvedValueOnce(baseEntry())
 
-    await updateChangelog(ENTRY_ID, { displayDate: sameDay })
+    await updateChangelog(ENTRY_ID, { displayDate: sameDay }, { allowPublishedEdits: true })
 
     expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ displayDate: null }))
   })
