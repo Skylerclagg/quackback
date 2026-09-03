@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { useState, useCallback, useEffect, useMemo, startTransition } from 'react'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,7 @@ import { CreateChangelogDialog } from './create-changelog-dialog'
 import { ChangelogListItem } from './changelog-list-item'
 import { ChangelogTopViewed } from './changelog-top-viewed'
 import { changelogQueries } from '@/lib/client/queries/changelog'
-import { useDeleteChangelog } from '@/lib/client/mutations/changelog'
+import { useDeleteChangelog, useUpdateChangelog } from '@/lib/client/mutations/changelog'
 import { Route } from '@/routes/admin/changelog'
 import type { ChangelogId } from '@quackback/ids'
 import { DocumentTextIcon } from '@heroicons/react/24/solid'
@@ -49,6 +50,8 @@ export function ChangelogList() {
   const [entryToDelete, setEntryToDelete] = useState<ChangelogId | null>(null)
 
   const deleteChangelogMutation = useDeleteChangelog()
+  const updateChangelogMutation = useUpdateChangelog()
+  const [entryToUnpublish, setEntryToUnpublish] = useState<ChangelogId | null>(null)
 
   const { value: searchValue, setValue: setSearchValue } = useDebouncedSearch({
     externalValue: filters.search,
@@ -116,6 +119,22 @@ export function ChangelogList() {
     },
     [navigate, search]
   )
+
+  const handleUnpublish = (id: ChangelogId) => setEntryToUnpublish(id)
+  const confirmUnpublish = () => {
+    if (!entryToUnpublish) return
+    updateChangelogMutation.mutate(
+      { id: entryToUnpublish, publishState: { type: 'draft' } },
+      {
+        onSuccess: () => {
+          setEntryToUnpublish(null)
+          toast.success('Entry unpublished — it is back in Drafts')
+        },
+        onError: (error) =>
+          toast.error(error instanceof Error ? error.message : 'Could not unpublish'),
+      }
+    )
+  }
 
   const handleDelete = (id: ChangelogId) => {
     setEntryToDelete(id)
@@ -198,6 +217,7 @@ export function ChangelogList() {
                       linkedPosts={entry.linkedPosts}
                       onEdit={handleEdit}
                       onDelete={handleDelete}
+                      onUnpublish={handleUnpublish}
                     />
                   </div>
                 ))}
@@ -225,6 +245,16 @@ export function ChangelogList() {
         </div>
       </InboxLayout>
 
+      {/* Unpublish confirmation dialog */}
+      <ConfirmDialog
+        open={!!entryToUnpublish}
+        onOpenChange={(open) => !open && setEntryToUnpublish(null)}
+        title="Unpublish this entry?"
+        description="It disappears from the public changelog and returns to Drafts. Nobody is notified. You can publish it again at any time."
+        confirmLabel="Unpublish"
+        isPending={updateChangelogMutation.isPending}
+        onConfirm={confirmUnpublish}
+      />
       {/* Delete confirmation dialog */}
       <ConfirmDialog
         open={deleteDialogOpen}

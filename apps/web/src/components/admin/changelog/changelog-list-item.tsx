@@ -13,6 +13,7 @@ import {
   EllipsisHorizontalIcon,
   PencilIcon,
   TrashIcon,
+  ArrowUturnLeftIcon,
   LinkIcon,
 } from '@heroicons/react/24/outline'
 import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
@@ -38,6 +39,8 @@ interface ChangelogListItemProps {
   }>
   onEdit?: (id: ChangelogId) => void
   onDelete?: (id: ChangelogId) => void
+  /** Published/scheduled entries only: back to Drafts, nobody notified. */
+  onUnpublish?: (id: ChangelogId) => void
 }
 
 const STATUS_CONFIG = {
@@ -58,6 +61,7 @@ export function ChangelogListItem({
   linkedPosts,
   onEdit,
   onDelete,
+  onUnpublish,
 }: ChangelogListItemProps) {
   const config = STATUS_CONFIG[status]
   const contentPreview = stripMarkdownPreview(content, 150)
@@ -152,6 +156,12 @@ export function ChangelogListItem({
               <PencilIcon className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
+            {(status === 'published' || status === 'scheduled') && onUnpublish && (
+              <DropdownMenuItem onClick={() => onUnpublish(id)}>
+                <ArrowUturnLeftIcon className="mr-2 h-4 w-4" />
+                Unpublish
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => onDelete?.(id)}

@@ -219,9 +219,19 @@ async function upsertRelease(
       eq(changelogEntries.sourceId, source.id),
       eq(changelogEntries.sourceKey, release.key)
     ),
-    columns: { id: true, title: true, content: true, displayDate: true, publishedAt: true },
+    columns: {
+      id: true,
+      title: true,
+      content: true,
+      displayDate: true,
+      publishedAt: true,
+      deletedAt: true,
+    },
   })
   if (existing) {
+    // A deleted import stays deleted: the row keeps its source key so the
+    // release is recognised, and nothing is written to it.
+    if (existing.deletedAt) return 'unchanged'
     const dateChanged = !!release.date && existing.displayDate?.getTime() !== release.date.getTime()
     const orderChanged =
       !!publishedAt &&

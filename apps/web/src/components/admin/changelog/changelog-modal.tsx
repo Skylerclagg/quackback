@@ -11,7 +11,9 @@ import { ModalHeader } from '@/components/shared/modal-header'
 import { UrlModalShell } from '@/components/shared/url-modal-shell'
 import { updateChangelogSchema } from '@/lib/shared/schemas/changelog'
 import type { TiptapContent } from '@/lib/shared/schemas/posts'
-import { useUpdateChangelog } from '@/lib/client/mutations/changelog'
+import { useDeleteChangelog, useUpdateChangelog } from '@/lib/client/mutations/changelog'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { TrashIcon } from '@heroicons/react/24/solid'
 import { changelogQueries } from '@/lib/client/queries/changelog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -72,6 +74,8 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
   const [hasInitialized, setHasInitialized] = useState(false)
 
   const updateChangelogMutation = useUpdateChangelog()
+  const deleteChangelogMutation = useDeleteChangelog()
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // Fetch existing changelog data
   const { data: entry, isLoading } = useQuery({
@@ -266,6 +270,29 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
           submitLabel={getSubmitButtonText()}
           isPending={updateChangelogMutation.isPending}
         >
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+            disabled={deleteChangelogMutation.isPending}
+          >
+            <TrashIcon className="h-4 w-4 mr-1.5" />
+            Delete
+          </Button>
+          <ConfirmDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            title="Delete changelog entry?"
+            description="This action cannot be undone. The changelog entry will be permanently deleted."
+            confirmLabel="Delete"
+            variant="destructive"
+            isPending={deleteChangelogMutation.isPending}
+            onConfirm={() =>
+              deleteChangelogMutation.mutate(entryId, { onSuccess: () => onClose() })
+            }
+          />
           {/* Mobile settings button */}
           <Sheet open={mobileSettingsOpen} onOpenChange={setMobileSettingsOpen}>
             <SheetTrigger asChild>
