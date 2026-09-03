@@ -73,14 +73,19 @@ export function parseVitePressChangelog(html: string, pageUrl: string): ParsedRe
     const start = h.index! + h[0].length
     const end = i + 1 < headings.length ? headings[i + 1]!.index! : scope.length
     let body = scope.slice(start, end)
-    // First paragraph that is a date is the release date, not content.
+    // The release date is the first block under the heading when that block is
+    // just a date: a paragraph, or a one-item list (a markdown "- *date*" line
+    // renders as <ul><li><em>…</em></li></ul>). It is metadata, not content.
     let date: Date | null = null
-    const firstP = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)
-    if (firstP) {
-      const parsed = parseReleaseDate(stripTags(firstP[1]!))
+    const firstBlock =
+      /^\s*(?:<p\b[^>]*>([\s\S]*?)<\/p>|<ul\b[^>]*>\s*<li\b[^>]*>([\s\S]*?)<\/li>\s*<\/ul>)/i.exec(
+        body
+      )
+    if (firstBlock) {
+      const parsed = parseReleaseDate(stripTags(firstBlock[1] ?? firstBlock[2] ?? ''))
       if (parsed) {
         date = parsed
-        body = body.slice(0, firstP.index) + body.slice(firstP.index + firstP[0].length)
+        body = body.slice(firstBlock.index + firstBlock[0].length)
       }
     }
     body = body.replace(/<a\b[^>]*class="header-anchor"[^>]*>[\s\S]*?<\/a>/gi, '')

@@ -54,6 +54,7 @@ import {
   workflowRuns,
   workflowRunEvents,
   changelogSubscriptions,
+  changelogSources,
   statusSubscriptions,
   principal,
   eq,
@@ -409,6 +410,12 @@ export const REPOINT_STEPS: RepointStep[] = [
   fillIfEmpty(
     'blocked_by_principal_id',
     'Attribute consolidation, not a re-point: the blocking team actor moves with blocked_at so the audit trail survives the merge (only filled when the target was not itself blocked).'
+  ),
+  simpleRepoint(
+    'changelog_sources',
+    changelogSources,
+    'created_by_principal_id',
+    'Author attribution for entries an external changelog source imports (the admin who added the source). Plain re-point: new imports must keep pointing at a live principal, and nothing is unique on it.'
   ),
   collisionRepoint(
     'changelog_subscriptions',

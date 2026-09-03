@@ -174,6 +174,10 @@ export function mockDbModule(): Record<string, unknown> {
       principalId: 'changelogSubscriptions.principalId',
       __name: 'changelog_subscriptions',
     },
+    changelogSources: {
+      createdByPrincipalId: 'changelogSources.createdByPrincipalId',
+      __name: 'changelog_sources',
+    },
     statusSubscriptions: {
       principalId: 'statusSubscriptions.principalId',
       __name: 'status_subscriptions',

@@ -215,15 +215,18 @@ async function upsertRelease(
       eq(changelogEntries.sourceId, source.id),
       eq(changelogEntries.sourceKey, release.key)
     ),
-    columns: { id: true, title: true, content: true },
+    columns: { id: true, title: true, content: true, displayDate: true },
   })
   if (existing) {
-    if (existing.title === release.title && existing.content === release.markdown)
+    const dateChanged = !!release.date && existing.displayDate?.getTime() !== release.date.getTime()
+    if (existing.title === release.title && existing.content === release.markdown && !dateChanged) {
       return 'unchanged'
+    }
     await updateChangelog(existing.id, {
       title: release.title,
       content: release.markdown,
       contentJson,
+      ...(release.date ? { displayDate: release.date } : {}),
     })
     return 'updated'
   }

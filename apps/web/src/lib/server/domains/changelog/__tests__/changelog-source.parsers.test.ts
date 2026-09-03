@@ -12,7 +12,7 @@ const PAGE = `<!DOCTYPE html><html><head><title>Changelog | Competition Control<
 <div class="vp-doc">
 <h1 id="changelog" tabindex="-1">Changelog <a class="header-anchor" href="#changelog" aria-label="Permalink to &quot;Changelog&quot;">​</a></h1>
 <h2 id="v0-1-0-beta8" tabindex="-1">v0.1.0-beta8 <a class="header-anchor" href="#v0-1-0-beta8" aria-label="Permalink">​</a></h2>
-<p>August 6, 2026</p>
+<ul><li><em>August 6, 2026</em></li></ul>
 <h3 id="engage-support" tabindex="-1">Engage Support <a class="header-anchor" href="#engage-support">​</a></h3>
 <p>This release includes support for running Engage tournaments using Tier Takeover.</p>
 <ul>
@@ -40,7 +40,7 @@ describe('parseVitePressChangelog', () => {
     expect(releases[0]!.url).toBe('https://c2.recf.org/changelog.html#v0-1-0-beta8')
   })
 
-  it('reads the date paragraph as the release date and keeps it out of the notes', () => {
+  it('reads the date (a one-item list, as VitePress renders it, or a paragraph) and keeps it out of the notes', () => {
     expect(releases[0]!.date?.toISOString().slice(0, 10)).toBe('2026-08-06')
     expect(releases[1]!.date?.toISOString().slice(0, 10)).toBe('2026-07-21')
     expect(releases[0]!.markdown).not.toContain('August 6, 2026')
