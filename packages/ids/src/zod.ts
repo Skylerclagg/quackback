@@ -181,6 +181,7 @@ export const conversationMessageReactionIdSchema = typeIdSchema(
 export const roadmapIdSchema = typeIdSchema(ID_PREFIXES.roadmap)
 export const roadmapColumnIdSchema = typeIdSchema(ID_PREFIXES.roadmap_column)
 export const milestoneIdSchema = typeIdSchema(ID_PREFIXES.roadmap_milestone)
+export const changelogSourceIdSchema = typeIdSchema(ID_PREFIXES.changelog_source)
 export const changelogIdSchema = typeIdSchema(ID_PREFIXES.changelog)
 export const conversationIdSchema = typeIdSchema(ID_PREFIXES.conversation)
 export const conversationMessageIdSchema = typeIdSchema(ID_PREFIXES.conversation_message)

@@ -199,6 +199,19 @@ export const JOB_DEFINITIONS: readonly JobDefinition[] = [
       ),
   },
   {
+    name: 'changelog-source-sync',
+    cron: '17 * * * *',
+    maxAttempts: 3,
+    handler: () =>
+      import('@/lib/server/domains/changelog/changelog-source-sync-queue').then(
+        (m) => m.runChangelogSourceSync
+      ),
+    cronEnabled: () =>
+      import('@/lib/server/domains/changelog/changelog-source-sync-queue').then((m) =>
+        m.isChangelogSourceSyncDue()
+      ),
+  },
+  {
     name: 'workflow-sweep',
     cron: '*/5 * * * *',
     maxAttempts: 3,

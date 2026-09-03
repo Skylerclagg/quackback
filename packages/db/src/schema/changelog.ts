@@ -78,8 +78,14 @@ export const changelogEntries = pgTable(
     embedding: vector('embedding'),
     embeddingModel: text('embedding_model'),
     embeddingUpdatedAt: timestamp('embedding_updated_at', { withTimezone: true }),
+    /** Import provenance: the external source and its release key; see changelog-sources.ts. */
+    sourceId: typeIdColumnNullable('changelog_source')('source_id'),
+    sourceKey: text('source_key'),
   },
   (table) => [
+    uniqueIndex('changelog_entries_source_key_unique')
+      .on(table.sourceId, table.sourceKey)
+      .where(sql`${table.sourceId} IS NOT NULL`),
     index('changelog_published_at_idx').on(table.publishedAt),
     index('changelog_principal_id_idx').on(table.principalId),
     index('changelog_deleted_at_idx').on(table.deletedAt),

@@ -1793,6 +1793,13 @@
       "when": 1788739200000,
       "tag": "0278_post_tags_internal",
       "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1788825600000,
+      "tag": "0279_changelog_sources",
+      "breakpoints": true
     }
   ]
 }

@@ -355,6 +355,7 @@ describe('replayGateVerdict', () => {
       '0276_changelog_category_collections',
       '0277_roadmap_timeline',
       '0278_post_tags_internal',
+      '0279_changelog_sources',
     ])
     const verdict = replayGateVerdict(before, verdictsFor(replaySetFor(before)), false)
     expect(verdict.ok).toBe(false)

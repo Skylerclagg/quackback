@@ -285,6 +285,9 @@ export {
   changelogCategoriesRelations,
   changelogEntryCategories,
   changelogEntryCategoriesRelations,
+  changelogSources,
+  changelogSourcesRelations,
+  CHANGELOG_SOURCE_KINDS,
   changelogSubscriptions,
   changelogSubscriptionsRelations,
   // Schema tables - conversations
@@ -496,6 +499,9 @@ export {
 // Re-export schema types not covered by @quackback/db/types
 export type {
   EventMappingFilters,
+  ChangelogSource,
+  NewChangelogSource,
+  ChangelogSourceKind,
   RoadmapMilestone,
   NewRoadmapMilestone,
   AssistantInvolvementSource,

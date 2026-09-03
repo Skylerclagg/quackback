@@ -100,7 +100,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 2. Surfaces and their enforced authorization
 
-### Server functions (`requireAuth`) — 681 surfaces
+### Server functions (`requireAuth`) — 689 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -144,6 +144,8 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `integrations/slack/server/functions.ts`::getSlackConnectUrl | integration.manage |
 | `integrations/slack/server/functions.ts`::fetchSlackChannelsFn | integration.manage |
 | `integrations/stripe/server/functions.ts`::saveStripeKeyFn | integration.manage |
+| `integrations/sysaid/server/functions.ts`::saveSysAidCredentialsFn | integration.manage |
+| `integrations/sysaid/server/functions.ts`::fetchSysAidListFn | integration.manage |
 | `integrations/teams/server/functions.ts`::getTeamsConnectUrl | integration.manage |
 | `integrations/teams/server/functions.ts`::fetchTeamsTeamsFn | integration.manage |
 | `integrations/teams/server/functions.ts`::fetchTeamsChannelsFn | integration.manage |
@@ -280,6 +282,12 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/changelog-categories.ts`::updateChangelogCategoryFn | changelog.manage |
 | `lib/server/functions/changelog-categories.ts`::deleteChangelogCategoryFn | changelog.manage |
 | `lib/server/functions/changelog-categories.ts`::reorderChangelogCategoriesFn | changelog.manage |
+| `lib/server/functions/changelog-sources.ts`::listChangelogSourcesFn | changelog.manage |
+| `lib/server/functions/changelog-sources.ts`::createChangelogSourceFn | changelog.manage |
+| `lib/server/functions/changelog-sources.ts`::updateChangelogSourceFn | changelog.manage |
+| `lib/server/functions/changelog-sources.ts`::deleteChangelogSourceFn | changelog.manage |
+| `lib/server/functions/changelog-sources.ts`::previewChangelogSourceFn | changelog.manage |
+| `lib/server/functions/changelog-sources.ts`::syncChangelogSourceNowFn | changelog.manage |
 | `lib/server/functions/changelog-subscriptions.ts`::subscribeToChangelogFn | END_USER (any authenticated) |
 | `lib/server/functions/changelog-subscriptions.ts`::unsubscribeFromChangelogFn | END_USER (any authenticated) |
 | `lib/server/functions/changelog-subscriptions.ts`::getMyChangelogSubscriptionFn | END_USER (any authenticated) |
@@ -992,7 +1000,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-196 of 989 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+196 of 997 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 

@@ -56,6 +56,8 @@ export type ChangelogId = TypeId<'changelog'>
 
 /** Changelog category (label) ID - e.g., changelog_category_01h455vb4pex5vsknk084sn02q */
 export type ChangelogCategoryId = TypeId<'changelog_category'>
+/** External changelog source (a site Quackback imports releases from) */
+export type ChangelogSourceId = TypeId<'changelog_source'>
 
 /** Changelog subscription ID - e.g., changelog_sub_01h455vb4pex5vsknk084sn02q */
 export type ChangelogSubscriptionId = TypeId<'changelog_sub'>
@@ -489,6 +491,7 @@ export interface EntityIdMap {
   roadmap_milestone: MilestoneId
   changelog: ChangelogId
   changelog_category: ChangelogCategoryId
+  changelog_source: ChangelogSourceId
   changelog_sub: ChangelogSubscriptionId
   status_component: StatusComponentId
   status_group: StatusComponentGroupId

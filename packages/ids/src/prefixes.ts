@@ -33,6 +33,7 @@ export const ID_PREFIXES = {
   roadmap_milestone: 'milestone',
   changelog: 'changelog',
   changelog_category: 'changelog_category',
+  changelog_source: 'changelog_source',
   changelog_sub: 'changelog_sub',
 
   // Status page

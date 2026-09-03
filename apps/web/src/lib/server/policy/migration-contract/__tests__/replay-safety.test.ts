@@ -303,6 +303,7 @@ describe('the real corpus', () => {
       '0269_messenger_ai_default_on.sql',
       '0276_changelog_category_collections.sql',
       '0277_roadmap_timeline.sql',
+      '0279_changelog_sources.sql',
     ])
   })
 

@@ -8,6 +8,7 @@ import { BackLink } from '@/components/ui/back-link'
 import { PageHeader } from '@/components/shared/page-header'
 import { VisibilityCard } from '@/components/admin/settings/changelog/visibility-card'
 import { LabelsCard } from '@/components/admin/settings/changelog/labels-card'
+import { ChangelogSourcesCard } from '@/components/admin/settings/changelog/sources-card'
 import { EmailCard } from '@/components/admin/settings/changelog/email-card'
 import { updateChangelogSettingsFn } from '@/lib/server/functions/settings'
 import { changelogCategoryQueries, changelogSettingsQueries } from '@/lib/client/queries/changelog'
@@ -63,6 +64,7 @@ function ChangelogSettingsPage() {
 
       <VisibilityCard settings={settings} onChange={onChange} disabled={mutation.isPending} />
       <LabelsCard initialCategories={categories} />
+      <ChangelogSourcesCard categories={categories} />
       <EmailCard settings={settings} onChange={onChange} disabled={mutation.isPending} />
     </div>
   )

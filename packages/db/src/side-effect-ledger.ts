@@ -198,6 +198,12 @@ export const SIDE_EFFECT_LEDGER: readonly LedgerRegistration[] = [
 
   // -- preserve: no consumer gates on it ------------------------------------
   {
+    column: schema.changelogSources.lastRunAt,
+    policy: 'preserve',
+    reason:
+      'When an external changelog source was last read. Nothing drains on it: the importer runs on a fixed hourly cron and re-reads every enabled source regardless of the stamp, upserting entries keyed by source + release, so a rewind cannot cause a duplicate import. The settings panel shows it as "Last synced"; settling it would claim a sync that did not happen. Worst case after a rewind is an older timestamp until the next hourly run.',
+  },
+  {
     column: schema.webhooks.lastTriggeredAt,
     policy: 'preserve',
     reason:

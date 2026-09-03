@@ -793,6 +793,16 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'function of the HTML passed in, so a shared instance returns what a fresh one would.',
   },
   {
+    file: 'apps/web/src/lib/server/domains/changelog/changelog-source.parsers.ts',
+    name: 'turndown',
+    category: 'process-lifetime',
+    reason:
+      'A TurndownService configured with two literal style options (atx headings, dash bullets). ' +
+      'Rules are registered at construction from constants and conversion is a pure function of ' +
+      'the HTML passed in — the same reasoning as the email-html-to-content instance — so a shared ' +
+      'instance returns what a fresh one would for every workspace.',
+  },
+  {
     file: 'apps/web/src/lib/server/auth/sso-test-callback.ts',
     name: 'SCRIPT_BREAKERS',
     category: 'process-lifetime',
