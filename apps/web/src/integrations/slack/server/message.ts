@@ -80,6 +80,28 @@ export function buildSlackMessage(event: EventData, rootUrl: string): SlackMessa
       }
     }
 
+    case 'post.voted': {
+      const { post, voteCount, voterName } = event.data
+      const postUrl = buildPostUrl(rootUrl, post.boardSlug, post.id)
+      const votes = `${voteCount} ${voteCount === 1 ? 'vote' : 'votes'}`
+      const by = voterName ? ` (latest from *${escapeSlackMrkdwn(voterName)}*)` : ''
+      return {
+        text: `"${post.title}" now has ${votes}`,
+        blocks: [
+          {
+            type: 'context',
+            elements: [{ type: 'mrkdwn', text: `🔥 Reached *${votes}*${by}` }],
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `> *<${postUrl}|${escapeSlackMrkdwn(post.title)}>*`,
+            },
+          },
+        ],
+      }
+    }
     case 'post.status_changed': {
       const { post, previousStatus, newStatus } = event.data
       const postUrl = buildPostUrl(rootUrl, post.boardSlug, post.id)

@@ -4,6 +4,7 @@
  */
 
 import type { HookHandler, HookResult } from '@/lib/server/events/hook-types'
+import { resolveCreationEvent } from '@/lib/server/integrations/creation-event'
 import type { EventData } from '@/lib/server/events/types'
 import { isRetryableError } from '@/lib/server/events/hook-utils'
 import { buildMondayItem } from '@/integrations/monday/server/message'
@@ -25,9 +26,12 @@ export interface MondayConfig {
 
 export const mondayHook: HookHandler = {
   async run(event: EventData, target: unknown, config: unknown): Promise<HookResult> {
-    if (event.type !== 'post.created') {
-      return { success: true }
-    }
+    // Any routed creation trigger (new post, vote threshold, status change,
+    // edit) arrives here; the helper turns it into a post.created-shaped event
+    // and returns null for posts already linked to this integration.
+    const creation = await resolveCreationEvent(event, 'monday')
+    if (!creation) return { success: true }
+    event = creation
 
     const { channelId: boardId } = target as MondayTarget
     const { accessToken, rootUrl, groupId } = config as MondayConfig

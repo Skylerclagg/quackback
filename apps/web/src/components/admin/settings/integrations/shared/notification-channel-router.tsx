@@ -19,6 +19,9 @@ import {
   CheckIcon,
 } from '@heroicons/react/24/solid'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { useQuery } from '@tanstack/react-query'
+import { adminQueries } from '@/lib/client/queries/admin'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -56,10 +59,35 @@ export interface Channel {
   name: string
 }
 
+/**
+ * Conditions a routing row applies on top of its event list and board filter.
+ * Stored per integration in the mapping's filters; see EventMappingFilters.
+ */
+export interface RoutingConditions {
+  /** Only posts carrying at least one of these tags. */
+  tagIds?: string[]
+  /** For "status changed": only when the new status is one of these. */
+  statusIds?: string[]
+  /** For "vote threshold": only once the post has this many votes. */
+  minVotes?: number
+}
+
+/** Drop empty members so "no restriction" is stored as null, not as []. */
+export function normaliseConditions(
+  c: RoutingConditions | null | undefined
+): RoutingConditions | null {
+  const out: RoutingConditions = {}
+  if (c?.tagIds?.length) out.tagIds = c.tagIds
+  if (c?.statusIds?.length) out.statusIds = c.statusIds
+  if (c?.minVotes && c.minVotes > 0) out.minVotes = c.minVotes
+  return Object.keys(out).length > 0 ? out : null
+}
+
 export interface NotificationChannel {
   channelId: string
   events: { eventType: string; enabled: boolean }[]
   boardIds: string[] | null
+  conditions?: RoutingConditions | null
 }
 
 export interface EventConfig {
@@ -421,6 +449,200 @@ function BoardFilterCombobox({
   )
 }
 
+/**
+ * Multi-select over any id/name list (tags, statuses), with an "all" reset.
+ * Same shape and behaviour as BoardFilterCombobox.
+ */
+function IdFilterCombobox({
+  ids,
+  items,
+  onChange,
+  allLabel,
+  nounPlural,
+  disabled,
+  ariaLabel,
+}: {
+  ids: string[] | null
+  items: { id: string; name: string }[]
+  onChange: (ids: string[] | null) => void
+  allLabel: string
+  nounPlural: string
+  disabled?: boolean
+  ariaLabel: string
+}) {
+  const [open, setOpen] = useState(false)
+  const isAll = !ids?.length
+  const selectedSet = useMemo(() => new Set(ids ?? []), [ids])
+  const triggerLabel = useMemo(() => {
+    if (isAll) return allLabel
+    if (ids!.length === 1)
+      return items.find((i) => i.id === ids![0])?.name ?? `1 ${nounPlural.replace(/s$/, '')}`
+    return `${ids!.length} ${nounPlural}`
+  }, [isAll, ids, items, allLabel, nounPlural])
+  const toggle = (id: string) => {
+    if (selectedSet.has(id)) {
+      const next = (ids ?? []).filter((x) => x !== id)
+      onChange(next.length > 0 ? next : null)
+    } else {
+      onChange([...(ids ?? []), id])
+    }
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-label={ariaLabel}
+          aria-expanded={open}
+          disabled={disabled}
+          className="w-full justify-between font-normal"
+        >
+          <span className={cn('truncate', isAll && 'text-muted-foreground')}>{triggerLabel}</span>
+          <ChevronUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
+        {open && (
+          <Command>
+            <CommandInput placeholder={`Search ${nounPlural}...`} />
+            <CommandList>
+              <CommandEmpty>No {nounPlural} found.</CommandEmpty>
+              <CommandGroup>
+                <CommandItem
+                  value="__all__"
+                  onSelect={() => {
+                    onChange(null)
+                    setOpen(false)
+                  }}
+                >
+                  <CheckIcon className={cn('mr-2 h-4 w-4', isAll ? 'opacity-100' : 'opacity-0')} />
+                  {allLabel}
+                </CommandItem>
+              </CommandGroup>
+              {items.length > 0 && <CommandSeparator />}
+              <CommandGroup>
+                {items.map((item) => (
+                  <CommandItem key={item.id} value={item.name} onSelect={() => toggle(item.id)}>
+                    <CheckIcon
+                      className={cn(
+                        'mr-2 h-4 w-4',
+                        selectedSet.has(item.id) ? 'opacity-100' : 'opacity-0'
+                      )}
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/** Short human summary of a row's conditions for the collapsed header. */
+function conditionSummary(
+  c: RoutingConditions | null | undefined,
+  tags: { id: string; name: string }[],
+  statuses: { id: string; name: string }[]
+): string | null {
+  if (!c) return null
+  const parts: string[] = []
+  if (c.tagIds?.length) {
+    const name = tags.find((t) => t.id === c.tagIds![0])?.name
+    parts.push(c.tagIds.length === 1 && name ? `tag ${name}` : `${c.tagIds.length} tags`)
+  }
+  if (c.statusIds?.length) {
+    const name = statuses.find((t) => t.id === c.statusIds![0])?.name
+    parts.push(c.statusIds.length === 1 && name ? `→ ${name}` : `${c.statusIds.length} statuses`)
+  }
+  if (c.minVotes) parts.push(`${c.minVotes}+ votes`)
+  return parts.length ? parts.join(' · ') : null
+}
+
+/**
+ * The condition controls shared by the row editor and the add dialog. Tag and
+ * status pickers read the admin catalogues; the vote threshold and the status
+ * filter only show when their event is enabled on the row.
+ */
+function ConditionFields({
+  conditions,
+  onChange,
+  votedEnabled,
+  statusEnabled,
+  disabled,
+}: {
+  conditions: RoutingConditions
+  onChange: (next: RoutingConditions) => void
+  votedEnabled: boolean
+  statusEnabled: boolean
+  disabled?: boolean
+}) {
+  const { data: tagRows = [] } = useQuery(adminQueries.tags())
+  const { data: statusRows = [] } = useQuery(adminQueries.statuses())
+  const tags = tagRows.map((t) => ({ id: String(t.id), name: t.name }))
+  const statuses = statusRows.map((st) => ({ id: String(st.id), name: st.name }))
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Tag filter</Label>
+        <IdFilterCombobox
+          ids={conditions.tagIds ?? null}
+          items={tags}
+          onChange={(tagIds) => onChange({ ...conditions, tagIds: tagIds ?? undefined })}
+          allLabel="Any tag"
+          nounPlural="tags"
+          ariaLabel="Tag filter"
+          disabled={disabled}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Only posts carrying at least one of the chosen tags.
+        </p>
+      </div>
+      {votedEnabled && (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground" htmlFor="routing-min-votes">
+            Minimum votes
+          </Label>
+          <Input
+            id="routing-min-votes"
+            type="number"
+            min={1}
+            className="h-8"
+            placeholder="Every vote"
+            value={conditions.minVotes ?? ''}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10)
+              onChange({ ...conditions, minVotes: Number.isFinite(n) && n > 0 ? n : undefined })
+            }}
+            disabled={disabled}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Fire once the post reaches this many votes. Leave empty to fire on every vote.
+          </p>
+        </div>
+      )}
+      {statusEnabled && (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Only when status becomes</Label>
+          <IdFilterCombobox
+            ids={conditions.statusIds ?? null}
+            items={statuses}
+            onChange={(statusIds) => onChange({ ...conditions, statusIds: statusIds ?? undefined })}
+            allLabel="Any status"
+            nounPlural="statuses"
+            ariaLabel="Status filter"
+            disabled={disabled}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
 // ============================================
 // Channel Row (table row with expandable detail)
 // ============================================
@@ -455,6 +677,11 @@ function ChannelRow<TChannel extends Channel>({
   const channelName = channelInfo?.name || channel.channelId
   const saving = updateMutation.isPending
   const hasFilter = !!channel.boardIds?.length
+  const conditions = channel.conditions ?? {}
+  const hasConditions = !!normaliseConditions(conditions)
+  const { data: tagRows = [] } = useQuery(adminQueries.tags())
+  const { data: statusRows = [] } = useQuery(adminQueries.statuses())
+  const isEventOn = (id: string) => channel.events.find((e) => e.eventType === id)?.enabled ?? false
 
   const handleEventToggle = (eventId: string, checked: boolean) => {
     updateMutation.mutate({
@@ -468,6 +695,7 @@ function ChannelRow<TChannel extends Channel>({
             : (channel.events.find((ev) => ev.eventType === e.id)?.enabled ?? false),
       })),
       boardIds: channel.boardIds,
+      conditions: channel.conditions ?? null,
     })
   }
 
@@ -480,6 +708,19 @@ function ChannelRow<TChannel extends Channel>({
         enabled: channel.events.find((ev) => ev.eventType === e.id)?.enabled ?? false,
       })),
       boardIds,
+      conditions: channel.conditions ?? null,
+    })
+  }
+  const handleConditionsChange = (next: RoutingConditions) => {
+    updateMutation.mutate({
+      integrationId,
+      channelId: channel.channelId,
+      events: events.map((e) => ({
+        eventType: e.id,
+        enabled: channel.events.find((ev) => ev.eventType === e.id)?.enabled ?? false,
+      })),
+      boardIds: channel.boardIds,
+      conditions: normaliseConditions(next),
     })
   }
 
@@ -507,9 +748,18 @@ function ChannelRow<TChannel extends Channel>({
             {renderChannelIcon(channelInfo)}
             <div className="min-w-0 flex items-center gap-2">
               <span className="text-sm font-medium truncate">{channelName}</span>
-              {hasFilter && (
-                <span className="text-[11px] text-muted-foreground shrink-0">
-                  {getBoardSummary(channel, boards)}
+              {(hasFilter || hasConditions) && (
+                <span className="text-[11px] text-muted-foreground shrink-0 truncate">
+                  {[
+                    hasFilter ? getBoardSummary(channel, boards) : null,
+                    conditionSummary(
+                      conditions,
+                      tagRows.map((t) => ({ id: String(t.id), name: t.name })),
+                      statusRows.map((st) => ({ id: String(st.id), name: st.name }))
+                    ),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </span>
               )}
             </div>
@@ -545,6 +795,13 @@ function ChannelRow<TChannel extends Channel>({
                   disabled={disabled || saving}
                 />
               </div>
+              <ConditionFields
+                conditions={conditions}
+                onChange={handleConditionsChange}
+                votedEnabled={isEventOn('post.voted')}
+                statusEnabled={isEventOn('post.status_changed')}
+                disabled={disabled || saving}
+              />
               <div className="pt-2 border-t border-border/30">
                 <Button
                   variant="ghost"
@@ -680,6 +937,7 @@ function AddChannelDialog<TChannel extends Channel>({
     Object.fromEntries(events.map((e) => [e.id, true]))
   )
   const [boardIds, setBoardIds] = useState<string[] | null>(null)
+  const [conditions, setConditions] = useState<RoutingConditions>({})
 
   // Reset form state whenever the dialog closes (cancel, X, or save).
   useEffect(() => {
@@ -687,6 +945,7 @@ function AddChannelDialog<TChannel extends Channel>({
       setSelectedChannelId('')
       setSelectedEvents(Object.fromEntries(events.map((e) => [e.id, true])))
       setBoardIds(null)
+      setConditions({})
     }
   }, [open, events])
 
@@ -708,6 +967,7 @@ function AddChannelDialog<TChannel extends Channel>({
         channelId: selectedChannelId,
         events: eventsToSave,
         boardIds: boardIds ?? undefined,
+        conditions: normaliseConditions(conditions) ?? undefined,
       },
       {
         onSuccess: () => onOpenChange(false),
@@ -781,6 +1041,13 @@ function AddChannelDialog<TChannel extends Channel>({
               disabled={addMutation.isPending}
             />
           </div>
+          <ConditionFields
+            conditions={conditions}
+            onChange={setConditions}
+            votedEnabled={!!selectedEvents['post.voted']}
+            statusEnabled={!!selectedEvents['post.status_changed']}
+            disabled={addMutation.isPending}
+          />
         </div>
 
         <DialogFooter>

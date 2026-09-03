@@ -206,9 +206,25 @@ export interface EventMappingActionConfig {
   [key: string]: string | boolean | number | undefined
 }
 
+/**
+ * Per-mapping conditions an integration's routing row applies before the
+ * hook fires. Every field is optional and independent; an absent field means
+ * "no restriction". Evaluated in events/resolvers/integration.resolver.ts.
+ */
 export interface EventMappingFilters {
+  /** Only posts on one of these boards. */
   boardIds?: string[]
+  /** For `post.status_changed`: only when the post's NEW status is one of these. */
   statusIds?: string[]
+  /** Only posts carrying at least one of these tags. */
+  tagIds?: string[]
+  /**
+   * For `post.voted`: only once the post has at least this many votes.
+   * Notification providers fire exactly when the count reaches it; trackers
+   * (which create one item per post and dedupe on the external link) fire at
+   * or above it.
+   */
+  minVotes?: number
   [key: string]: string[] | string | boolean | number | undefined
 }
 

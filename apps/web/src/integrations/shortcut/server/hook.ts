@@ -4,6 +4,7 @@
  */
 
 import type { HookHandler, HookResult } from '@/lib/server/events/hook-types'
+import { resolveCreationEvent } from '@/lib/server/integrations/creation-event'
 import type { EventData } from '@/lib/server/events/types'
 import { isRetryableError } from '@/lib/server/events/hook-utils'
 import { buildShortcutStoryBody } from '@/integrations/shortcut/server/message'
@@ -32,10 +33,12 @@ export const shortcutHook: HookHandler = {
     const { channelId: groupId } = target as ShortcutTarget
     const { accessToken, rootUrl } = config as ShortcutConfig
 
-    // Only create stories for new feedback
-    if (event.type !== 'post.created') {
-      return { success: true }
-    }
+    // Any routed creation trigger (new post, vote threshold, status change,
+    // edit) arrives here; the helper turns it into a post.created-shaped event
+    // and returns null for posts already linked to this integration.
+    const creation = await resolveCreationEvent(event, 'shortcut')
+    if (!creation) return { success: true }
+    event = creation
 
     log.debug({ event_type: event.type, group_id: groupId }, 'creating story')
 

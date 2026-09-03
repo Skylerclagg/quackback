@@ -596,6 +596,7 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
         channelId: string
         events: { eventType: string; enabled: boolean }[]
         boardIds: string[] | null
+        conditions: { tagIds?: string[]; statusIds?: string[]; minVotes?: number } | null
       }
     >()
 
@@ -610,11 +611,23 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
       if (!channelId) continue
 
       if (!channelMap.has(targetKey)) {
-        const filters = (m.filters as { boardIds?: string[] } | null) || null
+        const filters =
+          (m.filters as {
+            boardIds?: string[]
+            tagIds?: string[]
+            statusIds?: string[]
+            minVotes?: number
+          } | null) || null
+        const conditions = {
+          ...(filters?.tagIds?.length ? { tagIds: filters.tagIds } : {}),
+          ...(filters?.statusIds?.length ? { statusIds: filters.statusIds } : {}),
+          ...(filters?.minVotes ? { minVotes: filters.minVotes } : {}),
+        }
         channelMap.set(targetKey, {
           channelId,
           events: [],
           boardIds: filters?.boardIds?.length ? filters.boardIds : null,
+          conditions: Object.keys(conditions).length > 0 ? conditions : null,
         })
       }
 

@@ -4,6 +4,7 @@
  */
 
 import type { HookHandler, HookResult } from '@/lib/server/events/hook-types'
+import { resolveCreationEvent } from '@/lib/server/integrations/creation-event'
 import type { EventData } from '@/lib/server/events/types'
 import { isRetryableError } from '@/lib/server/events/hook-utils'
 import { buildGitLabIssue } from '@/integrations/gitlab/server/message'
@@ -24,9 +25,12 @@ export interface GitLabConfig {
 
 export const gitlabHook: HookHandler = {
   async run(event: EventData, target: unknown, config: unknown): Promise<HookResult> {
-    if (event.type !== 'post.created') {
-      return { success: true }
-    }
+    // Any routed creation trigger (new post, vote threshold, status change,
+    // edit) arrives here; the helper turns it into a post.created-shaped event
+    // and returns null for posts already linked to this integration.
+    const creation = await resolveCreationEvent(event, 'gitlab')
+    if (!creation) return { success: true }
+    event = creation
 
     const { channelId: projectId } = target as GitLabTarget
     const { accessToken, rootUrl } = config as GitLabConfig

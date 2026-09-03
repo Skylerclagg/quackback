@@ -71,6 +71,24 @@ export function buildDiscordMessage(event: EventData, rootUrl: string): DiscordM
       }
     }
 
+    case 'post.voted': {
+      const { post, voteCount, voterName } = event.data
+      const postUrl = buildPostUrl(rootUrl, post.boardSlug, post.id)
+      const votes = `${voteCount} ${voteCount === 1 ? 'vote' : 'votes'}`
+      return {
+        embeds: [
+          {
+            title: truncate(post.title, 256),
+            url: postUrl,
+            description: voterName ? `Latest vote from ${voterName}` : undefined,
+            color: COLORS.blue,
+            author: { name: `🔥 Reached ${votes}` },
+            footer: { text: `Board: ${post.boardSlug}` },
+            timestamp: event.timestamp,
+          },
+        ],
+      }
+    }
     case 'post.status_changed': {
       const { post, previousStatus, newStatus } = event.data
       const postUrl = buildPostUrl(rootUrl, post.boardSlug, post.id)

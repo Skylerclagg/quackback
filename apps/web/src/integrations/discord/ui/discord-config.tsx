@@ -43,6 +43,13 @@ const DISCORD_EVENT_CONFIG: EventConfig[] = [
     description: "When a post's status is updated",
   },
   {
+    id: 'post.voted',
+    label: 'Post reaches a vote threshold',
+    shortLabel: 'Votes',
+    description:
+      'When a post is upvoted. Set a minimum number of votes on the channel to be told once it gets there.',
+  },
+  {
     id: 'comment.created',
     label: 'New comment posted',
     shortLabel: 'Comment',

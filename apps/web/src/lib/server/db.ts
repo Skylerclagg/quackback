@@ -495,6 +495,7 @@ export {
 
 // Re-export schema types not covered by @quackback/db/types
 export type {
+  EventMappingFilters,
   RoadmapMilestone,
   NewRoadmapMilestone,
   AssistantInvolvementSource,

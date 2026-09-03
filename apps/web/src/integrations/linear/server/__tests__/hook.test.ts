@@ -3,6 +3,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+vi.mock('@/lib/server/integrations/creation-event', () => ({
+  // Unit tests have no database: new posts pass through, everything else is
+  // "already linked / not a creation trigger".
+  resolveCreationEvent: vi.fn(async (event: { type: string }) =>
+    event.type === 'post.created' ? event : null
+  ),
+}))
 import type { PostCreatedEvent, EventData } from '@/lib/server/events/types'
 import { linearHook } from '@/integrations/linear/server/hook'
 

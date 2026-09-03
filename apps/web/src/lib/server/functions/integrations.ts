@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { requireAuth } from './auth-helpers'
 import { db, integrations, integrationEventMappings, eq, and, sql } from '@/lib/server/db'
+import type { EventMappingFilters } from '@/lib/server/db'
 import type { IntegrationId } from '@quackback/ids'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import { logger } from '@/lib/server/logger'
@@ -160,11 +161,33 @@ export const deleteIntegrationFn = createServerFn({ method: 'POST' })
 // Notification Channel CRUD
 // ============================================
 
+/** Routing conditions beyond the board filter; see EventMappingFilters. */
+const routingConditionsSchema = z.object({
+  tagIds: z.array(z.string()).max(100).optional(),
+  statusIds: z.array(z.string()).max(100).optional(),
+  minVotes: z.number().int().min(1).max(100000).optional(),
+})
+type RoutingConditions = z.infer<typeof routingConditionsSchema>
+
+/** The stored filters blob, or null when nothing restricts the row. */
+export function buildMappingFilters(
+  boardIds: string[] | null | undefined,
+  conditions: RoutingConditions | null | undefined
+): EventMappingFilters | null {
+  const filters: EventMappingFilters = {}
+  if (boardIds?.length) filters.boardIds = boardIds
+  if (conditions?.tagIds?.length) filters.tagIds = conditions.tagIds
+  if (conditions?.statusIds?.length) filters.statusIds = conditions.statusIds
+  if (conditions?.minVotes) filters.minVotes = conditions.minVotes
+  return Object.keys(filters).length > 0 ? filters : null
+}
+
 const addNotificationChannelSchema = z.object({
   integrationId: z.string(),
   channelId: z.string(),
   events: z.array(z.string()),
   boardIds: z.array(z.string()).optional(),
+  conditions: routingConditionsSchema.optional(),
 })
 
 const updateNotificationChannelSchema = z.object({
@@ -177,6 +200,7 @@ const updateNotificationChannelSchema = z.object({
     })
   ),
   boardIds: z.array(z.string()).nullable().optional(),
+  conditions: routingConditionsSchema.nullable().optional(),
 })
 
 const removeNotificationChannelSchema = z.object({
@@ -198,7 +222,7 @@ export const addNotificationChannelFn = createServerFn({ method: 'POST' })
     await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
 
     const integrationId = data.integrationId as IntegrationId
-    const filters = data.boardIds?.length ? { boardIds: data.boardIds } : null
+    const filters = buildMappingFilters(data.boardIds, data.conditions)
 
     await db
       .insert(integrationEventMappings)
@@ -247,7 +271,7 @@ export const updateNotificationChannelFn = createServerFn({ method: 'POST' })
     await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
 
     const integrationId = data.integrationId as IntegrationId
-    const filters = data.boardIds?.length ? { boardIds: data.boardIds } : null
+    const filters = buildMappingFilters(data.boardIds, data.conditions)
 
     // Upsert event mappings for this channel
     await db
