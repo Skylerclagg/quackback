@@ -10,6 +10,9 @@ import { auth } from '@/lib/server/auth'
 import { getRequestHeaders } from '@tanstack/react-start/server'
 import { isSafeCallbackUrl } from '@/lib/shared/routing'
 import { signinErrorLanding } from '@/lib/shared/auth-prompt'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'instant-sso' })
 
 /**
  * Server-side: returns `{ url }` to the IdP when the workspace's ONLY sign-in
@@ -52,14 +55,25 @@ export const resolveInstantSsoRedirectFn = createServerFn({ method: 'GET' })
     // errorCallbackURL: without it a failed callback strands the visitor on
     // Better-Auth's bare /api/auth/error page. Land on the sign-in dialog
     // instead, which also runs link-conflict recovery for account_not_linked.
-    const result = await auth.api.signInWithOAuth2({
-      body: {
-        providerId,
-        callbackURL: safeCallback,
-        errorCallbackURL: signinErrorLanding(safeCallback),
-        disableRedirect: true,
-      },
-      headers,
-    })
-    return result?.url ? { url: result.url } : null
+    // Degrade, never fail: this redirect is a shortcut past the dialog, not a
+    // dependency. If the provider could not be registered (its stored client
+    // secret does not decrypt under the current SECRET_KEY, say), the sign-in
+    // dialog must still render — otherwise one bad credential turns every
+    // anonymous portal load into a 500. The credential failure itself is
+    // already logged where it happens.
+    try {
+      const result = await auth.api.signInWithOAuth2({
+        body: {
+          providerId,
+          callbackURL: safeCallback,
+          errorCallbackURL: signinErrorLanding(safeCallback),
+          disableRedirect: true,
+        },
+        headers,
+      })
+      return result?.url ? { url: result.url } : null
+    } catch (error) {
+      log.warn({ err: error, provider_id: providerId }, 'instant sso unavailable; showing dialog')
+      return null
+    }
   })
