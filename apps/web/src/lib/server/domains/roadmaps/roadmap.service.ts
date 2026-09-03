@@ -423,6 +423,8 @@ export async function addPostsToRoadmap(
         .values({
           id: createId('post_tag') as PostTagId,
           name: tagName,
+          // Membership is the team's call; portal users never see or set this tag.
+          internal: true,
           description: `Posts shown on the "${roadmap.name}" roadmap.`,
         })
         .returning()

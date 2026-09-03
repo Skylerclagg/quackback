@@ -98,6 +98,8 @@ export type NewBoard = InferInsertModel<typeof boards>
 // Board settings (stored in boards.settings JSONB column)
 export interface BoardSettings {
   roadmapStatusIds?: PostStatusId[] // Status IDs to show on roadmap
+  /** Portal submissions on this board must carry at least one (public) tag. */
+  requireTag?: boolean
   customFields?: BoardCustomField[] // Extra intake fields the submission form renders
 }
 

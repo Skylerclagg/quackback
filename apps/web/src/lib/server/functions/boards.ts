@@ -52,6 +52,7 @@ const getBoardSchema = z.object({
 const boardSettingsSchema = z
   .object({
     roadmapStatusIds: z.array(z.string()).optional(),
+    requireTag: z.boolean().optional(),
   })
   .strict()
 

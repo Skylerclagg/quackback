@@ -18,7 +18,7 @@ import { SimilarPostsCard } from '@/components/public/similar-posts-card'
 import { BoardCustomFields } from '@/components/public/feedback/board-custom-fields'
 import { PostingToBoard } from '@/components/public/feedback/posting-to-board'
 import { validatePostCustomFieldValues } from '@/lib/shared/post-custom-fields'
-import type { BoardSettings } from '@/lib/shared/db-types'
+import type { BoardSettings, PostTag } from '@/lib/shared/db-types'
 import { signOut } from '@/lib/client/auth-client'
 import { resolveSubmitState } from '@/components/public/feedback/submit-permission'
 import type { JSONContent } from '@tiptap/react'
@@ -48,6 +48,8 @@ export interface FeedbackHeaderProps {
    * board switcher.
    */
   boardLocked?: boolean
+  /** Public tags the submitter may choose from (internal tags are never here). */
+  tags?: PostTag[]
 }
 
 export function FeedbackHeaderAnimated({
@@ -57,6 +59,7 @@ export function FeedbackHeaderAnimated({
   boardPermissions,
   onPostCreated,
   boardLocked = false,
+  tags = [],
 }: FeedbackHeaderProps) {
   const intl = useIntl()
   const router = useRouter()
@@ -108,12 +111,17 @@ export function FeedbackHeaderAnimated({
   const [contentJson, setContentJson] = useState<JSONContent | null>(null)
   const [contentMarkdown, setContentMarkdown] = useState('')
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({})
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   // The selected board's declared intake fields; answers validate against
   // these client-side (same rules the server enforces on write).
   const selectedBoard = boards.find((b) => b.id === selectedBoardId)
   const boardCustomFields = selectedBoard?.settings?.customFields ?? []
+  const requireTag = selectedBoard?.settings?.requireTag ?? false
+  const tagRequirementMet = !requireTag || selectedTagIds.length > 0
+  const toggleTag = (id: string) =>
+    setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]))
 
   // Focus title input when form expands
   useEffect(() => {
@@ -206,6 +214,7 @@ export function FeedbackHeaderAnimated({
         content: contentMarkdown,
         contentJson,
         ...(boardCustomFields.length > 0 ? { customFields: customFieldValues } : {}),
+        ...(tags.length > 0 ? { tagIds: selectedTagIds } : {}),
       })
 
       resetForm()
@@ -245,6 +254,7 @@ export function FeedbackHeaderAnimated({
     setContentJson(null)
     setContentMarkdown('')
     setCustomFieldValues({})
+    setSelectedTagIds([])
     setError('')
   }
 
@@ -403,6 +413,62 @@ export function FeedbackHeaderAnimated({
               </motion.div>
             )}
 
+            {/* Tags the submitter may apply (team-only tags never reach the portal) */}
+            {tags.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2, delay: 0.15 }}
+                className="px-4 sm:px-5 pb-4"
+              >
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  <FormattedMessage id="portal.feedback.header.tags" defaultMessage="Tags" />
+                  {requireTag && (
+                    <span className="ml-1 text-destructive" aria-hidden>
+                      *
+                    </span>
+                  )}
+                </p>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Tags">
+                  {tags.map((tag) => {
+                    const active = selectedTagIds.includes(tag.id)
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => toggleTag(tag.id)}
+                        className={
+                          active
+                            ? 'rounded-full border px-2.5 py-1 text-xs font-medium'
+                            : 'rounded-full border border-border/60 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground'
+                        }
+                        style={
+                          active
+                            ? {
+                                borderColor: tag.color,
+                                color: tag.color,
+                                backgroundColor: `${tag.color}20`,
+                              }
+                            : undefined
+                        }
+                      >
+                        {tag.name}
+                      </button>
+                    )
+                  })}
+                </div>
+                {requireTag && !tagRequirementMet && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    <FormattedMessage
+                      id="portal.feedback.header.tagRequired"
+                      defaultMessage="Choose at least one tag."
+                    />
+                  </p>
+                )}
+              </motion.div>
+            )}
+
             {/* Similar posts card - shown above footer as pre-submit prompt */}
             <SimilarPostsCard
               posts={similarPosts}
@@ -481,7 +547,7 @@ export function FeedbackHeaderAnimated({
                 <Button
                   size="sm"
                   onClick={handleSubmit}
-                  disabled={createPost.isPending || !canSubmit}
+                  disabled={createPost.isPending || !canSubmit || !tagRequirementMet}
                   title={
                     !canSubmit
                       ? noAccess

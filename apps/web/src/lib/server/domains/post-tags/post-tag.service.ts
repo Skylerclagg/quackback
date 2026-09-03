@@ -76,6 +76,7 @@ export async function createPostTag(input: CreateTagInput): Promise<PostTag> {
       color,
       description: input.description?.trim() || null,
       aiPrompt: input.aiPrompt?.trim() || null,
+      internal: input.internal ?? false,
     })
     .returning()
 
@@ -140,6 +141,7 @@ export async function updatePostTag(id: PostTagId, input: UpdateTagInput): Promi
   if (input.name !== undefined) updateData.name = input.name.trim()
   if (input.color !== undefined) updateData.color = input.color
   if (input.description !== undefined) updateData.description = input.description?.trim() || null
+  if (input.internal !== undefined) updateData.internal = input.internal
   if (input.aiPrompt !== undefined) updateData.aiPrompt = input.aiPrompt?.trim() || null
 
   // Update the tag
@@ -253,8 +255,9 @@ export async function getPostTagsByBoard(boardId: BoardId): Promise<PostTag[]> {
 export async function listPublicPostTags(): Promise<PostTag[]> {
   log.debug('list public tags')
   try {
+    // Portal users never see internal (team-only) tags.
     return await db.query.postTags.findMany({
-      where: isNull(postTags.deletedAt),
+      where: and(isNull(postTags.deletedAt), eq(postTags.internal, false)),
       orderBy: [asc(postTags.name)],
     })
   } catch (error) {

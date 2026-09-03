@@ -3,6 +3,8 @@
  */
 
 import { z } from 'zod'
+import { resolvePublicTagSelection } from '@/lib/shared/post-tag-selection'
+import { listPublicPostTags } from '@/lib/server/domains/post-tags/post-tag.service'
 import { createServerFn } from '@tanstack/react-start'
 import {
   type PostId,
@@ -105,6 +107,9 @@ const createPublicPostSchema = z.object({
   // Answers to the board's configured custom fields; validated against the
   // board's declaration inside createPost (unknown keys are dropped there).
   customFields: z.record(z.string(), z.unknown()).optional(),
+  // Public tags chosen by the submitter; validated against the public tag list
+  // and the board's requireTag setting inside the handler.
+  tagIds: z.array(z.string()).max(10).optional(),
 })
 
 const getPublicRoadmapPostsSchema = z.object({
@@ -432,7 +437,15 @@ export const createPublicPostFn = createServerFn({ method: 'POST' })
       throw new Error('Portal access required')
     }
     const ctx = await requireAuth()
-    const { boardId: boardIdRaw, title, content, contentJson, metadata, customFields } = data
+    const {
+      boardId: boardIdRaw,
+      title,
+      content,
+      contentJson,
+      metadata,
+      customFields,
+      tagIds,
+    } = data
     const boardId = boardIdRaw as BoardId
 
     // Resolve the actor first so getPublicBoardById can apply
@@ -482,6 +495,16 @@ export const createPublicPostFn = createServerFn({ method: 'POST' })
       actor,
     }
 
+    // Tags: public ones only, and a board may require one. The widget has no
+    // tag picker (its submissions carry `metadata`), so the requirement applies
+    // to the portal form and the team tags widget posts afterwards.
+    const requireTag =
+      !metadata && ((board.settings as { requireTag?: boolean } | null)?.requireTag ?? false)
+    const publicTagIds =
+      tagIds !== undefined || requireTag
+        ? resolvePublicTagSelection(await listPublicPostTags(), tagIds, { requireTag })
+        : undefined
+
     // Create the post (events dispatched by service layer)
     const post = await createPost(
       {
@@ -492,6 +515,7 @@ export const createPublicPostFn = createServerFn({ method: 'POST' })
         statusId: defaultStatus?.id,
         widgetMetadata: metadata,
         customFields,
+        ...(publicTagIds?.length ? { tagIds: publicTagIds as PostTagId[] } : {}),
       },
       author,
       { headers: getRequestHeaders() }

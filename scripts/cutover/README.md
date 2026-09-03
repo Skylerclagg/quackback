@@ -100,6 +100,10 @@ bun scripts/cutover/04-transform.ts --apply    # commit
 - **Repairs placeholder display names.** Entra External ID gives self-service
   sign-ups the literal display name "unknown"; where a first/last name exists
   the display name is rebuilt from them. The app now does the same at sign-in.
+- **Marks roadmap-membership tags team-only.** Portal users pick classification
+  tags such as "bug" or "feature"; roadmap membership is the team's decision, so
+  the `Roadmap: <name>` tags are flagged internal and never offered or listed on
+  the portal.
 
 ## What does not survive
 

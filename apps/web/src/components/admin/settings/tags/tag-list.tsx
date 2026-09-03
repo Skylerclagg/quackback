@@ -1,4 +1,5 @@
 import { useState, useEffect, useTransition } from 'react'
+import { Switch } from '@/components/ui/switch'
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { PlusIcon, TrashIcon, PencilSquareIcon, ArrowPathIcon } from '@heroicons/react/24/solid'
@@ -163,6 +164,7 @@ interface TagDialogProps {
 function TagDialog({ open, onOpenChange, tag, onSaved }: TagDialogProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [internal, setInternal] = useState(false)
   const [color, setColor] = useState('#6b7280')
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -174,10 +176,12 @@ function TagDialog({ open, onOpenChange, tag, onSaved }: TagDialogProps) {
       if (tag) {
         setName(tag.name)
         setDescription(tag.description ?? '')
+        setInternal(tag.internal ?? false)
         setColor(tag.color)
       } else {
         setName('')
         setDescription('')
+        setInternal(false)
         setColor(randomColor())
       }
       setError(null)
@@ -211,6 +215,7 @@ function TagDialog({ open, onOpenChange, tag, onSaved }: TagDialogProps) {
             name: trimmedName,
             color,
             description: description.trim() || null,
+            internal,
           },
         })
       } else {
@@ -219,6 +224,7 @@ function TagDialog({ open, onOpenChange, tag, onSaved }: TagDialogProps) {
             name: trimmedName,
             color,
             description: description.trim() || undefined,
+            internal,
           },
         })
       }
@@ -281,6 +287,19 @@ function TagDialog({ open, onOpenChange, tag, onSaved }: TagDialogProps) {
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-border/50 p-3">
+          <div className="space-y-0.5">
+            <Label htmlFor="tag-internal">Team-only</Label>
+
+            <p className="text-xs text-muted-foreground">
+              Hidden from portal users: not offered when submitting, not shown in filters. Roadmap
+              membership tags are team-only.
+            </p>
+          </div>
+
+          <Switch id="tag-internal" checked={internal} onCheckedChange={setInternal} />
+        </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>

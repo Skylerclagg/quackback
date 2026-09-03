@@ -158,6 +158,11 @@ export const postTags = pgTable(
     // Matching rule for AI auto-tagging: new posts are evaluated against every
     // tag whose prompt is set, and matching tags are assigned automatically.
     aiPrompt: text('ai_prompt'),
+    /**
+     * Team-only. Hidden from portal users everywhere (pickers, filters, public
+     * submissions); roadmap-membership tags are internal.
+     */
+    internal: boolean('internal').default(false).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     // Soft delete support
     deletedAt: timestamp('deleted_at', { withTimezone: true }),

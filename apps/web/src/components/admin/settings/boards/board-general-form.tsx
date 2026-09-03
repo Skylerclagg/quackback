@@ -16,12 +16,17 @@ import {
 import { useNavigate } from '@tanstack/react-router'
 import { useUpdateBoard } from '@/lib/client/mutations'
 import type { BoardId } from '@quackback/ids'
+import type { BoardSettings } from '@/lib/shared/db-types'
+import { useState } from 'react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 
 interface Board {
   id: BoardId
   name: string
   slug: string
   description: string | null
+  settings?: BoardSettings
 }
 
 interface BoardGeneralFormProps {
@@ -31,6 +36,11 @@ interface BoardGeneralFormProps {
 export function BoardGeneralForm({ board }: BoardGeneralFormProps) {
   const mutation = useUpdateBoard()
   const navigate = useNavigate()
+  // Not part of the react-hook-form schema: a plain switch whose value is
+  // merged into the FULL settings object on save (the update replaces settings
+  // wholesale, so sending only this key would drop roadmap statuses and fields).
+  const initialRequireTag = board.settings?.requireTag ?? false
+  const [requireTag, setRequireTag] = useState(initialRequireTag)
 
   const form = useForm<UpdateBoardInput>({
     resolver: standardSchemaResolver(updateBoardSchema),
@@ -46,6 +56,9 @@ export function BoardGeneralForm({ board }: BoardGeneralFormProps) {
         id: board.id,
         name: data.name,
         description: data.description,
+        ...(requireTag !== initialRequireTag
+          ? { settings: { ...(board.settings ?? {}), requireTag } }
+          : {}),
       },
       {
         onSuccess: (updated) => {
@@ -95,6 +108,21 @@ export function BoardGeneralForm({ board }: BoardGeneralFormProps) {
           )}
         />
 
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-border/50 p-3">
+          <div className="space-y-0.5">
+            <Label htmlFor="board-require-tag">Require a tag on new posts</Label>
+            <p className="text-xs text-muted-foreground">
+              People submitting on the portal must pick at least one tag (team-only tags are never
+              offered). Widget and team submissions are exempt.
+            </p>
+          </div>
+          <Switch
+            id="board-require-tag"
+            checked={requireTag}
+            onCheckedChange={setRequireTag}
+            disabled={mutation.isPending}
+          />
+        </div>
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? 'Saving...' : 'Save changes'}

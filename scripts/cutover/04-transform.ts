@@ -161,8 +161,8 @@ async function main() {
       // createId returns the TypeID; the column stores its uuid payload.
       const typeId = createId('post_tag')
       const [row] = await sql`
-        INSERT INTO post_tags (id, name, description)
-        VALUES (${toUuid(typeId)}, ${tagName}, 'Created at cutover to preserve curated roadmap membership.')
+        INSERT INTO post_tags (id, name, description, internal)
+        VALUES (${toUuid(typeId)}, ${tagName}, 'Created at cutover to preserve curated roadmap membership.', true)
         RETURNING id
       `
       tagUuid = row.id
@@ -306,6 +306,17 @@ async function main() {
       await sql`UPDATE "user" SET name = ${derived} WHERE id = ${u.id}`
       if (has_col) await sql`UPDATE principal SET display_name = ${derived} WHERE user_id = ${u.id}`
     }
+  }
+
+  // ── Phase 8: roadmap-membership tags are team-only
+  // The tags phase 4 creates carry curated membership; portal users must not
+  // see or apply them. Covers tags created by an earlier rehearsal too.
+  const [{ n: publicRoadmapTags }] = await sql`
+    SELECT count(*)::int AS n FROM post_tags WHERE name LIKE 'Roadmap: %' AND internal = false
+  `
+  log(`${publicRoadmapTags} roadmap-membership tag(s) -> internal (team-only)`)
+  if (APPLY && publicRoadmapTags > 0) {
+    await sql`UPDATE post_tags SET internal = true WHERE name LIKE 'Roadmap: %' AND internal = false`
   }
 
   log('done.', APPLY ? 'Changes committed.' : 'Re-run with --apply to commit.')

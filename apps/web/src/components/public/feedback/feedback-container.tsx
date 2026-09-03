@@ -334,6 +334,7 @@ export function FeedbackContainer({
             boardPermissions={boardPermissions}
             onPostCreated={handlePostCreated}
             boardLocked={boardLocked}
+            tags={tags}
           />
 
           <FeedbackToolbar

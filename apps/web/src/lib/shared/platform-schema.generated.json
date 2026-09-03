@@ -534,6 +534,16 @@
       "fields": []
     },
     {
+      "id": "sysaid",
+      "name": "SysAid",
+      "category": "support_crm",
+      "iconBg": "bg-[#0f6cbd]",
+      "docsUrl": "https://documentation.sysaid.com/docs/rest-api-guide",
+      "configurable": false,
+      "envPrefix": "INTEGRATION_SYSAID_",
+      "fields": []
+    },
+    {
       "id": "teams",
       "name": "Microsoft Teams",
       "category": "notifications",
