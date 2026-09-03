@@ -60,7 +60,7 @@ describe('registry capability coverage', () => {
       ['asana', 'clickup', 'github', 'jira', 'linear'].sort()
     )
     expect([...MANUAL_WEBHOOK_PROVIDERS].sort()).toEqual(
-      ['azure_devops', 'gitlab', 'shortcut', 'trello'].sort()
+      ['azure_devops', 'gitlab', 'shortcut', 'sysaid', 'trello'].sort()
     )
   })
 

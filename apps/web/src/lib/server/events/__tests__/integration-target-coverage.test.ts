@@ -99,6 +99,8 @@ const CONNECTED_FIXTURES: Record<
   shortcut: { integrationConfig: { channelId: 'group_1' } },
   azure_devops: { integrationConfig: { channelId: 'Proj:Bug' } },
   notion: { integrationConfig: { channelId: 'db_1' } },
+  // SysAid routes by category; 'default' means the account's default category.
+  sysaid: { integrationConfig: { channelId: 'default', accountUrl: 'https://recf.sysaidit.com' } },
   trello: { integrationConfig: { channelId: 'list_1' } },
   monday: { integrationConfig: { channelId: '1234567890' } },
   n8n: { integrationConfig: { channelId: 'https://n8n.example.com/webhook/a' } },

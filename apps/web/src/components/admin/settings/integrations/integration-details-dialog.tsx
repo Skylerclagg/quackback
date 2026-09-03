@@ -109,6 +109,11 @@ export function IntegrationDetailsDialog({
               <div className="min-w-0 space-y-1">
                 <DialogTitle className="flex flex-wrap items-center gap-2">
                   {entry.name}
+                  {entry.beta && (
+                    <Badge variant="outline" className="border-amber-500/40 text-amber-600">
+                      Beta
+                    </Badge>
+                  )}
                   <StatusBadge entry={entry} status={status} />
                 </DialogTitle>
                 <p className="text-xs text-muted-foreground">

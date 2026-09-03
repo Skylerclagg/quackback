@@ -36,6 +36,11 @@ export function IntegrationHeader({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-semibold text-foreground">{catalog.name}</h1>
+              {catalog.beta && (
+                <Badge variant="outline" className="border-amber-500/40 text-amber-600">
+                  Beta
+                </Badge>
+              )}
               {isConnected && (
                 <Badge variant="outline" className="border-green-500/30 text-green-600">
                   Enabled

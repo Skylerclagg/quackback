@@ -124,6 +124,9 @@ const SalesforceConfig = lazy(() =>
 const ShortcutConfig = lazy(() =>
   import('@/integrations/shortcut/ui/shortcut-config').then((m) => ({ default: m.ShortcutConfig }))
 )
+const SysAidConfig = lazy(() =>
+  import('@/integrations/sysaid/ui/sysaid-config').then((m) => ({ default: m.SysAidConfig }))
+)
 const SlackConfig = lazy(() =>
   import('@/integrations/slack/ui/slack-config').then((m) => ({ default: m.SlackConfig }))
 )
@@ -234,6 +237,11 @@ const SegmentConnectionActions = lazy(() =>
 const ShortcutConnectionActions = lazy(() =>
   import('@/integrations/shortcut/ui/shortcut-connection-actions').then((m) => ({
     default: m.ShortcutConnectionActions,
+  }))
+)
+const SysAidConnectionActions = lazy(() =>
+  import('@/integrations/sysaid/ui/sysaid-connection-actions').then((m) => ({
+    default: m.SysAidConnectionActions,
   }))
 )
 const SlackConnectionActions = lazy(() =>
@@ -984,6 +992,43 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
     ),
   },
 
+  sysaid: {
+    type: 'sysaid',
+    catalog: catalogs.sysaidCatalog,
+    Icon: getIntegrationIcon('sysaid')!,
+    ConnectionActions: SysAidConnectionActions,
+    setup: {
+      title: 'Connect SysAid',
+      description:
+        'Turn feedback into SysAid service records — when a post is submitted, once it reaches a vote threshold, or when it moves to a status — and optionally sync record status back to the post.',
+      steps: [
+        <p key="1">
+          In SysAid, create (or pick) an administrator account with{' '}
+          <span className="font-medium text-foreground">REST API</span> access. It needs to create
+          and read service records.
+        </p>,
+        <p key="2">
+          Enter your SysAid account URL and that user&apos;s credentials below, then click{' '}
+          <span className="font-medium text-foreground">Connect</span>. Quackback verifies them by
+          logging in once.
+        </p>,
+        <p key="3">
+          Then choose which posts become records, in which category, and the fields every record
+          needs.
+        </p>,
+      ],
+    },
+    renderConfig: ({ integration, isConnected }) => (
+      <SysAidConfig
+        integrationId={integration.id}
+        initialConfig={integration.config}
+        initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
+        enabled={isConnected}
+      />
+    ),
+    getWorkspaceName: (integration) => integration.config.workspaceName as string | undefined,
+  },
   teams: {
     type: 'teams',
     catalog: catalogs.teamsCatalog,

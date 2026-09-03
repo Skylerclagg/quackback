@@ -31,6 +31,7 @@ import {
   ShortcutIcon,
   SlackIcon,
   StripeIcon,
+  SysAidIcon,
   TeamsIcon,
   TrelloIcon,
   ZapierIcon,
@@ -163,6 +164,14 @@ export const INTEGRATION_UI: Record<string, IntegrationUiManifest> = {
     icon: StripeIcon,
     displayName: 'Stripe',
     badge: 'bg-purple-100 dark:bg-purple-900/80 text-[#635BFF] dark:text-[#A29BFE]',
+  },
+  sysaid: {
+    icon: SysAidIcon,
+    displayName: 'SysAid',
+    actionVerb: 'Close',
+    itemNoun: 'service record',
+    formatExternalId: (id) => `SR #${id}`,
+    badge: 'bg-sky-100 dark:bg-sky-900/80 text-[#0f6cbd] dark:text-[#7cb8ff]',
   },
   teams: {
     icon: TeamsIcon,

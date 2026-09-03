@@ -167,7 +167,17 @@ export function IntegrationList({ catalog, integrations }: IntegrationListProps)
               >
                 {icon}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">{entry.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-foreground">{entry.name}</p>
+                    {entry.beta && (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-600 text-[11px] px-1.5 py-0"
+                      >
+                        Beta
+                      </Badge>
+                    )}
+                  </div>
                   <div className="mt-0.5">{statusBadge}</div>
                 </div>
                 <ChevronRightIcon className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
@@ -186,7 +196,17 @@ export function IntegrationList({ catalog, integrations }: IntegrationListProps)
               >
                 {icon}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">{entry.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-muted-foreground">{entry.name}</p>
+                    {entry.beta && (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-600 text-[11px] px-1.5 py-0"
+                      >
+                        Beta
+                      </Badge>
+                    )}
+                  </div>
                   <div className="mt-0.5">{statusBadge}</div>
                 </div>
                 <Cog6ToothIcon className="h-4 w-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors shrink-0" />
@@ -204,7 +224,17 @@ export function IntegrationList({ catalog, integrations }: IntegrationListProps)
             >
               {icon}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-muted-foreground">{entry.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-muted-foreground">{entry.name}</p>
+                  {entry.beta && (
+                    <Badge
+                      variant="outline"
+                      className="border-amber-500/40 text-amber-600 text-[11px] px-1.5 py-0"
+                    >
+                      Beta
+                    </Badge>
+                  )}
+                </div>
                 <div className="mt-0.5">{statusBadge}</div>
               </div>
             </button>

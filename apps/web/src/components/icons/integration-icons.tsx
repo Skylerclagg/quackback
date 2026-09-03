@@ -197,6 +197,14 @@ export function NtfyIcon({ className }: IconProps) {
 }
 
 /** Lookup map: integration ID → icon component */
+export function SysAidIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2a7 7 0 0 0-7 7v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2a1 1 0 0 0 1-1v-7a5 5 0 0 1 10 0v7a1 1 0 0 0 1 1h1v1h-4a1 1 0 1 0 0 2h5a2 2 0 0 0 2-2v-1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2h-1V9a7 7 0 0 0-7-7z" />
+    </svg>
+  )
+}
+
 export const INTEGRATION_ICON_MAP: Record<string, ComponentType<IconProps>> = {
   asana: AsanaIcon,
   azure_devops: AzureDevOpsIcon,
@@ -216,6 +224,7 @@ export const INTEGRATION_ICON_MAP: Record<string, ComponentType<IconProps>> = {
   trello: TrelloIcon,
   gitlab: GitLabIcon,
   stripe: StripeIcon,
+  sysaid: SysAidIcon,
   monday: MondayIcon,
   freshdesk: FreshdeskIcon,
   salesforce: SalesforceIcon,

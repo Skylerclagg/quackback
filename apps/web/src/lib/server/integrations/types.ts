@@ -133,6 +133,8 @@ export interface IntegrationCatalogEntry {
   platformCredentialFields?: PlatformCredentialField[]
   /** Link to the setup guide on the docs site */
   docsUrl?: string
+  /** Shown with a "Beta" badge: shipped, but not yet proven against a real account. */
+  beta?: boolean
 }
 
 /** The stored fields for a ticket ↔ external issue link, produced by
