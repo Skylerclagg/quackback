@@ -1,5 +1,4 @@
 import { lazy, useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import { ChevronRightIcon, Cog6ToothIcon } from '@heroicons/react/24/solid'
 import { Badge } from '@/components/ui/badge'
 import { INTEGRATION_ICON_MAP } from '@/components/icons/integration-icons'
@@ -10,6 +9,7 @@ import {
   type PlatformCredentialField,
 } from '@/lib/shared/integration-types'
 import { cn } from '@/lib/shared/utils'
+import { IntegrationDetailsDialog } from './integration-details-dialog'
 
 const PlatformCredentialsDialog = lazy(() =>
   import('./platform-credentials-dialog').then((m) => ({ default: m.PlatformCredentialsDialog }))
@@ -43,6 +43,9 @@ interface SelectedIntegration {
 export function IntegrationList({ catalog, integrations }: IntegrationListProps) {
   const [selectedIntegration, setSelectedIntegration] = useState<SelectedIntegration | null>(null)
   const [activeCategory, setActiveCategory] = useState<IntegrationCategory | 'all'>('all')
+  // Every card opens the details dialog first; it hands off to settings or
+  // the credentials form from there.
+  const [details, setDetails] = useState<IntegrationCatalogEntry | null>(null)
 
   const getIntegrationStatus = (integrationId: string) => {
     return integrations.find((i) => i.id === integrationId)
@@ -153,13 +156,14 @@ export function IntegrationList({ catalog, integrations }: IntegrationListProps)
             </Badge>
           ) : null
 
-          // Available (connected) integration — link to settings
+          // Available integration — details dialog, which links on to settings
           if (entry.available) {
             return (
-              <Link
+              <button
                 key={entry.id}
-                to={entry.settingsPath}
-                className="group flex items-center gap-3 rounded-lg border border-border/50 bg-card p-3 transition-all hover:border-border hover:shadow-sm"
+                type="button"
+                onClick={() => setDetails(entry)}
+                className="group flex items-center gap-3 rounded-lg border border-border/50 bg-card p-3 text-left transition-all hover:border-border hover:shadow-sm"
               >
                 {icon}
                 <div className="flex-1 min-w-0">
@@ -167,23 +171,17 @@ export function IntegrationList({ catalog, integrations }: IntegrationListProps)
                   <div className="mt-0.5">{statusBadge}</div>
                 </div>
                 <ChevronRightIcon className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
-              </Link>
+              </button>
             )
           }
 
-          // Not available but configurable — opens credentials dialog
+          // Not available but configurable — details dialog, then the credentials form
           if (entry.configurable) {
             return (
               <button
                 key={entry.id}
                 type="button"
-                onClick={() =>
-                  setSelectedIntegration({
-                    type: entry.id,
-                    name: entry.name,
-                    fields: entry.platformCredentialFields ?? [],
-                  })
-                }
+                onClick={() => setDetails(entry)}
                 className="group flex items-center gap-3 rounded-lg border border-dashed border-border/40 bg-muted/10 p-3 text-left transition-all hover:border-border/60"
               >
                 {icon}
@@ -196,21 +194,39 @@ export function IntegrationList({ catalog, integrations }: IntegrationListProps)
             )
           }
 
-          // Coming soon — plain div
+          // Coming soon — details dialog only
           return (
-            <div
+            <button
               key={entry.id}
-              className="flex items-center gap-3 rounded-lg border border-dashed border-border/30 bg-muted/10 p-3"
+              type="button"
+              onClick={() => setDetails(entry)}
+              className="flex items-center gap-3 rounded-lg border border-dashed border-border/30 bg-muted/10 p-3 text-left"
             >
               {icon}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-muted-foreground">{entry.name}</p>
                 <div className="mt-0.5">{statusBadge}</div>
               </div>
-            </div>
+            </button>
           )
         })}
       </div>
+
+      <IntegrationDetailsDialog
+        entry={details}
+        status={details ? getIntegrationStatus(details.id)?.status : undefined}
+        onOpenChange={(open) => {
+          if (!open) setDetails(null)
+        }}
+        onSetUp={(entry) => {
+          setDetails(null)
+          setSelectedIntegration({
+            type: entry.id,
+            name: entry.name,
+            fields: entry.platformCredentialFields ?? [],
+          })
+        }}
+      />
 
       {selectedIntegration && (
         <PlatformCredentialsDialog
