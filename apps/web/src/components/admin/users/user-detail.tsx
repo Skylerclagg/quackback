@@ -489,6 +489,8 @@ export function UserDetail({
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
+  const [editGivenName, setEditGivenName] = useState('')
+  const [editFamilyName, setEditFamilyName] = useState('')
   const updateUser = useUpdatePortalUser()
   const { settings } = useRouteContext({ from: '__root__' })
   const supportInboxEnabled =
@@ -518,6 +520,8 @@ export function UserDetail({
     // A lead's editable address is the captured contact email; the account
     // email behind it is a synthetic placeholder.
     setEditEmail(user.email ?? user.contactEmail ?? '')
+    setEditGivenName(user.givenName ?? '')
+    setEditFamilyName(user.familyName ?? '')
     setIsEditing(true)
   }
 
@@ -527,7 +531,13 @@ export function UserDetail({
 
   const saveEdits = () => {
     if (!user) return
-    const updates: { principalId: string; name?: string; email?: string | null } = {
+    const updates: {
+      principalId: string
+      name?: string
+      email?: string | null
+      givenName?: string | null
+      familyName?: string | null
+    } = {
       principalId: user.principalId,
     }
     const trimmedName = editName.trim()
@@ -542,7 +552,16 @@ export function UserDetail({
       updates.email = newEmail
     }
 
-    if (!updates.name && updates.email === undefined) {
+    const nextGiven = editGivenName.trim() || null
+    const nextFamily = editFamilyName.trim() || null
+    if (nextGiven !== (user.givenName ?? null)) updates.givenName = nextGiven
+    if (nextFamily !== (user.familyName ?? null)) updates.familyName = nextFamily
+    if (
+      !updates.name &&
+      updates.email === undefined &&
+      updates.givenName === undefined &&
+      updates.familyName === undefined
+    ) {
       setIsEditing(false)
       return
     }
@@ -595,9 +614,26 @@ export function UserDetail({
                 <Input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Name"
+                  placeholder="Display name"
+                  aria-label="Display name"
                   className="text-sm"
                 />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    value={editGivenName}
+                    onChange={(e) => setEditGivenName(e.target.value)}
+                    placeholder="First name"
+                    aria-label="First name"
+                    className="text-sm"
+                  />
+                  <Input
+                    value={editFamilyName}
+                    onChange={(e) => setEditFamilyName(e.target.value)}
+                    placeholder="Last name"
+                    aria-label="Last name"
+                    className="text-sm"
+                  />
+                </div>
                 <Input
                   type="email"
                   value={editEmail}
@@ -855,6 +891,19 @@ export function UserDetail({
           </div>
 
           <div className="flex w-full shrink-0 flex-col gap-3 lg:w-[300px]">
+            {/* First on the rail: the one card every record has. Team-side only. The portal renders `name` alone, so a person's
+                legal name never appears on a public surface. Edit via the pencil above. */}
+            <RailCard title="Name">
+              <KvRow label="Display Name">
+                {user.name || <span className="text-muted-foreground/50">{EM_DASH}</span>}
+              </KvRow>
+              <KvRow label="First Name">
+                {user.givenName || <span className="text-muted-foreground/50">{EM_DASH}</span>}
+              </KvRow>
+              <KvRow label="Last Name">
+                {user.familyName || <span className="text-muted-foreground/50">{EM_DASH}</span>}
+              </KvRow>
+            </RailCard>
             <RailCard title="Company">
               <UserCompanyControl
                 principalId={user.principalId as PrincipalId}
@@ -890,19 +939,6 @@ export function UserDetail({
                   </KvRow>
                 ))
               )}
-            </RailCard>
-            {/* Team-side only. The portal renders `name` alone, so a person's
-                legal name never appears on a public surface. */}
-            <RailCard title="Name">
-              <KvRow label="Display Name">
-                {user.name || <span className="text-muted-foreground/50">{EM_DASH}</span>}
-              </KvRow>
-              <KvRow label="First Name">
-                {user.givenName || <span className="text-muted-foreground/50">{EM_DASH}</span>}
-              </KvRow>
-              <KvRow label="Last Name">
-                {user.familyName || <span className="text-muted-foreground/50">{EM_DASH}</span>}
-              </KvRow>
             </RailCard>
             <RailCard title="Account">
               <KvRow label="Account created">{formatDate(user.createdAt)}</KvRow>

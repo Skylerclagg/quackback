@@ -26,6 +26,9 @@ export interface UpdatePortalUserProfileInput {
   name?: string
   /** New address; null clears it; undefined leaves it alone. */
   email?: string | null
+  /** First / last name (team-side fields; null clears). */
+  givenName?: string | null
+  familyName?: string | null
 }
 
 export async function updatePortalUserProfile(
@@ -43,6 +46,16 @@ export async function updatePortalUserProfile(
   const isLead = target.type === 'anonymous'
 
   let updated = false
+  if (input.givenName !== undefined || input.familyName !== undefined) {
+    await db
+      .update(user)
+      .set({
+        ...(input.givenName !== undefined && { givenName: input.givenName?.trim() || null }),
+        ...(input.familyName !== undefined && { familyName: input.familyName?.trim() || null }),
+      })
+      .where(eq(user.id, target.userId))
+    updated = true
+  }
 
   if (input.email !== undefined) {
     if (isLead) {

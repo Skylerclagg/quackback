@@ -856,6 +856,8 @@ const updatePortalUserSchema = z.object({
   principalId: z.string(),
   name: z.string().min(1).max(200).optional(),
   email: z.string().email().nullable().optional(),
+  givenName: z.string().max(64).nullable().optional(),
+  familyName: z.string().max(64).nullable().optional(),
 })
 
 export const updatePortalUserFn = createServerFn({ method: 'POST' })
@@ -869,6 +871,8 @@ export const updatePortalUserFn = createServerFn({ method: 'POST' })
       principalId: data.principalId as PrincipalId,
       name: data.name,
       email: data.email,
+      givenName: data.givenName,
+      familyName: data.familyName,
     })
 
     log.info({ principal_id: data.principalId }, 'portal user updated')
