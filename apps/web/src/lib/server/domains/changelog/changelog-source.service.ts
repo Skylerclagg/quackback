@@ -20,6 +20,7 @@ import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import type { AudienceVisibility } from '@/lib/server/policy/audience'
 import {
+  inferReleaseDates,
   parseJsonChangelog,
   parseVitePressChangelog,
   type ParsedRelease,
@@ -184,7 +185,7 @@ export async function syncChangelogSource(source: ChangelogSource): Promise<Sync
   try {
     const releases = await fetchReleases(source.url, source.kind)
     summary.fetched = releases.length
-    for (const release of releases) {
+    for (const release of inferReleaseDates(releases)) {
       const outcome = await upsertRelease(source, release)
       summary[outcome] += 1
     }
@@ -207,19 +208,31 @@ export async function syncChangelogSource(source: ChangelogSource): Promise<Sync
 
 async function upsertRelease(
   source: ChangelogSource,
-  release: ParsedRelease
+  release: ParsedRelease & { orderDate: Date | null }
 ): Promise<'created' | 'updated' | 'unchanged'> {
+  // Where the entry sits in the list: the release date, or its inferred place.
+  // Draft imports keep publishedAt null until someone publishes them.
+  const publishedAt = source.publishAs === 'draft' ? undefined : (release.orderDate ?? undefined)
   const contentJson = sanitizeTiptapContent(markdownToTiptapJson(release.markdown || release.title))
   const existing = await db.query.changelogEntries.findFirst({
     where: and(
       eq(changelogEntries.sourceId, source.id),
       eq(changelogEntries.sourceKey, release.key)
     ),
-    columns: { id: true, title: true, content: true, displayDate: true },
+    columns: { id: true, title: true, content: true, displayDate: true, publishedAt: true },
   })
   if (existing) {
     const dateChanged = !!release.date && existing.displayDate?.getTime() !== release.date.getTime()
-    if (existing.title === release.title && existing.content === release.markdown && !dateChanged) {
+    const orderChanged =
+      !!publishedAt &&
+      !!existing.publishedAt &&
+      existing.publishedAt.getTime() !== publishedAt.getTime()
+    if (
+      existing.title === release.title &&
+      existing.content === release.markdown &&
+      !dateChanged &&
+      !orderChanged
+    ) {
       return 'unchanged'
     }
     await updateChangelog(existing.id, {
@@ -228,6 +241,12 @@ async function upsertRelease(
       contentJson,
       ...(release.date ? { displayDate: release.date } : {}),
     })
+    if (orderChanged) {
+      await db
+        .update(changelogEntries)
+        .set({ publishedAt })
+        .where(eq(changelogEntries.id, existing.id))
+    }
     return 'updated'
   }
   const author = {
@@ -249,7 +268,11 @@ async function upsertRelease(
   )
   await db
     .update(changelogEntries)
-    .set({ sourceId: source.id, sourceKey: release.key })
+    .set({
+      sourceId: source.id,
+      sourceKey: release.key,
+      ...(publishedAt ? { publishedAt } : {}),
+    })
     .where(eq(changelogEntries.id, entry.id))
   return 'created'
 }

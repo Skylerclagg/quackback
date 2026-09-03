@@ -149,3 +149,28 @@ export function parseJsonChangelog(data: unknown, pageUrl: string): ParsedReleas
   }
   return releases
 }
+
+/**
+ * Give undated releases a place in time from their position on the page.
+ * Changelog pages list newest first, so an undated release sits just before
+ * the nearest dated release above it (a second earlier), or, when nothing
+ * above is dated, just after the nearest dated one below. With no dated
+ * release at all the list is returned unchanged. The parsed `date` is left
+ * alone; the result is an `orderDate` for ordering and publish time only.
+ */
+export function inferReleaseDates(
+  releases: ParsedRelease[]
+): Array<ParsedRelease & { orderDate: Date | null }> {
+  return releases.map((release, i) => {
+    if (release.date) return { ...release, orderDate: release.date }
+    for (let j = i - 1; j >= 0; j--) {
+      const d = releases[j]!.date
+      if (d) return { ...release, orderDate: new Date(d.getTime() - 1000) }
+    }
+    for (let j = i + 1; j < releases.length; j++) {
+      const d = releases[j]!.date
+      if (d) return { ...release, orderDate: new Date(d.getTime() + 1000) }
+    }
+    return { ...release, orderDate: null }
+  })
+}

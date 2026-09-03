@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  inferReleaseDates,
   parseJsonChangelog,
   parseReleaseDate,
   parseVitePressChangelog,
@@ -104,5 +105,40 @@ describe('parseReleaseDate', () => {
     expect(parseReleaseDate('2026-08-06')?.toISOString().slice(0, 10)).toBe('2026-08-06')
     expect(parseReleaseDate('This release includes support for Engage.')).toBeNull()
     expect(parseReleaseDate('')).toBeNull()
+  })
+})
+
+describe('inferReleaseDates', () => {
+  const rel = (key: string, date: string | null) => ({
+    key,
+    title: key,
+    date: date ? new Date(date) : null,
+    markdown: '',
+    url: null,
+  })
+
+  it('places an undated release just before the nearest dated release above it', () => {
+    const out = inferReleaseDates([
+      rel('b8', '2026-08-06'),
+      rel('b7', '2026-08-01'),
+      rel('b5', null),
+    ])
+    expect(out[2]!.orderDate?.toISOString()).toBe('2026-07-31T23:59:59.000Z')
+    expect(out[2]!.date).toBeNull()
+  })
+
+  it('places an undated first release just after the nearest dated one below', () => {
+    const out = inferReleaseDates([rel('next', null), rel('b8', '2026-08-06')])
+    expect(out[0]!.orderDate?.toISOString()).toBe('2026-08-06T00:00:01.000Z')
+  })
+
+  it('keeps dated releases and leaves everything null when nothing is dated', () => {
+    expect(inferReleaseDates([rel('a', '2026-08-06')])[0]!.orderDate?.toISOString()).toBe(
+      '2026-08-06T00:00:00.000Z'
+    )
+    expect(inferReleaseDates([rel('a', null), rel('b', null)]).map((r) => r.orderDate)).toEqual([
+      null,
+      null,
+    ])
   })
 })
