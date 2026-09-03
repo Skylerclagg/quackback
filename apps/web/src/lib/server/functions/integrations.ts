@@ -182,6 +182,29 @@ export function buildMappingFilters(
   return Object.keys(filters).length > 0 ? filters : null
 }
 
+/**
+ * Trackers configured before routing rows kept their single destination in
+ * `config.channelId` with events on `default` rows. Once that destination is
+ * edited (or removed) as a routing row, the explicit rows take over and the
+ * `default` rows go, so the same destination is never represented twice.
+ */
+async function retireLegacyDefaultRows(integrationId: IntegrationId, channelId: string) {
+  const row = await db.query.integrations.findFirst({
+    where: eq(integrations.id, integrationId),
+    columns: { config: true },
+  })
+  const legacy = (row?.config as { channelId?: unknown } | null)?.channelId
+  if (legacy !== channelId) return
+  await db
+    .delete(integrationEventMappings)
+    .where(
+      and(
+        eq(integrationEventMappings.integrationId, integrationId),
+        eq(integrationEventMappings.targetKey, 'default')
+      )
+    )
+}
+
 const addNotificationChannelSchema = z.object({
   integrationId: z.string(),
   channelId: z.string(),
@@ -252,6 +275,7 @@ export const addNotificationChannelFn = createServerFn({ method: 'POST' })
         },
       })
 
+    await retireLegacyDefaultRows(integrationId, data.channelId)
     const { cacheDel, CACHE_KEYS } = await import('@/lib/server/cache')
     await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     log.info(
@@ -312,6 +336,7 @@ export const updateNotificationChannelFn = createServerFn({ method: 'POST' })
         )
       )
 
+    await retireLegacyDefaultRows(integrationId, data.channelId)
     const { cacheDel, CACHE_KEYS } = await import('@/lib/server/cache')
     await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     log.info({ channel_id: data.channelId }, 'notification channel updated')
@@ -338,6 +363,7 @@ export const removeNotificationChannelFn = createServerFn({ method: 'POST' })
         )
       )
 
+    await retireLegacyDefaultRows(integrationId, data.channelId)
     const { cacheDel, CACHE_KEYS } = await import('@/lib/server/cache')
     await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     log.info({ channel_id: data.channelId }, 'notification channel removed')

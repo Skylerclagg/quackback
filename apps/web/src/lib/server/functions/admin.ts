@@ -610,7 +610,10 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
 
       if (!channelId) continue
 
-      if (!channelMap.has(targetKey)) {
+      // Key by the resolved destination: a legacy `default` row and an explicit
+      // row for the same channel are one destination to the admin.
+      const key = channelId
+      if (!channelMap.has(key)) {
         const filters =
           (m.filters as {
             boardIds?: string[]
@@ -623,7 +626,7 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
           ...(filters?.statusIds?.length ? { statusIds: filters.statusIds } : {}),
           ...(filters?.minVotes ? { minVotes: filters.minVotes } : {}),
         }
-        channelMap.set(targetKey, {
+        channelMap.set(key, {
           channelId,
           events: [],
           boardIds: filters?.boardIds?.length ? filters.boardIds : null,
@@ -631,10 +634,11 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
         })
       }
 
-      channelMap.get(targetKey)!.events.push({
-        eventType: m.eventType,
-        enabled: m.enabled,
-      })
+      const entry = channelMap.get(key)!
+      const existing = entry.events.find((e) => e.eventType === m.eventType)
+      if (existing) existing.enabled = existing.enabled || m.enabled
+      else entry.events.push({ eventType: m.eventType, enabled: m.enabled })
+      void targetKey
     }
 
     const notificationChannels = [...channelMap.values()]

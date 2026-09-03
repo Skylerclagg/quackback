@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { TrackerRoutingSection } from '@/components/admin/settings/integrations/shared/tracker-routing-section'
+import type { NotificationChannel } from '@/components/admin/settings/integrations/shared/notification-channel-router'
 import { ArrowPathIcon, FolderIcon } from '@heroicons/react/24/solid'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -32,27 +34,16 @@ interface AsanaConfigProps {
   integrationId: string
   initialConfig: Record<string, unknown>
   initialEventMappings: EventMapping[]
+  notificationChannels?: NotificationChannel[]
   enabled: boolean
 }
-
-const EVENT_CONFIG = [
-  {
-    id: 'post.created' as const,
-    label: 'Create task from new feedback',
-    description: 'Automatically create an Asana task when new feedback is submitted',
-  },
-  {
-    id: 'post.status_changed' as const,
-    label: 'Sync status changes',
-    description: 'Update linked tasks when feedback status changes',
-  },
-]
 
 export function AsanaConfig({
   integrationId,
   initialConfig,
   initialEventMappings,
   enabled,
+  notificationChannels,
 }: AsanaConfigProps) {
   const updateMutation = useUpdateIntegration()
   const [projects, setProjects] = useState<AsanaProject[]>([])
@@ -61,14 +52,6 @@ export function AsanaConfig({
   const [selectedProject, setSelectedProject] = useState((initialConfig.channelId as string) || '')
   const [externalStatuses, setExternalStatuses] = useState<ExternalStatus[]>([])
   const [integrationEnabled, setIntegrationEnabled] = useState(enabled)
-  const [eventSettings, setEventSettings] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      EVENT_CONFIG.map((event) => [
-        event.id,
-        initialEventMappings.find((m) => m.eventType === event.id)?.enabled ?? false,
-      ])
-    )
-  )
 
   const fetchProjects = useCallback(async () => {
     setLoadingProjects(true)
@@ -98,18 +81,6 @@ export function AsanaConfig({
   const handleProjectChange = (projectId: string) => {
     setSelectedProject(projectId)
     updateMutation.mutate({ id: integrationId, config: { channelId: projectId } })
-  }
-
-  const handleEventToggle = (eventId: string, checked: boolean) => {
-    const newSettings = { ...eventSettings, [eventId]: checked }
-    setEventSettings(newSettings)
-    updateMutation.mutate({
-      id: integrationId,
-      eventMappings: Object.entries(newSettings).map(([eventType, enabled]) => ({
-        eventType,
-        enabled,
-      })),
-    })
   }
 
   const saving = updateMutation.isPending
@@ -180,28 +151,17 @@ export function AsanaConfig({
         </p>
       </div>
 
-      <div className="space-y-3">
-        <Label className="text-base font-medium">Events</Label>
-        <p className="text-xs text-muted-foreground">Choose which events trigger task creation</p>
-        <div className="space-y-3 pt-2">
-          {EVENT_CONFIG.map((event) => (
-            <div
-              key={event.id}
-              className="flex items-center justify-between rounded-lg border border-border/50 p-3"
-            >
-              <div>
-                <div className="font-medium text-sm">{event.label}</div>
-                <div className="text-xs text-muted-foreground">{event.description}</div>
-              </div>
-              <Switch
-                checked={eventSettings[event.id] ?? false}
-                onCheckedChange={(checked) => handleEventToggle(event.id, checked)}
-                disabled={saving || !integrationEnabled}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+      <TrackerRoutingSection
+        integrationId={integrationId}
+        integrationType="asana"
+        kind="project"
+        destinationNoun="project"
+        itemNoun="task"
+        initialConfig={initialConfig as Record<string, unknown>}
+        initialEventMappings={initialEventMappings}
+        notificationChannels={notificationChannels}
+        enabled={integrationEnabled}
+      />
 
       {saving && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

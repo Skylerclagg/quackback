@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { TrackerRoutingSection } from '@/components/admin/settings/integrations/shared/tracker-routing-section'
+import type { NotificationChannel } from '@/components/admin/settings/integrations/shared/notification-channel-router'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -43,22 +45,10 @@ interface GitHubConfigProps {
   integrationId: string
   initialConfig: Record<string, unknown>
   initialEventMappings: EventMapping[]
+  notificationChannels?: NotificationChannel[]
   enabled: boolean
   health?: IntegrationHealth
 }
-
-const EVENT_CONFIG = [
-  {
-    id: 'post.created' as const,
-    label: 'Create issue from new feedback',
-    description: 'Automatically create a GitHub issue when new feedback is submitted.',
-  },
-  {
-    id: 'post.status_changed' as const,
-    label: 'Sync status changes',
-    description: 'Update linked issues when feedback status changes.',
-  },
-]
 
 const GITHUB_STATUSES = [
   { id: 'Open', name: 'Open' },
@@ -71,6 +61,7 @@ export function GitHubConfig({
   initialEventMappings,
   enabled,
   health,
+  notificationChannels,
 }: GitHubConfigProps) {
   const updateMutation = useUpdateIntegration()
   const [repos, setRepos] = useState<GitHubRepo[]>([])
@@ -78,14 +69,6 @@ export function GitHubConfig({
   const [repoError, setRepoError] = useState<string | null>(null)
   const [selectedRepo, setSelectedRepo] = useState((initialConfig.channelId as string) || '')
   const [integrationEnabled, setIntegrationEnabled] = useState(enabled)
-  const [eventSettings, setEventSettings] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      EVENT_CONFIG.map((event) => [
-        event.id,
-        initialEventMappings.find((m) => m.eventType === event.id)?.enabled ?? false,
-      ])
-    )
-  )
   const inboxQuery = useQuery({
     queryKey: ['settings', 'github-channel-status'],
     queryFn: () => getGitHubChannelStatusFn(),
@@ -117,18 +100,6 @@ export function GitHubConfig({
   const handleRepoChange = (ownerRepo: string) => {
     setSelectedRepo(ownerRepo)
     updateMutation.mutate({ id: integrationId, config: { channelId: ownerRepo } })
-  }
-
-  const handleEventToggle = (eventId: string, checked: boolean) => {
-    const newSettings = { ...eventSettings, [eventId]: checked }
-    setEventSettings(newSettings)
-    updateMutation.mutate({
-      id: integrationId,
-      eventMappings: Object.entries(newSettings).map(([eventType, enabled]) => ({
-        eventType,
-        enabled,
-      })),
-    })
   }
 
   const saving = updateMutation.isPending
@@ -235,24 +206,19 @@ export function GitHubConfig({
       <div className="space-y-2">
         <span className={MENU_LABEL}>Feedback</span>
         <section className="overflow-hidden rounded-xl border border-border/60 bg-card">
-          {EVENT_CONFIG.map((event, i) => (
-            <div
-              key={event.id}
-              className={`flex items-center justify-between gap-3 px-4 py-3 ${
-                i > 0 ? 'border-t border-border' : ''
-              }`}
-            >
-              <div className="pr-4">
-                <p className="text-sm font-medium">{event.label}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{event.description}</p>
-              </div>
-              <Switch
-                checked={eventSettings[event.id] ?? false}
-                onCheckedChange={(checked) => handleEventToggle(event.id, checked)}
-                disabled={saving || !integrationEnabled}
-              />
-            </div>
-          ))}
+          <div className="px-4 py-4">
+            <TrackerRoutingSection
+              integrationId={integrationId}
+              integrationType="github"
+              kind="repo"
+              destinationNoun="repository"
+              itemNoun="issue"
+              initialConfig={initialConfig as Record<string, unknown>}
+              initialEventMappings={initialEventMappings}
+              notificationChannels={notificationChannels}
+              enabled={integrationEnabled}
+            />
+          </div>
           <div className="border-t border-border px-4 py-4">
             <StatusSyncConfig
               integrationId={integrationId}

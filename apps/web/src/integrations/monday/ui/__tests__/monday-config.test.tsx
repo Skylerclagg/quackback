@@ -1,5 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+// Routing is exercised by the shared router's own tests; this panel test is
+// about board selection and renders without a QueryClientProvider.
+vi.mock('@/components/admin/settings/integrations/shared/tracker-routing-section', () => ({
+  TrackerRoutingSection: () => null,
+}))
 import { render, screen, fireEvent } from '@testing-library/react'
 
 const mockMutate = vi.fn()

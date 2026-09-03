@@ -307,6 +307,7 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
         integrationId={integration.id}
         initialConfig={integration.config}
         initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
         enabled={isConnected}
       />
     ),
@@ -482,6 +483,7 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
         integrationId={integration.id}
         initialConfig={integration.config}
         initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
         enabled={isConnected}
         health={integration.health}
       />
@@ -517,6 +519,7 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
         integrationId={integration.id}
         initialConfig={(integration.config ?? {}) as { channelId?: string }}
         initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
         enabled={isConnected}
       />
     ),
@@ -646,6 +649,7 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
         integrationId={integration.id}
         initialConfig={integration.config}
         initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
         enabled={isConnected}
       />
     ),
@@ -713,6 +717,7 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
         integrationId={integration.id}
         initialConfig={(integration.config ?? {}) as { boardId?: string }}
         initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
         enabled={isConnected}
       />
     ),
@@ -779,6 +784,7 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
         integrationId={integration.id}
         initialConfig={integration.config}
         initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
         enabled={isConnected}
       />
     ),
@@ -904,6 +910,7 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
         integrationId={integration.id}
         initialConfig={integration.config}
         initialEventMappings={integration.eventMappings}
+        notificationChannels={integration.notificationChannels}
         enabled={isConnected}
       />
     ),

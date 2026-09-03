@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import { TrackerRoutingSection } from '@/components/admin/settings/integrations/shared/tracker-routing-section'
+import type { NotificationChannel } from '@/components/admin/settings/integrations/shared/notification-channel-router'
 import { ArrowPathIcon } from '@heroicons/react/24/solid'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -30,22 +32,16 @@ interface GitLabConfigProps {
   integrationId: string
   initialConfig: { channelId?: string }
   initialEventMappings: EventMapping[]
+  notificationChannels?: NotificationChannel[]
   enabled: boolean
 }
-
-const EVENT_CONFIG = [
-  {
-    id: 'post.created' as const,
-    label: 'New feedback submitted',
-    description: 'Create GitLab issues when users submit new feedback',
-  },
-]
 
 export function GitLabConfig({
   integrationId,
   initialConfig,
   initialEventMappings,
   enabled,
+  notificationChannels,
 }: GitLabConfigProps) {
   const updateMutation = useUpdateIntegration()
   const [projects, setProjects] = useState<GitLabProject[]>([])
@@ -54,14 +50,6 @@ export function GitLabConfig({
   const [selectedProject, setSelectedProject] = useState(initialConfig.channelId || '')
   const [externalStatuses, setExternalStatuses] = useState<ExternalStatus[]>([])
   const [integrationEnabled, setIntegrationEnabled] = useState(enabled)
-  const [eventSettings, setEventSettings] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      EVENT_CONFIG.map((event) => [
-        event.id,
-        initialEventMappings.find((m) => m.eventType === event.id)?.enabled ?? false,
-      ])
-    )
-  )
 
   const fetchProjects = useCallback(async () => {
     setLoadingProjects(true)
@@ -98,18 +86,6 @@ export function GitLabConfig({
   const handleProjectChange = (projectId: string) => {
     setSelectedProject(projectId)
     updateMutation.mutate({ id: integrationId, config: { channelId: projectId } })
-  }
-
-  const handleEventToggle = (eventId: string, checked: boolean) => {
-    const newSettings = { ...eventSettings, [eventId]: checked }
-    setEventSettings(newSettings)
-    updateMutation.mutate({
-      id: integrationId,
-      eventMappings: Object.entries(newSettings).map(([eventType, enabled]) => ({
-        eventType,
-        enabled,
-      })),
-    })
   }
 
   const saving = updateMutation.isPending
@@ -179,28 +155,17 @@ export function GitLabConfig({
         </p>
       </div>
 
-      <div className="space-y-3">
-        <Label className="text-base font-medium">Events</Label>
-        <p className="text-xs text-muted-foreground">Choose which events trigger GitLab actions</p>
-        <div className="space-y-3 pt-2">
-          {EVENT_CONFIG.map((event) => (
-            <div
-              key={event.id}
-              className="flex items-center justify-between rounded-lg border border-border/50 p-3"
-            >
-              <div>
-                <div className="font-medium text-sm">{event.label}</div>
-                <div className="text-xs text-muted-foreground">{event.description}</div>
-              </div>
-              <Switch
-                checked={eventSettings[event.id] ?? false}
-                onCheckedChange={(checked) => handleEventToggle(event.id, checked)}
-                disabled={saving || !integrationEnabled}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+      <TrackerRoutingSection
+        integrationId={integrationId}
+        integrationType="gitlab"
+        kind="project"
+        destinationNoun="project"
+        itemNoun="issue"
+        initialConfig={initialConfig as Record<string, unknown>}
+        initialEventMappings={initialEventMappings}
+        notificationChannels={notificationChannels}
+        enabled={integrationEnabled}
+      />
 
       {saving && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
