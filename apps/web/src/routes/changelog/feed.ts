@@ -8,11 +8,11 @@ export const Route = createFileRoute('/changelog/feed')({
        * GET /changelog/feed
        * Returns RSS 2.0 feed of published changelog entries
        */
-      GET: async () => {
+      GET: async ({ request }) => {
         const [
           { config },
           { db, changelogEntries, and, desc, sql },
-          { publicChangelogConditions },
+          { publicChangelogConditions, changelogAudienceFilter, resolveCollectionFilter },
           { getSettingsBrandingData },
           { resolvePortalAccessForRequest },
           { isChangelogAudienceGranted },
@@ -46,13 +46,30 @@ export const Route = createFileRoute('/changelog/feed')({
         const actor = access.granted ? await policyActorFromAuth(await getOptionalAuth()) : null
         const audienceGranted = actor ? await isChangelogAudienceGranted(actor) : false
 
+        // Optional collection scope (?changelog=<slug> | general), gated the
+        // same way as the page: a collection the viewer can't see yields an
+        // empty feed, not a hint that it exists.
+        const collection = new URL(request.url).searchParams.get('changelog') ?? undefined
+        const collectionFilter = actor
+          ? await resolveCollectionFilter(collection, actor)
+          : ({ kind: 'none' } as const)
+
         const productEnabled = await isFeatureEnabled('changelog')
         const entries =
-          productEnabled && access.granted && audienceGranted
+          productEnabled && access.granted && audienceGranted && collectionFilter.kind !== 'deny'
             ? await db
                 .select()
                 .from(changelogEntries)
-                .where(and(...publicChangelogConditions(new Date())))
+                // `actor` is Actor | null here; null means the portal gate already
+                // denied, but pass it through explicitly so the audience filter is
+                // never accidentally evaluated as 'no restrictions'.
+                .where(
+                  and(
+                    ...publicChangelogConditions(new Date()),
+                    changelogAudienceFilter(actor ?? undefined),
+                    ...(collectionFilter.kind === 'sql' ? [collectionFilter.condition] : [])
+                  )
+                )
                 .orderBy(desc(effectiveDisplayDate))
                 .limit(50)
             : []
@@ -72,7 +89,7 @@ export const Route = createFileRoute('/changelog/feed')({
           title: `${siteName} Changelog`,
           description: `Latest updates and releases from ${siteName}`,
           link: `${baseUrl}/changelog`,
-          feedUrl: `${baseUrl}/changelog/feed`,
+          feedUrl: `${baseUrl}/changelog/feed${collection ? `?changelog=${encodeURIComponent(collection)}` : ''}`,
           entries: entries.map((entry) => ({
             id: entry.id,
             title: entry.title,

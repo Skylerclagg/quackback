@@ -15,10 +15,11 @@ import { ChangelogFormFields } from './changelog-form-fields'
 import { ChangelogMetadataSidebar } from './changelog-metadata-sidebar'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 import type { JSONContent } from '@tiptap/react'
-import type { PostId, ChangelogCategoryId, SegmentId } from '@quackback/ids'
+import type { PostId, ChangelogCategoryId, SegmentId, PrincipalId } from '@quackback/ids'
 
 // Mobile-only version of the sidebar content for the sheet
 import { ChangelogMetadataSidebarContent } from './changelog-metadata-sidebar-content'
+import type { AudienceVisibility } from '@/lib/server/policy/audience'
 
 interface CreateChangelogDialogProps {
   onChangelogCreated?: () => void
@@ -31,6 +32,9 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
   const [categoryIds, setCategoryIds] = useState<ChangelogCategoryId[]>([])
   const [notify, setNotify] = useState(true)
   const [segmentIds, setSegmentIds] = useState<SegmentId[]>([])
+  const [visibility, setVisibility] = useState<AudienceVisibility>('public')
+  const [visibleSegmentIds, setVisibleSegmentIds] = useState<SegmentId[]>([])
+  const [allowedTeamPrincipalIds, setAllowedTeamPrincipalIds] = useState<PrincipalId[] | null>(null)
   const [publishState, setPublishState] = useState<PublishState>({ type: 'draft' })
   const [displayDateOverride, setDisplayDateOverride] = useState<Date | undefined>(undefined)
   const [featuredImageUrl, setFeaturedImageUrl] = useState<string | null>(null)
@@ -96,6 +100,9 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
         publishState,
         notify,
         segmentIds,
+        visibility,
+        visibleSegmentIds: visibility === 'segment' ? visibleSegmentIds : null,
+        allowedTeamPrincipalIds: visibility === 'public' ? null : allowedTeamPrincipalIds,
         ...(publishState.type === 'published' &&
           displayDateOverride !== undefined && { displayDate: displayDateOverride }),
         ...(featuredImageUrl !== null && { featuredImageUrl }),
@@ -177,6 +184,12 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
                 notify={notify}
                 onNotifyChange={setNotify}
                 segmentIds={segmentIds}
+                visibility={visibility}
+                onVisibilityChange={setVisibility}
+                visibleSegmentIds={visibleSegmentIds}
+                onVisibleSegmentIdsChange={setVisibleSegmentIds}
+                allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+                onAllowedTeamPrincipalIdsChange={setAllowedTeamPrincipalIds}
                 onSegmentIdsChange={setSegmentIds}
                 displayDateValue={displayDateOverride}
                 onDisplayDateChange={handleDisplayDateChange}
@@ -215,6 +228,12 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
                       notify={notify}
                       onNotifyChange={setNotify}
                       segmentIds={segmentIds}
+                      visibility={visibility}
+                      onVisibilityChange={setVisibility}
+                      visibleSegmentIds={visibleSegmentIds}
+                      onVisibleSegmentIdsChange={setVisibleSegmentIds}
+                      allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+                      onAllowedTeamPrincipalIdsChange={setAllowedTeamPrincipalIds}
                       onSegmentIdsChange={setSegmentIds}
                       displayDateValue={displayDateOverride}
                       onDisplayDateChange={handleDisplayDateChange}

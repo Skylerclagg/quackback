@@ -96,6 +96,8 @@ const BASE_USER: PortalUserDetail = {
   principalId: 'principal_1' as PrincipalId,
   userId: 'user_1',
   name: 'Maya Chen',
+  givenName: 'Maya',
+  familyName: 'Chen',
   email: 'maya@northwind.example',
   image: null,
   emailVerified: true,
@@ -136,7 +138,7 @@ describe('UserDetail', () => {
       />
     )
 
-    expect(screen.getByText('Maya Chen')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Maya Chen' })).toBeInTheDocument()
     expect(screen.getByText('View public profile')).toBeInTheDocument()
     expect(screen.getByText('Germany')).toBeInTheDocument()
     expect(screen.getByText('Posts')).toBeInTheDocument()
@@ -195,5 +197,41 @@ describe('UserDetail', () => {
     expect(screen.getByRole('button', { name: /Send message/ })).toBeDisabled()
     fireEvent.pointerDown(screen.getByLabelText('More actions'), { button: 0, ctrlKey: false })
     expect(await screen.findByRole('menuitem', { name: 'Merge' })).toBeInTheDocument()
+  })
+
+  it('shows Display Name, First Name, and Last Name as distinct labelled fields', async () => {
+    renderDetail(
+      <UserDetail
+        user={BASE_USER}
+        isLoading={false}
+        onClose={vi.fn()}
+        onRemoveUser={vi.fn()}
+        isRemovePending={false}
+        currentMemberRole="admin"
+      />
+    )
+
+    expect(await screen.findByText('Display Name')).toBeInTheDocument()
+    expect(screen.getByText('First Name')).toBeInTheDocument()
+    expect(screen.getByText('Last Name')).toBeInTheDocument()
+    expect(screen.getByText('Maya')).toBeInTheDocument()
+    expect(screen.getByText('Chen')).toBeInTheDocument()
+  })
+
+  it('renders a dash rather than blank when the IdP released no given/family name', async () => {
+    renderDetail(
+      <UserDetail
+        user={{ ...BASE_USER, givenName: null, familyName: null }}
+        isLoading={false}
+        onClose={vi.fn()}
+        onRemoveUser={vi.fn()}
+        isRemovePending={false}
+        currentMemberRole="admin"
+      />
+    )
+
+    expect(await screen.findByText('First Name')).toBeInTheDocument()
+    expect(screen.queryByText('Maya')).not.toBeInTheDocument()
+    expect(screen.queryByText('Chen')).not.toBeInTheDocument()
   })
 })

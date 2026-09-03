@@ -1751,6 +1751,41 @@
       "when": 1785700000030,
       "tag": "0272_kb_url_id",
       "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1788307200000,
+      "tag": "0273_user_given_family_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1788393600000,
+      "tag": "0274_changelog_audience",
+      "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1788480000000,
+      "tag": "0275_roadmap_team_allowlist",
+      "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1788566400000,
+      "tag": "0276_changelog_category_collections",
+      "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1788652800000,
+      "tag": "0277_roadmap_timeline",
+      "breakpoints": true
     }
   ]
 }

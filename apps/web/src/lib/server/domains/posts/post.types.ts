@@ -1,3 +1,4 @@
+import type { TimelinePrecision } from '@/lib/shared/db-types'
 /**
  * Input/Output types for PostService operations
  */
@@ -45,6 +46,12 @@ export interface UpdatePostInput {
   ownerPrincipalId?: PrincipalId | null
   /** Target ship date for time-based roadmaps; null clears it. */
   eta?: Date | null
+  /**
+   * How vaguely `eta` is shown ('day' | 'month' | 'quarter' | 'year'). The eta
+   * is snapped to the start of this period on write. Omitted keeps the stored
+   * precision; a caller setting only `eta` keeps today's month-start behaviour.
+   */
+  etaPrecision?: TimelinePrecision
   /** Board pinning: true pins the post to lead its public board listing,
    *  false unpins. Maps to posts.pinned_at. */
   pinned?: boolean

@@ -1333,6 +1333,9 @@ export const segmentConditionSchema = z.object({
     'company_size',
     'company_industry',
     'company_attr',
+    // Resolved against Microsoft Graph at evaluation time, not in SQL.
+    'entra_group',
+    'google_workspace',
   ]),
   operator: z.enum([
     'eq',

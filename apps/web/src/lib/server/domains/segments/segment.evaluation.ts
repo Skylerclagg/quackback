@@ -1,7 +1,7 @@
 import { db, eq, and, inArray, isNull, sql, segments, userSegments } from '@/lib/server/db'
 import type { SegmentId, PrincipalId } from '@quackback/ids'
-import { fromUuid } from '@quackback/ids'
-import { NotFoundError, ValidationError } from '@/lib/shared/errors'
+import { fromUuid, toUuid } from '@quackback/ids'
+import { InternalError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import type { EvaluationResult } from './segment.types'
 import type { SegmentRules, SegmentCondition } from '@/lib/server/db'
 import { getSegment } from './segment.service'
@@ -74,11 +74,46 @@ function companyTextConditionSql(
 }
 
 /**
+ * Emails resolved from Microsoft Graph for each `entra_group` condition, keyed
+ * by group Object ID. Resolved BEFORE SQL compilation, because Graph is an
+ * async network call and this compiler is synchronous.
+ */
+type EntraGroupEmails = ReadonlyMap<string, string[]>
+
+/**
  * Build a SQL condition fragment for a single rule condition.
  * Returns a SQL template or null if the condition is unsupported.
  */
-function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> | null {
+function buildConditionSql(
+  condition: SegmentCondition,
+  entraEmails?: EntraGroupEmails
+): ReturnType<typeof sql> | null {
   const { attribute, operator, value } = condition
+
+  // Entra group membership, compiled from the pre-resolved email list.
+  //
+  // An EMPTY group legitimately matches nobody, and FALSE keeps composition
+  // under `match: 'any'` correct. A MISSING map entry means resolution was
+  // skipped or failed, and compiling that as "no members" would evict the
+  // entire segment on the next sweep — a mass lockout caused by a transient
+  // network error, for a segment that may gate board or changelog access.
+  // So it throws instead, aborting the evaluation and leaving membership as it
+  // was.
+  if (attribute === 'entra_group') {
+    if (operator !== 'eq' || typeof value !== 'string' || !value) return null
+    const emails = entraEmails?.get(value)
+    if (emails === undefined) {
+      throw new InternalError(
+        'ENTRA_NOT_RESOLVED',
+        'entra_group condition reached SQL compilation without resolved members'
+      )
+    }
+    if (emails.length === 0) return sql`FALSE`
+    return sql`LOWER(u.email) IN (${sql.join(
+      emails.map((e) => sql`${e}`),
+      sql`, `
+    )})`
+  }
 
   // Company predicates (§K3), resolved through the `co` LEFT JOIN
   // (principal.company_id -> companies). Handled up front because each helper
@@ -171,6 +206,10 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
       // so it's always set — mirror principal_type / name semantics.
       case 'signup_source':
         return isSet ? sql`TRUE` : sql`FALSE`
+      case 'google_workspace':
+        return isSet
+          ? sql`(u.metadata::jsonb->>'googleWorkspaceDomain') IS NOT NULL`
+          : sql`(u.metadata::jsonb->>'googleWorkspaceDomain') IS NULL`
       // principal.type is always set — is_set is always true, is_not_set is never true
       case 'principal_type':
         return isSet ? sql`TRUE` : sql`FALSE`
@@ -200,6 +239,8 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
         if (!key) return null
         return sql`(u.metadata::jsonb->>${key}) IN (${placeholders})`
       }
+      case 'google_workspace':
+        return sql`LOWER(u.metadata::jsonb->>'googleWorkspaceDomain') IN (${placeholders})`
       case 'name':
         return sql`u.name IN (${placeholders})`
       case 'locale':
@@ -356,6 +397,21 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
       return sql`p.type ${sql.raw(sqlOp)} ${String(value)}`
     }
 
+    case 'google_workspace': {
+      // Stored lowercased by the sign-in capture, but LOWER both sides so a
+      // hand-typed rule ("Acme.com") and any legacy row still match.
+      const field = sql`LOWER(u.metadata::jsonb->>'googleWorkspaceDomain')`
+      const lowered = String(value).toLowerCase()
+      const sqlOp = OPERATOR_SQL[operator]
+      if (!sqlOp) return null
+      // NULL-safe neq: someone with no workspace captured satisfies
+      // "workspace is not X", which a bare != would exclude.
+      if (operator === 'neq') {
+        return sql`((u.metadata::jsonb->>'googleWorkspaceDomain') IS NULL OR ${field} != ${lowered})`
+      }
+      return sql`${field} ${sql.raw(sqlOp)} ${lowered}`
+    }
+
     default:
       return null
   }
@@ -365,29 +421,82 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
  * Evaluate a dynamic segment's rules and return the set of matching principal IDs.
  * Translates rules to SQL — does not load users into memory.
  */
-async function resolveMatchingPrincipals(rules: SegmentRules): Promise<string[]> {
-  const conditionSqls = rules.conditions
-    .map(buildConditionSql)
+/**
+ * Resolve every `entra_group` condition's member emails from Microsoft Graph
+ * ahead of SQL compilation. Returns an empty map when the rules carry no such
+ * condition — the common case, and zero overhead.
+ *
+ * Deliberately allowed to throw: see the failure note in buildConditionSql.
+ */
+async function resolveEntraGroupEmails(rules: SegmentRules): Promise<EntraGroupEmails> {
+  const groupIds = new Set<string>()
+  for (const condition of rules.conditions ?? []) {
+    // Mirror buildConditionSql's guard exactly: a condition it will discard
+    // must not cost a Graph round trip here.
+    if (
+      condition.attribute === 'entra_group' &&
+      condition.operator === 'eq' &&
+      typeof condition.value === 'string' &&
+      condition.value
+    ) {
+      groupIds.add(condition.value)
+    }
+  }
+  const map = new Map<string, string[]>()
+  if (groupIds.size === 0) return map
+
+  const { getEntraGroupMemberEmails } = await import('@/lib/server/integrations/entra/graph')
+  for (const groupId of groupIds) {
+    map.set(groupId, await getEntraGroupMemberEmails(groupId))
+  }
+  return map
+}
+
+/**
+ * Compile a rule set into one WHERE fragment, or null when nothing compiles.
+ * Extracted so the full sweep and the per-principal check cannot disagree
+ * about what a rule means.
+ */
+function combineConditions(
+  rules: SegmentRules,
+  entraEmails?: EntraGroupEmails
+): ReturnType<typeof sql> | null {
+  const conditionSqls = (rules.conditions ?? [])
+    .map((condition) => buildConditionSql(condition, entraEmails))
     .filter((c): c is NonNullable<typeof c> => c !== null)
 
-  if (conditionSqls.length === 0) return []
+  if (conditionSqls.length === 0) return null
 
-  const combinedWhere =
-    rules.match === 'all'
-      ? conditionSqls.reduce((acc, c) => sql`${acc} AND ${c}`)
-      : conditionSqls.reduce((acc, c) => sql`${acc} OR ${c}`)
+  return rules.match === 'all'
+    ? conditionSqls.reduce((acc, c) => sql`${acc} AND ${c}`)
+    : conditionSqls.reduce((acc, c) => sql`${acc} OR ${c}`)
+}
 
-  // Audience = identified end-users: role 'user' on a human principal
-  // (type='user'). The type guard excludes anonymous visitors, who also carry
-  // role='user' but must not match segments. The companies LEFT JOIN feeds the
-  // company_* predicates; people without a company keep a NULL co row.
+async function resolveMatchingPrincipals(rules: SegmentRules): Promise<string[]> {
+  const entraEmails = await resolveEntraGroupEmails(rules)
+  const combinedWhere = combineConditions(rules, entraEmails)
+  if (!combinedWhere) return []
+
+  // Audience = ANY human principal — team accounts (role admin/member) as well
+  // as portal users — so a segment can target teammates too. The invariant is
+  // principal.type='user' plus a linked user row, NOT principal.role:
+  // anonymous visitors carry role='user' but type='anonymous', and service
+  // principals carry role='member' with no person behind them, so both stay
+  // excluded by the type guard alone.
+  //
+  // Gating on role here made the segments page contradict itself: the member
+  // count counts every user_segments row, teammates included, and the list then
+  // omitted them. policy/audience.ts's segment door admits any
+  // principalType==='user' for the same reason; these two must agree.
+  //
+  // The companies LEFT JOIN feeds the company_* predicates; people without a
+  // company keep a NULL co row.
   const rows = await db.execute(sql`
     SELECT p.id
     FROM principal p
     INNER JOIN "user" u ON u.id = p.user_id
     LEFT JOIN companies co ON co.id = p.company_id
-    WHERE p.role = 'user'
-      AND p.type = 'user'
+    WHERE p.type = 'user'
       AND p.user_id IS NOT NULL
       AND (${combinedWhere})
   `)
@@ -510,4 +619,100 @@ export async function getSegmentMembers(segmentId: SegmentId): Promise<Principal
     .where(eq(userSegments.segmentId, segmentId))
 
   return rows.map((r) => r.principalId as PrincipalId)
+}
+
+/**
+ * Evaluate a single principal against every active dynamic segment and sync
+ * their 'dynamic'-sourced memberships.
+ *
+ * Used at sign-in — after the Google Workspace domain is captured — so
+ * rule-based memberships apply immediately instead of waiting up to an hour
+ * for the next scheduled sweep. Someone whose access is gated on a
+ * workspace-derived segment would otherwise sign in and find it missing.
+ *
+ * Mirrors evaluateDynamicSegment's contract: only rows with addedBy='dynamic'
+ * are added or removed, so manual / sso / widget / api memberships are never
+ * touched. Audience matches resolveMatchingPrincipals exactly — any human
+ * principal, gated on principal.type rather than role.
+ */
+export async function evaluatePrincipalDynamicSegments(principalId: PrincipalId): Promise<void> {
+  const dynamicSegments = await db
+    .select({ id: segments.id, name: segments.name, rules: segments.rules })
+    .from(segments)
+    .where(and(eq(segments.type, 'dynamic'), isNull(segments.deletedAt)))
+  if (dynamicSegments.length === 0) return
+
+  const existing = await db
+    .select({ segmentId: userSegments.segmentId })
+    .from(userSegments)
+    .where(and(eq(userSegments.principalId, principalId), eq(userSegments.addedBy, 'dynamic')))
+  const existingIds = new Set<string>(existing.map((r) => String(r.segmentId)))
+  const principalUuid = toUuid(principalId)
+
+  for (const seg of dynamicSegments) {
+    // Rule-less dynamic segments match nobody, same as the full sweep. An
+    // entra_group condition resolves through a short-lived cache so a sign-in
+    // burst doesn't become one Graph request per user; if resolution fails,
+    // skip THIS segment (leaving its membership untouched) rather than
+    // aborting the whole per-principal pass.
+    let combinedWhere: ReturnType<typeof combineConditions> = null
+    if (seg.rules) {
+      try {
+        const entraEmails = await resolveEntraGroupEmails(seg.rules)
+        combinedWhere = combineConditions(seg.rules, entraEmails)
+      } catch (err) {
+        log.error(
+          { err, segment_id: seg.id },
+          'entra group resolution failed; skipping segment for this principal'
+        )
+        continue
+      }
+    }
+
+    let matches = false
+    if (combinedWhere) {
+      const rows = await db.execute(sql`
+        SELECT 1
+        FROM principal p
+        INNER JOIN "user" u ON u.id = p.user_id
+        LEFT JOIN companies co ON co.id = p.company_id
+        WHERE p.id = ${principalUuid}::uuid
+          AND p.type = 'user'
+          AND p.user_id IS NOT NULL
+          AND (${combinedWhere})
+        LIMIT 1
+      `)
+      matches = (rows as unknown as unknown[]).length > 0
+    }
+
+    const segId = seg.id as SegmentId
+    if (matches === existingIds.has(String(segId))) continue
+
+    if (matches) {
+      await db
+        .insert(userSegments)
+        .values({ principalId, segmentId: segId, addedBy: 'dynamic' })
+        .onConflictDoNothing()
+    } else {
+      await db
+        .delete(userSegments)
+        .where(
+          and(
+            eq(userSegments.principalId, principalId),
+            eq(userSegments.segmentId, segId),
+            eq(userSegments.addedBy, 'dynamic')
+          )
+        )
+    }
+
+    import('@/lib/server/integrations/user-sync-notify')
+      .then(({ notifyUserSyncIntegrations }) =>
+        notifyUserSyncIntegrations(
+          seg.name,
+          matches ? [principalId] : [],
+          matches ? [] : [principalId]
+        )
+      )
+      .catch((err) => log.error({ err }, 'user sync notify failed'))
+  }
 }

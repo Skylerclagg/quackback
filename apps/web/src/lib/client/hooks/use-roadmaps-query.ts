@@ -1,3 +1,4 @@
+import type { EtaDisclosure } from '@/lib/shared/db-types'
 /**
  * Roadmap query hooks
  *
@@ -14,9 +15,16 @@ import type {
   RoadmapId,
   SegmentId,
 } from '@quackback/ids'
-import { fetchRoadmaps, getRoadmapDateBucketsFn } from '@/lib/server/functions/roadmaps'
+import {
+  fetchRoadmaps,
+  getRoadmapDateBucketsFn,
+  getRoadmapMilestonesFn,
+} from '@/lib/server/functions/roadmaps'
 import { listPublicRoadmapsFn } from '@/lib/server/functions/public-posts'
-import { fetchPublicRoadmapDateBuckets } from '@/lib/server/functions/portal'
+import {
+  fetchPublicRoadmapDateBuckets,
+  fetchPublicRoadmapMilestones,
+} from '@/lib/server/functions/portal'
 import type {
   RoadmapDateBucket,
   RoadmapFrequency,
@@ -45,6 +53,13 @@ export interface RoadmapView {
   frequency: RoadmapFrequency | null
   visibility: RoadmapVisibility
   visibleSegmentIds: SegmentId[] | null
+  /** null = every team actor; [] = admins only; [ids] = admins plus those principals. */
+  /** Admin-only fields: the public serializer omits them on purpose. */
+  allowedTeamPrincipalIds?: string[] | null
+  /** Per-audience cap on how precisely ETAs render. */
+  etaDisclosure?: EtaDisclosure
+  /** Column roadmap that also offers a timeline tab. */
+  timelineEnabled: boolean
   position: number
   columns: Array<{
     id: RoadmapColumnId
@@ -115,5 +130,38 @@ export function usePublicRoadmaps({ enabled = true }: UseRoadmapsOptions = {}) {
     queryKey: roadmapsKeys.publicList(),
     queryFn: listPublicRoadmapsFn as () => Promise<RoadmapView[]>,
     enabled,
+  })
+}
+
+/** Serialized milestone (Dates are ISO strings on the wire). */
+export interface RoadmapMilestoneView {
+  id: string
+  roadmapId: string
+  title: string
+  description: string | null
+  timelineDate: string
+  timelinePrecision: string
+  timelinePosition: number
+}
+
+/**
+ * Milestones for a roadmap's timeline. Keyed under the roadmap detail so the
+ * milestone mutations' single invalidation refreshes them.
+ */
+export function useRoadmapMilestones(
+  roadmapId: RoadmapId,
+  options: { public?: boolean; enabled?: boolean } = {}
+) {
+  return useQuery<RoadmapMilestoneView[]>({
+    queryKey: [
+      ...roadmapsKeys.detail(roadmapId),
+      'milestones',
+      options.public ? 'public' : 'admin',
+    ],
+    queryFn: () =>
+      options.public
+        ? fetchPublicRoadmapMilestones({ data: { roadmapId } })
+        : getRoadmapMilestonesFn({ data: { roadmapId } }),
+    enabled: options.enabled ?? true,
   })
 }

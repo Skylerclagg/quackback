@@ -54,6 +54,14 @@ export type SegmentRuleAttribute =
   | 'company_size'
   | 'company_industry'
   | 'company_attr'
+  // Membership of a Microsoft Entra ID group. The condition's `value` is the
+  // group's Object ID (a GUID); membership is resolved against Microsoft Graph
+  // at evaluation time and compiled into an email IN-list, never in SQL.
+  | 'entra_group'
+  // Google Workspace hosted domain, captured from the `hd` claim Google
+  // asserts for Workspace accounts only (absent for consumer Gmail) and
+  // stored at user.metadata.googleWorkspaceDomain.
+  | 'google_workspace'
 
 export interface SegmentCondition {
   attribute: SegmentRuleAttribute

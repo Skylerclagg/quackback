@@ -108,6 +108,7 @@ export {
   useRemoveUsersFromSegment,
   useEvaluateSegment,
   useEvaluateAllSegments,
+  invalidateSegmentQueries,
 } from './segments'
 
 // User attribute mutations

@@ -1,3 +1,4 @@
+import { etaDisclosureFor } from '@/lib/server/policy'
 import {
   db,
   eq,
@@ -27,6 +28,9 @@ import {
   type RoadmapBaseFilter,
   type RoadmapDateBucket,
 } from '@/lib/shared/roadmap-config'
+import { clampTimelinePlacement } from '@/lib/shared/timeline'
+import type { TimelineSpecificity } from '@/lib/shared/db-types'
+import type { RoadmapFrequency } from '@/lib/shared/roadmap-config'
 import type { SQL } from 'drizzle-orm'
 import type {
   RoadmapPostsListResult,
@@ -89,7 +93,12 @@ function membershipConditions(
         configuredStatusIds.length ? inArray(posts.statusId, configuredStatusIds) : sql`false`
       )
     }
-  } else if (options.bucketId) {
+  }
+
+  // Independent of type: a column roadmap with `timelineEnabled` serves its
+  // timeline tab through the same bucket ids a date roadmap uses, so the tab
+  // shows exactly the posts the columns show, arranged by ETA.
+  if (options.bucketId) {
     const bucket = parseRoadmapDateBucket(options.bucketId, roadmap.frequency ?? 'monthly')
     if (!bucket) {
       throw new ValidationError('INVALID_ROADMAP_BUCKET', 'Invalid roadmap date bucket')
@@ -162,6 +171,7 @@ async function queryRoadmapPosts(
           commentCount: posts.commentCount,
           statusId: posts.statusId,
           eta: posts.eta,
+          etaPrecision: posts.etaPrecision,
         },
         board: { id: boards.id, name: boards.name, slug: boards.slug },
       })
@@ -179,11 +189,19 @@ async function queryRoadmapPosts(
   ])
 
   const hasMore = results.length > limit
+  // Coarsen server-side to the viewer's disclosure cap so a precise date never
+  // leaves the server for someone who is not entitled to it. Admin callers have
+  // no actor here and see stored values.
+  const cap: TimelineSpecificity = publicActor ? etaDisclosureFor(publicActor, roadmap) : 'day'
   return {
-    items: (hasMore ? results.slice(0, limit) : results).map((result) => ({
-      ...result.post,
-      board: result.board,
-    })),
+    items: (hasMore ? results.slice(0, limit) : results).map((result) => {
+      const post = result.post
+      if (cap === 'day' || cap === 'hidden' || !post.eta) {
+        return { ...post, board: result.board }
+      }
+      const clamped = clampTimelinePlacement(new Date(post.eta), post.etaPrecision, cap)
+      return { ...post, eta: clamped.date, etaPrecision: clamped.precision, board: result.board }
+    }),
     total: Number(countResult[0]?.count ?? 0),
     hasMore,
   }
@@ -210,10 +228,16 @@ export async function getPublicRoadmapPosts(
 
 async function dateBucketsFor(roadmapId: RoadmapId, actor?: Actor): Promise<RoadmapDateBucket[]> {
   const roadmap = await loadRoadmap(roadmapId)
-  if (roadmap.type !== 'date') return []
+  if (roadmap.type !== 'date' && !roadmap.timelineEnabled) return []
   if (actor && !canViewRoadmap(actor, roadmap).allowed) {
     throw new NotFoundError('ROADMAP_NOT_FOUND', `Roadmap with ID ${roadmapId} not found`)
   }
+  // A viewer capped coarser than the roadmap's frequency must not be handed
+  // finer buckets than their cap — the bucket a post lands in is itself a date.
+  // 'hidden' means no timeline for this viewer at all.
+  const cap: TimelineSpecificity = actor ? etaDisclosureFor(actor, roadmap) : 'day'
+  if (cap === 'hidden') return []
+  const frequency = frequencyForCap(roadmap.frequency ?? 'monthly', cap)
 
   const conditions: SQL[] = [isNull(posts.deletedAt), isNull(posts.canonicalPostId)]
   if (actor) {
@@ -232,11 +256,7 @@ async function dateBucketsFor(roadmapId: RoadmapId, actor?: Actor): Promise<Road
     .innerJoin(boards, eq(posts.boardId, boards.id))
     .where(and(...conditions))
 
-  return roadmapDateBucketsBetween(
-    roadmap.frequency ?? 'monthly',
-    bounds?.minEta ?? null,
-    bounds?.maxEta ?? null
-  )
+  return roadmapDateBucketsBetween(frequency, bounds?.minEta ?? null, bounds?.maxEta ?? null)
 }
 
 export function getRoadmapDateBuckets(roadmapId: RoadmapId): Promise<RoadmapDateBucket[]> {
@@ -248,4 +268,17 @@ export function getPublicRoadmapDateBuckets(
   actor: Actor = ANONYMOUS_ACTOR
 ): Promise<RoadmapDateBucket[]> {
   return dateBucketsFor(roadmapId, actor)
+}
+
+/**
+ * The coarsest of the roadmap's own frequency and the viewer's cap. Upstream's
+ * frequencies stop at semiannual, so a 'year' cap resolves to that — the
+ * closest granularity that reveals no more than a year would.
+ */
+function frequencyForCap(frequency: RoadmapFrequency, cap: TimelineSpecificity): RoadmapFrequency {
+  const rank: Record<RoadmapFrequency, number> = { monthly: 0, quarterly: 1, semiannual: 2 }
+  const floor: RoadmapFrequency | null =
+    cap === 'quarter' ? 'quarterly' : cap === 'year' ? 'semiannual' : null
+  if (!floor) return frequency
+  return rank[floor] > rank[frequency] ? floor : frequency
 }

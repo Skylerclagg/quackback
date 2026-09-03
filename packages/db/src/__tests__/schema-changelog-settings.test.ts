@@ -2,10 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getTableName, getTableColumns } from 'drizzle-orm'
-import {
-  changelogCategories,
-  changelogEntryCategories,
-} from '../schema/changelog-categories'
+import { changelogCategories, changelogEntryCategories } from '../schema/changelog-categories'
 import { changelogSubscriptions } from '../schema/changelog-subscriptions'
 
 describe('changelog settings schema (migration 0158)', () => {
@@ -14,11 +11,32 @@ describe('changelog settings schema (migration 0158)', () => {
       expect(getTableName(changelogCategories)).toBe('changelog_categories')
     })
 
-    it('carries name/color/segment gating/position', () => {
+    it('carries name/color/segment gating/position, plus the collection fields', () => {
       const columns = Object.keys(getTableColumns(changelogCategories))
       expect(columns.sort()).toEqual(
-        ['id', 'name', 'color', 'segmentIds', 'position', 'createdAt'].sort()
+        [
+          'id',
+          'name',
+          'color',
+          'segmentIds',
+          'position',
+          'createdAt',
+          // Added by 0276 so a category can act as a named changelog: a public
+          // slug, its own description, an optional roadmap link, and a team
+          // allowlist narrowing it to specific teammates.
+          'slug',
+          'description',
+          'roadmapId',
+          'allowedTeamPrincipalIds',
+        ].sort()
       )
+    })
+
+    it('team allowlist is nullable — null means every team actor', () => {
+      // Not `[]`: that reads as admins-only, and defaulting to it would close
+      // every existing category to non-admin teammates on deploy.
+      expect(changelogCategories.allowedTeamPrincipalIds.notNull).toBe(false)
+      expect(changelogCategories.allowedTeamPrincipalIds.default).toBeUndefined()
     })
 
     it('segmentIds defaults to empty (everyone)', () => {

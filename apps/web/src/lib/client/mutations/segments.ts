@@ -25,7 +25,7 @@ const SEGMENTS_KEY = ['admin', 'segments']
 // definition the list renders. So one invalidation of usersKeys.all keeps the
 // visible list/detail fresh after a segment membership change (no second
 // sibling tree to hand-invalidate).
-function invalidateSegmentQueries(queryClient: ReturnType<typeof useQueryClient>) {
+export function invalidateSegmentQueries(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: SEGMENTS_KEY })
   void queryClient.invalidateQueries({ queryKey: usersKeys.all })
 }

@@ -206,6 +206,31 @@ export const BUILTIN_FIELDS = [
     ],
   },
   {
+    key: 'google_workspace',
+    label: 'Google Workspace domain',
+    type: 'string',
+    group: 'account',
+    description:
+      'The Google Workspace hosted domain (hd) Google asserts during sign-in. Present only for Workspace accounts — consumer Gmail carries no hd claim — which makes it a stronger signal than matching the email domain, since any provider can present an address ending in your domain. Captured on Google sign-in and stored on the user record.',
+    operators: [
+      { value: 'eq', label: 'is' },
+      { value: 'neq', label: 'is not' },
+      { value: 'is_set', label: 'is set' },
+      { value: 'is_not_set', label: 'is not set' },
+    ],
+  },
+  {
+    key: 'entra_group',
+    label: 'Entra ID group',
+    type: 'string',
+    group: 'account',
+    description:
+      "Member of the Microsoft Entra ID group with this Object ID (a GUID from the Entra admin center). Membership is fetched from Microsoft Graph on each evaluation, so people added to or removed from the group sync on the segment's schedule. Requires the Entra app registration to hold the GroupMember.Read.All application permission with admin consent.",
+    // evaluator: resolved via Microsoft Graph, then compiled to an
+    // email IN (...) list — see resolveEntraGroupEmails.
+    operators: [{ value: 'eq', label: 'is member of' }],
+  },
+  {
     key: 'post_count',
     label: 'Post Count',
     type: 'number',

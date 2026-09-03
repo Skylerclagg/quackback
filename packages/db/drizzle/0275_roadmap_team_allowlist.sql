@@ -1,0 +1,20 @@
+-- Narrow a roadmap's team tier to specific teammates.
+--
+-- Upstream's `visibility` already covers 'public' | 'team' | 'segment', but
+-- 'team' means EVERY team account: policy/roadmaps.ts returned allowDecision()
+-- for any isTeamActor. There was no way to say "this roadmap is for these four
+-- people". This column adds that, using the same shape and semantics as
+-- changelog_entries.allowed_team_principal_ids so one policy primitive
+-- (policy/audience.ts) serves both.
+--
+-- NULLABLE and defaulting to NULL is load-bearing: NULL means "every team
+-- actor", which is exactly what every existing roadmap means today. Defaulting
+-- to '[]' would read as "admins only" and silently hide every existing roadmap
+-- from non-admin teammates the moment this deployed.
+--
+--   NULL  = every team actor      (existing behaviour, the default)
+--   []    = admins only
+--   [ids] = admins plus the listed member-role principals
+--
+-- Guarded with IF NOT EXISTS so a fleet ledger heal replays it as a no-op.
+ALTER TABLE "roadmaps" ADD COLUMN IF NOT EXISTS "allowed_team_principal_ids" jsonb;

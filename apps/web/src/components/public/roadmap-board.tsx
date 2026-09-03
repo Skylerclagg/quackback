@@ -1,12 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useIntl } from 'react-intl'
 import { MapIcon } from '@heroicons/react/24/solid'
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { RoadmapMilestonesStrip } from '@/components/shared/roadmap-milestones-strip'
 import {
   usePublicRoadmaps,
   useRoadmapDateBuckets,
+  useRoadmapMilestones,
   type RoadmapView,
 } from '@/lib/client/hooks/use-roadmaps-query'
 import { useSegments } from '@/lib/client/hooks/use-segments-queries'
@@ -37,6 +40,7 @@ export function RoadmapBoard({
   const { selectedRoadmapId, setSelectedRoadmap } = usePublicRoadmapSelection()
   const { data: roadmaps } = usePublicRoadmaps({ enabled: !initialRoadmaps })
   const columnsScroll = usePillsScroll()
+  const [view, setView] = useState<'columns' | 'timeline'>('columns')
 
   const { filters, setFilters, clearFilters, toggleBoard, toggleTag, toggleSegment } =
     usePublicRoadmapFilters()
@@ -49,28 +53,35 @@ export function RoadmapBoard({
   const availableRoadmaps = initialRoadmaps ?? roadmaps ?? []
   const effectiveSelectedId = selectedRoadmapId ?? initialSelectedRoadmapId
   const selectedRoadmap = availableRoadmaps.find((r) => r.id === effectiveSelectedId)
-  const { data: dateBuckets = [] } = useRoadmapDateBuckets(
-    (effectiveSelectedId ?? 'roadmap_00000000000000000000000000') as `roadmap_${string}`,
-    { public: true, enabled: selectedRoadmap?.type === 'date' }
-  )
-  const columns =
-    selectedRoadmap?.type === 'date'
-      ? dateBuckets.map((bucket) => ({
-          id: bucket.id,
-          statusId: undefined,
-          bucketId: bucket.id,
-          name: bucket.label,
-          icon: null,
-          color: bucket.noEta ? '#6b7280' : '#3b82f6',
-        }))
-      : (selectedRoadmap?.columns ?? []).map((column) => ({
-          id: column.id,
-          statusId: column.statusId,
-          bucketId: undefined,
-          name: column.name,
-          icon: column.icon,
-          color: column.color,
-        }))
+  const showTimeline =
+    selectedRoadmap?.type === 'date' || (!!selectedRoadmap?.timelineEnabled && view === 'timeline')
+  const roadmapIdForQueries = (effectiveSelectedId ??
+    'roadmap_00000000000000000000000000') as `roadmap_${string}`
+  const { data: dateBuckets = [] } = useRoadmapDateBuckets(roadmapIdForQueries, {
+    public: true,
+    enabled: showTimeline,
+  })
+  const { data: milestones = [] } = useRoadmapMilestones(roadmapIdForQueries, {
+    public: true,
+    enabled: showTimeline,
+  })
+  const columns = showTimeline
+    ? dateBuckets.map((bucket) => ({
+        id: bucket.id,
+        statusId: undefined,
+        bucketId: bucket.id,
+        name: bucket.label,
+        icon: null,
+        color: bucket.noEta ? '#6b7280' : '#3b82f6',
+      }))
+    : (selectedRoadmap?.columns ?? []).map((column) => ({
+        id: column.id,
+        statusId: column.statusId,
+        bucketId: undefined,
+        name: column.name,
+        icon: column.icon,
+        color: column.color,
+      }))
 
   useEffect(() => {
     if (availableRoadmaps.length > 0 && !selectedRoadmapId) {
@@ -118,6 +129,40 @@ export function RoadmapBoard({
           )}
         </div>
       )}
+
+      {selectedRoadmap?.type === 'column' && selectedRoadmap.timelineEnabled && (
+        <div
+          className="flex items-center gap-1"
+          role="tablist"
+          aria-label={intl.formatMessage({
+            id: 'portal.roadmap.view.label',
+            defaultMessage: 'Roadmap view',
+          })}
+        >
+          <Button
+            type="button"
+            size="sm"
+            role="tab"
+            aria-selected={view === 'columns'}
+            variant={view === 'columns' ? 'secondary' : 'ghost'}
+            onClick={() => setView('columns')}
+          >
+            {intl.formatMessage({ id: 'portal.roadmap.view.columns', defaultMessage: 'Columns' })}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            role="tab"
+            aria-selected={view === 'timeline'}
+            variant={view === 'timeline' ? 'secondary' : 'ghost'}
+            onClick={() => setView('timeline')}
+          >
+            {intl.formatMessage({ id: 'portal.roadmap.view.timeline', defaultMessage: 'Timeline' })}
+          </Button>
+        </div>
+      )}
+
+      {showTimeline && milestones.length > 0 && <RoadmapMilestonesStrip milestones={milestones} />}
 
       <PublicRoadmapToolbar
         currentSort={filters.sort ?? 'votes'}

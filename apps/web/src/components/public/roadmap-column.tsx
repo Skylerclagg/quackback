@@ -100,6 +100,7 @@ export function RoadmapColumn({
                     commentCount={post.commentCount}
                     board={{ slug: post.board.slug, name: post.board.name }}
                     eta={post.eta}
+                    etaPrecision={post.etaPrecision}
                   />
                 </div>
               ))}

@@ -1,3 +1,4 @@
+import type { TimelinePrecision } from '@/lib/shared/timeline'
 import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { ArrowPathIcon, InboxIcon } from '@heroicons/react/24/solid'
@@ -23,6 +24,9 @@ interface RoadmapColumnProps {
   color: string
   filters?: RoadmapFilters
   onCardClick?: (postId: string) => void
+  /** Threaded to each card's ETA picker; absent on read-only surfaces. */
+  onSetEta?: (postId: string, date: Date, precision: TimelinePrecision) => void
+  onClearEta?: (postId: string) => void
 }
 
 export const RoadmapColumn = memo(function RoadmapColumn({
@@ -36,6 +40,8 @@ export const RoadmapColumn = memo(function RoadmapColumn({
   color,
   filters,
   onCardClick,
+  onSetEta,
+  onClearEta,
 }: RoadmapColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: columnId,
@@ -100,6 +106,10 @@ export const RoadmapColumn = memo(function RoadmapColumn({
                 post={post}
                 placementId={columnId}
                 onClick={onCardClick ? () => onCardClick(post.id) : undefined}
+                onSetEta={
+                  onSetEta ? (date, precision) => onSetEta(post.id, date, precision) : undefined
+                }
+                onClearEta={onClearEta ? () => onClearEta(post.id) : undefined}
               />
             ))}
             {hasNextPage && (

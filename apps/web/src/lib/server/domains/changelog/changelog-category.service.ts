@@ -14,10 +14,12 @@ import {
   changelogCategories,
   changelogEntryCategories,
 } from '@/lib/server/db'
-import type { ChangelogCategoryId, ChangelogId } from '@quackback/ids'
+import type { ChangelogCategoryId, ChangelogId, RoadmapId } from '@quackback/ids'
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/shared/errors'
 import type { Actor } from '@/lib/server/policy/types'
 import { segmentGateAllows } from '@/lib/server/policy/segment-gate'
+import { teamAllowlistAllows } from '@/lib/server/policy/audience'
+import { isTeamActor } from '@/lib/server/policy/types'
 import type {
   ChangelogCategory,
   CreateChangelogCategoryInput,
@@ -78,6 +80,14 @@ export async function createChangelogCategory(
       name,
       color,
       segmentIds: input.segmentIds ?? [],
+      // Omitted leaves the column defaults: no slug (a plain label, not a named
+      // changelog) and a NULL team allowlist (every team actor).
+      ...(input.slug !== undefined && { slug: input.slug }),
+      ...(input.description !== undefined && { description: input.description }),
+      ...(input.roadmapId !== undefined && { roadmapId: input.roadmapId }),
+      ...(input.allowedTeamPrincipalIds !== undefined && {
+        allowedTeamPrincipalIds: input.allowedTeamPrincipalIds,
+      }),
       position: maxPosition + 1,
     })
     .returning()
@@ -114,6 +124,13 @@ export async function updateChangelogCategory(
   }
   if (input.segmentIds !== undefined) {
     updateData.segmentIds = input.segmentIds
+  }
+  // Each independently optional so renaming a label cannot reset its audience.
+  if (input.slug !== undefined) updateData.slug = input.slug
+  if (input.description !== undefined) updateData.description = input.description
+  if (input.roadmapId !== undefined) updateData.roadmapId = input.roadmapId
+  if (input.allowedTeamPrincipalIds !== undefined) {
+    updateData.allowedTeamPrincipalIds = input.allowedTeamPrincipalIds
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -237,8 +254,49 @@ export async function setEntryCategories(
  * (policy/segment-gate.ts).
  */
 export function categoryGateAllows(
-  categories: Array<{ segmentIds: string[] }>,
+  categories: Array<{ segmentIds: string[]; allowedTeamPrincipalIds?: string[] | null }>,
   actor: Actor
 ): boolean {
-  return categories.every((category) => segmentGateAllows(actor, category.segmentIds))
+  return categories.every((category) => {
+    // Team actors are governed by the team allowlist, not the segment gate —
+    // segmentGateAllows short-circuits to true for them, which is what makes a
+    // collection restricted to a few teammates impossible to express with it
+    // alone. Non-team viewers never see the allowlist at all; it is a
+    // narrowing of team access, not a second door into the portal.
+    if (isTeamActor(actor)) {
+      return teamAllowlistAllows(actor, category.allowedTeamPrincipalIds ?? null)
+    }
+    return segmentGateAllows(actor, category.segmentIds)
+  })
+}
+
+export interface PublicChangelogCollection {
+  id: ChangelogCategoryId
+  slug: string
+  name: string
+  color: string
+  description: string | null
+  roadmapId: RoadmapId | null
+}
+
+/**
+ * Named collections — categories carrying a slug — that this viewer may see,
+ * in display order. Powers the public page's tab strip. A category the
+ * viewer's segment gate or team allowlist excludes is simply absent, so the
+ * strip never advertises a collection its entries would refuse to list.
+ */
+export async function listPublicChangelogCollections(
+  actor: Actor
+): Promise<PublicChangelogCollection[]> {
+  const categories = await listChangelogCategories()
+  return categories
+    .filter((c) => !!c.slug && categoryGateAllows([c], actor))
+    .map((c) => ({
+      id: c.id,
+      slug: c.slug as string,
+      name: c.name,
+      color: c.color,
+      description: c.description ?? null,
+      roadmapId: c.roadmapId ?? null,
+    }))
 }

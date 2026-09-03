@@ -1018,4 +1018,22 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'The installed email-log callback for this process. apps/web plugs it in once; every ' +
       'workspace uses the same function, which then writes through the active workspace scope.',
   },
+  {
+    file: 'apps/web/src/lib/server/integrations/entra/graph.ts',
+    name: 'groupEmailCache',
+    category: 'workspace-keyed',
+    reason:
+      'Lower-cased member addresses of an Entra group, keyed by group id. Each workspace points ' +
+      "at its own directory, so a cross-workspace hit would answer one tenant's group with " +
+      "another tenant's roster and hand segment evaluation the wrong people.",
+  },
+  {
+    file: 'apps/web/src/lib/server/integrations/entra/graph.ts',
+    name: 'tokenCache',
+    category: 'workspace-keyed',
+    reason:
+      'App-only Microsoft Graph token, one per workspace. Each workspace configures its own Entra ' +
+      "app registration and client secret, so a cross-workspace hit would lend one tenant's " +
+      'directory credentials to another.',
+  },
 ]

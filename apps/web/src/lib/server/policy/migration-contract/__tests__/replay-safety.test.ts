@@ -276,6 +276,21 @@ describe('the real corpus', () => {
     // 0269 wraps two WHERE-null-or-empty UPDATEs in a DO block so a stored blob
     // makes the second run write zero rows. A bare UPDATE at the tip would
     // collapse that same window.
+    //
+    // 0276 (fork re-port) is argued on identical grounds to 0260: a `DO $$`
+    // guarded by `IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname =
+    // 'changelog_categories_roadmap_id_roadmaps_id_fk')` whose only action adds
+    // the constraint of that exact name. The alternative — DROP CONSTRAINT IF
+    // EXISTS followed by ADD — is recognised without a claim but registers as
+    // destructive DDL, which is a worse trade for a foreign key that has never
+    // existed before.
+    //
+    // 0277 (fork re-port, roadmap timeline) is the same shape again, with the
+    // guard widened from a constraint NAME to "any foreign key on
+    // roadmap_milestones.roadmap_id": a database migrated from the fork already
+    // carries that FK under Postgres's default name, and a name-based guard
+    // would have added a second, redundant one there. The block's only action is
+    // still adding the constraint, so a second run does nothing.
     const vouching = files.filter(
       (f) => assessReplaySafety(f, readFileSync(join(MIGRATIONS_DIR, f), 'utf8')).vouched.length > 0
     )
@@ -286,6 +301,8 @@ describe('the real corpus', () => {
       '0260_channel_threads_conversation_fk.sql',
       '0261_connectors.sql',
       '0269_messenger_ai_default_on.sql',
+      '0276_changelog_category_collections.sql',
+      '0277_roadmap_timeline.sql',
     ])
   })
 

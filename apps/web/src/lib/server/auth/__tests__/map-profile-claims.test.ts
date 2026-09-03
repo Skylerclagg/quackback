@@ -47,3 +47,49 @@ describe('mapProfileClaims — emailVerified', () => {
     expect(mapProfileClaims({ email_verified: null }).emailVerified).toBe(false)
   })
 })
+
+describe('mapProfileClaims — given/family name', () => {
+  it('takes non-empty given_name and family_name claims', () => {
+    const mapped = mapProfileClaims({ given_name: 'Ada', family_name: 'Lovelace' })
+    expect(mapped.givenName).toBe('Ada')
+    expect(mapped.familyName).toBe('Lovelace')
+  })
+
+  it('trims surrounding whitespace', () => {
+    const mapped = mapProfileClaims({ given_name: '  Ada  ', family_name: '\tLovelace\n' })
+    expect(mapped.givenName).toBe('Ada')
+    expect(mapped.familyName).toBe('Lovelace')
+  })
+
+  // The return is spread OVER the resolved user info, so a key present with an
+  // empty value overwrites the stored column. Omitting the key is what lets a
+  // hand-entered name survive a later sign-in where the IdP released nothing.
+  it('OMITS the keys entirely when the claims are absent', () => {
+    const mapped = mapProfileClaims({})
+    expect('givenName' in mapped).toBe(false)
+    expect('familyName' in mapped).toBe(false)
+  })
+
+  it('omits the keys for blank or non-string claims', () => {
+    for (const value of ['', '   ', 42, null, true, {}, []]) {
+      const mapped = mapProfileClaims({ given_name: value, family_name: value })
+      expect('givenName' in mapped).toBe(false)
+      expect('familyName' in mapped).toBe(false)
+    }
+  })
+
+  it('carries one name through when only the other is released', () => {
+    const onlyGiven = mapProfileClaims({ given_name: 'Ada' })
+    expect(onlyGiven.givenName).toBe('Ada')
+    expect('familyName' in onlyGiven).toBe(false)
+
+    const onlyFamily = mapProfileClaims({ family_name: 'Lovelace' })
+    expect(onlyFamily.familyName).toBe('Lovelace')
+    expect('givenName' in onlyFamily).toBe(false)
+  })
+
+  it('survives a null or undefined profile', () => {
+    expect('givenName' in mapProfileClaims(null)).toBe(false)
+    expect('givenName' in mapProfileClaims(undefined)).toBe(false)
+  })
+})

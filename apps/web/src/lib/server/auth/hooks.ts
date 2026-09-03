@@ -1201,7 +1201,7 @@ export async function handleNewDeviceNotification(
   const headers = getRequestHeaders()
   const userAgent = headers.get('user-agent') ?? ''
   const ip = getClientIp(headers)
-  const fingerprint = computeDeviceFingerprint(userAgent, ip)
+  const fingerprint = computeDeviceFingerprint(userAgent)
 
   const unseen = await isDeviceUnseen(userId, fingerprint).catch(() => false)
   if (!unseen) return

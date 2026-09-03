@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   check,
+  boolean,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 import { typeIdWithDefault, typeIdColumn } from '@quackback/ids/drizzle'
@@ -19,6 +20,9 @@ import {
   ROADMAP_FREQUENCIES,
   ROADMAP_VISIBILITIES,
   DEFAULT_BOARD_ACCESS,
+  TIMELINE_PRECISIONS,
+  DEFAULT_ETA_DISCLOSURE,
+  type EtaDisclosure,
 } from '../types'
 import { postStatuses } from './statuses'
 
@@ -58,6 +62,31 @@ export const roadmaps = pgTable(
     frequency: text('frequency', { enum: ROADMAP_FREQUENCIES }),
     visibility: text('visibility', { enum: ROADMAP_VISIBILITIES }).default('public').notNull(),
     visibleSegmentIds: jsonb('visible_segment_ids').$type<string[] | null>(),
+    /**
+     * Narrows the 'team' and 'segment' tiers to specific teammates. Tri-state,
+     * and null is the meaningful default: null = every team actor (what every
+     * pre-existing roadmap means), [] = admins only, [ids] = admins plus those
+     * member-role principals. Read with `?? null`, never `?? []`.
+     * Same shape as changelog_entries.allowed_team_principal_ids — both bind to
+     * policy/audience.ts.
+     */
+    allowedTeamPrincipalIds: jsonb('allowed_team_principal_ids').$type<string[] | null>(),
+    /**
+     * Per-audience cap on how specific ETAs render. Team admins always see full
+     * dates; portal viewers take the finest cap among `default` and any segment
+     * override they match. See policy/roadmaps.ts etaDisclosureFor.
+     */
+    etaDisclosure: jsonb('eta_disclosure')
+      .$type<EtaDisclosure>()
+      .default(DEFAULT_ETA_DISCLOSURE)
+      .notNull(),
+    /**
+     * Offer a date-bucketed timeline tab alongside a COLUMN roadmap. Upstream
+     * made `type` exclusive (column OR date); this is the additive way to give
+     * one roadmap both presentations without touching that check constraint.
+     * Meaningless on a 'date' roadmap, which is already the timeline.
+     */
+    timelineEnabled: boolean('timeline_enabled').default(false).notNull(),
     position: integer('position').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -136,6 +165,40 @@ export const postTags = pgTable(
   (table) => [index('post_tags_deleted_at_idx').on(table.deletedAt)]
 )
 
+/**
+ * Dated free-text entries on a roadmap timeline ("GA launch", "Beta closes").
+ * Content, not periods: since migration 0199 everything else on a roadmap is a
+ * post matched by base_filter, so this is the only home for an entry that is
+ * not a post. Dates are normalised to the start of their precision's period on
+ * write so equal buckets compare equal in SQL.
+ */
+export const roadmapMilestones = pgTable(
+  'roadmap_milestones',
+  {
+    id: typeIdWithDefault('milestone')('id').primaryKey(),
+    roadmapId: typeIdColumn('roadmap')('roadmap_id')
+      .notNull()
+      .references(() => roadmaps.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    timelineDate: timestamp('timeline_date', { withTimezone: true }).notNull(),
+    timelinePrecision: text('timeline_precision', { enum: TIMELINE_PRECISIONS })
+      .default('month')
+      .notNull(),
+    /** Manual order within a bucket. */
+    timelinePosition: integer('timeline_position').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('roadmap_milestones_roadmap_id_idx').on(table.roadmapId),
+    index('roadmap_milestones_timeline_date_idx').on(table.timelineDate),
+  ]
+)
+
+export type RoadmapMilestone = typeof roadmapMilestones.$inferSelect
+export type NewRoadmapMilestone = typeof roadmapMilestones.$inferInsert
+
 // Relations - defined after posts import to avoid circular dependency
 import { posts } from './posts'
 import { changelogEntries } from './changelog'
@@ -147,6 +210,14 @@ export const boardsRelations = relations(boards, ({ many }) => ({
 
 export const roadmapsRelations = relations(roadmaps, ({ many }) => ({
   columns: many(roadmapColumns),
+  milestones: many(roadmapMilestones),
+}))
+
+export const roadmapMilestonesRelations = relations(roadmapMilestones, ({ one }) => ({
+  roadmap: one(roadmaps, {
+    fields: [roadmapMilestones.roadmapId],
+    references: [roadmaps.id],
+  }),
 }))
 
 export const roadmapColumnsRelations = relations(roadmapColumns, ({ one }) => ({

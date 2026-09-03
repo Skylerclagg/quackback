@@ -53,7 +53,7 @@ export const Route = createFileRoute('/sitemap.xml')({
 async function collectUrls(baseUrl: string): Promise<SitemapUrl[]> {
   const [
     { db, changelogEntries, and, desc, eq, sql },
-    { publicChangelogConditions },
+    { publicChangelogConditions, changelogAudienceFilter },
     { toIsoDateOnly },
     { getFeatureFlags },
   ] = await Promise.all([
@@ -79,7 +79,10 @@ async function collectUrls(baseUrl: string): Promise<SitemapUrl[]> {
     ? await db
         .select({ id: changelogEntries.id, updatedAt: changelogEntries.updatedAt })
         .from(changelogEntries)
-        .where(and(...publicChangelogConditions(new Date())))
+        // A sitemap is fetched by crawlers with no session, so it must list only
+        // what an anonymous visitor may actually read. Without this an entry
+        // restricted to a segment was still advertised publicly.
+        .where(and(...publicChangelogConditions(new Date()), changelogAudienceFilter()))
         .orderBy(desc(effectiveDisplayDate))
     : []
 

@@ -2,15 +2,25 @@ import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
 import type {
   BoardId,
+  MilestoneId,
+  PostId,
   PostStatusId,
   PostTagId,
   RoadmapColumnId,
   RoadmapId,
   SegmentId,
+  PrincipalId,
 } from '@quackback/ids'
-import { postStatusIdSchema, roadmapColumnIdSchema, roadmapIdSchema } from '@quackback/ids/zod'
+import {
+  postIdSchema,
+  postStatusIdSchema,
+  roadmapColumnIdSchema,
+  roadmapIdSchema,
+  milestoneIdSchema,
+} from '@quackback/ids/zod'
 import { requireAuth } from './auth-helpers'
 import { PERMISSIONS } from '@/lib/shared/permissions'
+import { TIMELINE_PRECISIONS, TIMELINE_SPECIFICITIES } from '@/lib/shared/db-types'
 import {
   roadmapBaseFilterSchema,
   boardIdInputSchema,
@@ -25,6 +35,7 @@ import {
   createRoadmap,
   createRoadmapColumn,
   deleteRoadmap,
+  addPostsToRoadmap,
   deleteRoadmapColumn,
   getRoadmap,
   listRoadmaps,
@@ -33,6 +44,13 @@ import {
   updateRoadmapColumn,
 } from '@/lib/server/domains/roadmaps/roadmap.service'
 import { getRoadmapDateBuckets, getRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
+import {
+  createMilestone,
+  deleteMilestone,
+  getMilestone,
+  listRoadmapMilestones,
+  updateMilestone,
+} from '@/lib/server/domains/roadmaps/roadmap.milestone'
 import type {
   RoadmapColumnInput,
   RoadmapWithColumns,
@@ -48,13 +66,28 @@ const roadmapColumnInputSchema = z.object({
   position: z.number().int().min(0),
 })
 
+const timelineSpecificitySchema = z.enum(TIMELINE_SPECIFICITIES)
+const etaDisclosureSchema = z.object({
+  default: timelineSpecificitySchema,
+  segments: z.array(
+    z.object({ segmentId: segmentIdInputSchema, specificity: timelineSpecificitySchema })
+  ),
+  teamMembers: z
+    .array(z.object({ principalId: z.string().min(1), specificity: timelineSpecificitySchema }))
+    .optional(),
+})
+
 const roadmapConfigFields = {
   type: roadmapTypeSchema.optional(),
+  etaDisclosure: etaDisclosureSchema.optional(),
+  timelineEnabled: z.boolean().optional(),
   baseFilter: roadmapBaseFilterSchema.optional(),
   dateSource: z.literal('eta').nullable().optional(),
   frequency: roadmapFrequencySchema.nullable().optional(),
   visibility: roadmapVisibilitySchema.optional(),
   visibleSegmentIds: z.array(segmentIdInputSchema).nullable().optional(),
+  /** null/omitted = every team actor; [] = admins only; [ids] = admins plus those principals. */
+  allowedTeamPrincipalIds: z.array(z.string()).max(200).nullable().optional(),
   columns: z.array(roadmapColumnInputSchema).optional(),
 }
 
@@ -134,6 +167,9 @@ function serializeRoadmap(roadmap: RoadmapWithColumns) {
     frequency: roadmap.frequency,
     visibility: roadmap.visibility,
     visibleSegmentIds: roadmap.visibleSegmentIds,
+    allowedTeamPrincipalIds: roadmap.allowedTeamPrincipalIds ?? null,
+    etaDisclosure: roadmap.etaDisclosure,
+    timelineEnabled: roadmap.timelineEnabled,
     position: roadmap.position,
     columns: roadmap.columns.map((column) => ({
       id: String(column.id),
@@ -174,6 +210,9 @@ export const createRoadmapFn = createServerFn({ method: 'POST' })
         ...data,
         baseFilter: data.baseFilter as RoadmapBaseFilter | undefined,
         visibleSegmentIds: data.visibleSegmentIds as SegmentId[] | null | undefined,
+        etaDisclosure: data.etaDisclosure,
+        allowedTeamPrincipalIds: data.allowedTeamPrincipalIds as PrincipalId[] | null | undefined,
+        timelineEnabled: data.timelineEnabled,
         columns: parsedColumns(data.columns),
       })
     )
@@ -193,6 +232,9 @@ export const updateRoadmapFn = createServerFn({ method: 'POST' })
         frequency: data.frequency,
         visibility: data.visibility,
         visibleSegmentIds: data.visibleSegmentIds as SegmentId[] | null | undefined,
+        etaDisclosure: data.etaDisclosure,
+        allowedTeamPrincipalIds: data.allowedTeamPrincipalIds as PrincipalId[] | null | undefined,
+        timelineEnabled: data.timelineEnabled,
         columns: parsedColumns(data.columns),
       })
     )
@@ -204,6 +246,26 @@ export const deleteRoadmapFn = createServerFn({ method: 'POST' })
     await requireAuth({ permission: PERMISSIONS.ROADMAP_MANAGE })
     await deleteRoadmap(data.id as RoadmapId)
     return { id: data.id }
+  })
+
+/**
+ * Bulk "add to roadmap" from the inbox.
+ *
+ * Upstream roadmaps derive their contents from `base_filter`, so this applies
+ * the tag the roadmap selects on rather than writing a membership row — see
+ * addPostsToRoadmap. The tag name comes back so the toolbar can say which one
+ * was applied.
+ */
+export const addPostsToRoadmapFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      roadmapId: roadmapIdSchema,
+      postIds: z.array(postIdSchema).min(1).max(500),
+    })
+  )
+  .handler(async ({ data }) => {
+    await requireAuth({ permission: PERMISSIONS.ROADMAP_MANAGE })
+    return addPostsToRoadmap(data.roadmapId as RoadmapId, data.postIds as PostId[])
   })
 
 export const createRoadmapColumnFn = createServerFn({ method: 'POST' })
@@ -265,6 +327,7 @@ export const getRoadmapPostsFn = createServerFn({ method: 'GET' })
         voteCount: item.voteCount,
         statusId: item.statusId ? String(item.statusId) : null,
         eta: toIsoStringOrNull(item.eta),
+        etaPrecision: item.etaPrecision,
         board: { id: String(item.board.id), name: item.board.name, slug: item.board.slug },
       })),
     }
@@ -275,4 +338,90 @@ export const getRoadmapDateBucketsFn = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     await requireAuth({ permission: PERMISSIONS.ROADMAP_MANAGE })
     return getRoadmapDateBuckets(data.roadmapId as RoadmapId)
+  })
+
+// ============================================
+// Milestones
+// ============================================
+
+const precisionSchema = z.enum(TIMELINE_PRECISIONS)
+
+function serializeMilestone(m: {
+  id: unknown
+  roadmapId: unknown
+  title: string
+  description: string | null
+  timelineDate: Date
+  timelinePrecision: string
+  timelinePosition: number
+}) {
+  return {
+    id: String(m.id),
+    roadmapId: String(m.roadmapId),
+    title: m.title,
+    description: m.description,
+    timelineDate: m.timelineDate.toISOString(),
+    timelinePrecision: m.timelinePrecision,
+    timelinePosition: m.timelinePosition,
+  }
+}
+
+export const getRoadmapMilestonesFn = createServerFn({ method: 'GET' })
+  .validator(z.object({ roadmapId: roadmapIdSchema }))
+  .handler(async ({ data }) => {
+    await requireAuth({ permission: PERMISSIONS.ROADMAP_MANAGE })
+    return (await listRoadmapMilestones(data.roadmapId as RoadmapId)).map(serializeMilestone)
+  })
+
+export const createMilestoneFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      roadmapId: roadmapIdSchema,
+      title: z.string().min(1).max(200),
+      description: z.string().max(2000).optional(),
+      date: z.coerce.date(),
+      precision: precisionSchema,
+    })
+  )
+  .handler(async ({ data }) => {
+    await requireAuth({ permission: PERMISSIONS.ROADMAP_MANAGE })
+    return serializeMilestone(
+      await createMilestone(data.roadmapId as RoadmapId, {
+        title: data.title,
+        description: data.description,
+        date: data.date,
+        precision: data.precision,
+      })
+    )
+  })
+
+export const updateMilestoneFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      milestoneId: milestoneIdSchema,
+      title: z.string().min(1).max(200).optional(),
+      description: z.string().max(2000).nullable().optional(),
+      date: z.coerce.date().optional(),
+      precision: precisionSchema.optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    await requireAuth({ permission: PERMISSIONS.ROADMAP_MANAGE })
+    await getMilestone(data.milestoneId as MilestoneId)
+    return serializeMilestone(
+      await updateMilestone(data.milestoneId as MilestoneId, {
+        title: data.title,
+        description: data.description,
+        date: data.date,
+        precision: data.precision,
+      })
+    )
+  })
+
+export const deleteMilestoneFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ milestoneId: milestoneIdSchema }))
+  .handler(async ({ data }) => {
+    await requireAuth({ permission: PERMISSIONS.ROADMAP_MANAGE })
+    await deleteMilestone(data.milestoneId as MilestoneId)
+    return { id: data.milestoneId }
   })

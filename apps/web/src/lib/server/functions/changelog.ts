@@ -5,7 +5,14 @@
  */
 
 import { createServerFn } from '@tanstack/react-start'
-import type { BoardId, ChangelogCategoryId, ChangelogId, PostId, SegmentId } from '@quackback/ids'
+import type {
+  BoardId,
+  ChangelogCategoryId,
+  ChangelogId,
+  PostId,
+  SegmentId,
+  PrincipalId,
+} from '@quackback/ids'
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { NotFoundError } from '@/lib/shared/errors'
@@ -40,6 +47,7 @@ import {
   topViewedChangelogsSchema,
 } from '@/lib/shared/schemas/changelog'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
+import { listPublicChangelogCollections } from '@/lib/server/domains/changelog/changelog-category.service'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'changelog' })
@@ -71,6 +79,13 @@ export const createChangelogFn = createServerFn({ method: 'POST' })
         ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
         ...(data.featuredImageUrl !== undefined && { featuredImageUrl: data.featuredImageUrl }),
         ...(data.segmentIds !== undefined && { segmentIds: data.segmentIds as SegmentId[] }),
+        ...(data.visibility !== undefined && { visibility: data.visibility }),
+        ...(data.visibleSegmentIds !== undefined && {
+          visibleSegmentIds: data.visibleSegmentIds as SegmentId[] | null,
+        }),
+        ...(data.allowedTeamPrincipalIds !== undefined && {
+          allowedTeamPrincipalIds: data.allowedTeamPrincipalIds as PrincipalId[] | null,
+        }),
         notify: data.notify,
       },
       {
@@ -107,6 +122,13 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
       ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
       ...(data.featuredImageUrl !== undefined && { featuredImageUrl: data.featuredImageUrl }),
       ...(data.segmentIds !== undefined && { segmentIds: data.segmentIds as SegmentId[] }),
+      ...(data.visibility !== undefined && { visibility: data.visibility }),
+      ...(data.visibleSegmentIds !== undefined && {
+        visibleSegmentIds: data.visibleSegmentIds as SegmentId[] | null,
+      }),
+      ...(data.allowedTeamPrincipalIds !== undefined && {
+        allowedTeamPrincipalIds: data.allowedTeamPrincipalIds as PrincipalId[] | null,
+      }),
       notify: data.notify,
     })
 
@@ -252,6 +274,7 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
       {
         cursor: data.cursor,
         limit: data.limit,
+        collection: data.collection,
       },
       actor
     )
@@ -264,6 +287,20 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
       })),
     }
   })
+
+/**
+ * Named collections (slugged categories) the viewer may see — the public
+ * page's tab strip. Same outer gates as the list.
+ */
+export const listPublicChangelogCollectionsFn = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const access = await resolvePortalAccessForRequest()
+    if (!access.granted) return []
+    const actor = await policyActorFromAuth(await getOptionalAuth())
+    if (!(await isChangelogAudienceGranted(actor))) return []
+    return await listPublicChangelogCollections(actor)
+  }
+)
 
 // ============================================================================
 // Shipped Posts Search (for linking)

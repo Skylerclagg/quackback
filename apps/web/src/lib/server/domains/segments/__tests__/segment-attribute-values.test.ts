@@ -62,12 +62,16 @@ describe('SEARCHABLE_ATTRIBUTES allowlist', () => {
 
 describe('getAttributeValueSuggestions — universal predicates', () => {
   it.each(['country', 'locale', 'name', 'email', 'signup_source'] as const)(
-    'scopes %s to portal-user principals (matches evaluator audience)',
+    'scopes %s to human principals (matches evaluator audience)',
     async (attribute) => {
       await getAttributeValueSuggestions(attribute, '', 20)
       expect(capturedSql).toContain('principal p')
       expect(capturedSql).toContain('p.user_id = u.id')
-      expect(capturedSql).toContain("p.role = 'user'")
+      // Gated on TYPE, not role: team accounts can be segment members, so the
+      // suggestions must cover the same people the rule will match. Anonymous
+      // (type='anonymous') and service (type='service') principals stay out.
+      expect(capturedSql).toContain("p.type = 'user'")
+      expect(capturedSql).not.toContain("p.role = 'user'")
     }
   )
 

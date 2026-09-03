@@ -275,6 +275,14 @@
         "react",
       ],
     },
+    "scripts/cutover": {
+      "name": "@quackback/cutover",
+      "version": "0.1.0",
+      "dependencies": {
+        "@quackback/ids": "workspace:*",
+        "postgres": "^3.4.9",
+      },
+    },
     "scripts/import": {
       "name": "@quackback/import",
       "version": "0.1.0",
@@ -712,6 +720,8 @@
     "@playwright/test": ["@playwright/test@1.62.1", "", { "dependencies": { "playwright": "1.62.1" }, "bin": { "playwright": "cli.js" } }, "sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ=="],
 
     "@popperjs/core": ["@popperjs/core@2.11.8", "", {}, "sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A=="],
+
+    "@quackback/cutover": ["@quackback/cutover@workspace:scripts/cutover"],
 
     "@quackback/db": ["@quackback/db@workspace:packages/db"],
 

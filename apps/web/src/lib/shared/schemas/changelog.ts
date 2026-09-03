@@ -35,6 +35,15 @@ export const createChangelogSchema = z.object({
    * to every subscriber.
    */
   segmentIds: z.array(z.string()).max(50).optional(),
+  /**
+   * Read audience — who can open the entry at all. Distinct from `segmentIds`,
+   * which only targets the publish notification.
+   */
+  visibility: z.enum(['public', 'team', 'segment']).optional(),
+  /** Required (non-empty) when visibility is 'segment'. */
+  visibleSegmentIds: z.array(z.string()).max(50).nullable().optional(),
+  /** null/omitted = every team actor; [] = admins only; [ids] = admins plus those principals. */
+  allowedTeamPrincipalIds: z.array(z.string()).max(200).nullable().optional(),
   /** Publish-time "Send email to subscribers" checkbox; default true. */
   notify: z.boolean().optional(),
 })
@@ -59,6 +68,15 @@ export const updateChangelogSchema = z.object({
    * to every subscriber.
    */
   segmentIds: z.array(z.string()).max(50).optional(),
+  /**
+   * Read audience — who can open the entry at all. Distinct from `segmentIds`,
+   * which only targets the publish notification.
+   */
+  visibility: z.enum(['public', 'team', 'segment']).optional(),
+  /** Required (non-empty) when visibility is 'segment'. */
+  visibleSegmentIds: z.array(z.string()).max(50).nullable().optional(),
+  /** null/omitted = every team actor; [] = admins only; [ids] = admins plus those principals. */
+  allowedTeamPrincipalIds: z.array(z.string()).max(200).nullable().optional(),
   /** Publish-time "Send email to subscribers" checkbox; default true. */
   notify: z.boolean().optional(),
 })
@@ -97,6 +115,8 @@ export const topViewedChangelogsSchema = z.object({
  * List public changelogs params schema
  */
 export const listPublicChangelogsSchema = z.object({
+  /** Collection slug, or 'general' for entries in no collection. */
+  collection: z.string().max(80).optional(),
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
 })

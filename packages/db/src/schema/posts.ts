@@ -18,7 +18,7 @@ import { boards, postTags } from './boards'
 import { postStatuses } from './statuses'
 import { postExternalLinks } from './external-links'
 import { principal } from './auth'
-import { MODERATION_STATES } from '../types'
+import { MODERATION_STATES, TIMELINE_PRECISIONS } from '../types'
 import type { CustomFieldValues, TiptapContent } from '../types'
 
 // Custom tsvector type for full-text search
@@ -128,6 +128,14 @@ export const posts = pgTable(
     // Nullable target ship date for time-based roadmap columns. Stored as a full
     // timestamp (single-datetime ETA model); presented at month granularity.
     eta: timestamp('eta', { withTimezone: true }),
+    /**
+     * How vaguely `eta` is shown on a timeline: 'day' | 'month' | 'quarter' |
+     * 'year'. The eta is normalised to the start of that period on write, so a
+     * post shown as "Q3 2026" never leaks the exact day it was planned for.
+     * Defaults to 'month' — the granularity upstream already presents every ETA
+     * at — so existing posts read exactly as they did.
+     */
+    etaPrecision: text('eta_precision', { enum: TIMELINE_PRECISIONS }).default('month').notNull(),
   },
   (table) => [
     // Named to match the constraint the SQL migration created.

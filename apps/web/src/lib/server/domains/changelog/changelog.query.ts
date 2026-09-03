@@ -1,3 +1,4 @@
+import type { AudienceVisibility } from '@/lib/server/policy/audience'
 import type { SQL } from 'drizzle-orm'
 import {
   db,
@@ -19,7 +20,14 @@ import {
   inArray,
   sql,
 } from '@/lib/server/db'
-import type { BoardId, ChangelogId, PrincipalId, PostId, PostStatusId } from '@quackback/ids'
+import type {
+  BoardId,
+  ChangelogId,
+  PrincipalId,
+  PostId,
+  PostStatusId,
+  SegmentId,
+} from '@quackback/ids'
 import { computeStatus } from './changelog.service'
 import { getCategoriesForEntries } from './changelog-category.service'
 import { contentJsonForClient } from '@/lib/server/content/storage-read-urls'
@@ -168,6 +176,9 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
         ? resignStoredAssetUrl(entry.featuredImageUrl)
         : entry.featuredImageUrl,
       segmentIds: (entry.segmentIds ?? []) as ChangelogEntryWithDetails['segmentIds'],
+      visibility: (entry.visibility ?? 'public') as AudienceVisibility,
+      visibleSegmentIds: (entry.visibleSegmentIds ?? null) as SegmentId[] | null,
+      allowedTeamPrincipalIds: (entry.allowedTeamPrincipalIds ?? null) as PrincipalId[] | null,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
       viewCount: entry.viewCount,

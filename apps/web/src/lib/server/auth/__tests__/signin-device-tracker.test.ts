@@ -22,43 +22,97 @@ vi.mock('@/lib/server/kv/pg-kv', async (importOriginal) => ({
   kvSetMemberRemove: mockRemove,
 }))
 
-const { computeDeviceFingerprint, isDeviceUnseen, markDeviceSeen, forgetDevice } =
-  await import('../signin-device-tracker')
+const {
+  computeDeviceFingerprint,
+  normaliseUserAgentForFingerprint,
+  isDeviceUnseen,
+  markDeviceSeen,
+  forgetDevice,
+} = await import('../signin-device-tracker')
 
 beforeEach(() => {
   vi.clearAllMocks()
 })
 
 describe('computeDeviceFingerprint', () => {
-  it('truncates IPv4 to /24 before hashing', () => {
-    const a = computeDeviceFingerprint('Mozilla/5.0', '203.0.113.42')
-    const b = computeDeviceFingerprint('Mozilla/5.0', '203.0.113.99')
-    expect(a).toBe(b)
-  })
-
-  it('differs on UA change', () => {
-    const a = computeDeviceFingerprint('Mozilla/5.0', '203.0.113.42')
-    const b = computeDeviceFingerprint('Different/5.0', '203.0.113.42')
-    expect(a).not.toBe(b)
-  })
-
-  it('differs on /24 change', () => {
-    expect(computeDeviceFingerprint('UA', '203.0.113.42')).not.toBe(
-      computeDeviceFingerprint('UA', '203.0.114.42')
-    )
-  })
-
-  it('hashes IPv6 whole (no truncation)', () => {
-    expect(computeDeviceFingerprint('UA', '2001:db8::1')).not.toBe(
-      computeDeviceFingerprint('UA', '2001:db8::2')
-    )
-  })
+  const SAFARI_26_6 =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15'
+  const SAFARI_26_5_2 =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5.2 Safari/605.1.15'
+  const CHROME_WIN =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 
   it('returns 32-char hex', () => {
-    expect(computeDeviceFingerprint('UA', '203.0.113.42')).toMatch(/^[0-9a-f]{32}$/)
+    expect(computeDeviceFingerprint(SAFARI_26_6)).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  // The defect this function exists to avoid. These three real User-Agents were
+  // recorded for one account, on one Mac, on one network, and produced three
+  // separate "new device" security emails.
+  it('is stable across a browser PATCH update', () => {
+    expect(computeDeviceFingerprint(SAFARI_26_6)).toBe(computeDeviceFingerprint(SAFARI_26_5_2))
+  })
+
+  it('is stable across a MAJOR version bump too', () => {
+    // Chrome ships a major every few weeks; alerting on that is pure noise.
+    expect(computeDeviceFingerprint(SAFARI_26_6)).toBe(
+      computeDeviceFingerprint(SAFARI_26_6.replace('Version/26.6', 'Version/27.0'))
+    )
+  })
+
+  it('distinguishes different browsers and different operating systems', () => {
+    expect(computeDeviceFingerprint(SAFARI_26_6)).not.toBe(computeDeviceFingerprint(CHROME_WIN))
+    expect(computeDeviceFingerprint(CHROME_WIN)).not.toBe(
+      computeDeviceFingerprint(
+        CHROME_WIN.replace('Windows NT 10.0; Win64; x64', 'X11; Linux x86_64')
+      )
+    )
+  })
+
+  it('handles an absent User-Agent without throwing', () => {
+    expect(computeDeviceFingerprint('')).toMatch(/^[0-9a-f]{32}$/)
   })
 })
 
+describe('normaliseUserAgentForFingerprint', () => {
+  it('identifies the common browser families by major version', () => {
+    expect(
+      normaliseUserAgentForFingerprint(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+      )
+    ).toBe('chrome|windows')
+    expect(
+      normaliseUserAgentForFingerprint(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15'
+      )
+    ).toBe('safari|macos')
+    expect(
+      normaliseUserAgentForFingerprint(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7 Mobile/15E148 Safari/604.1'
+      )
+    ).toBe('safari|ios')
+  })
+
+  // Edge and Opera both advertise Chrome, and every WebKit browser advertises
+  // Safari, so the match order is load-bearing rather than stylistic.
+  it('does not mistake Edge or Opera for Chrome', () => {
+    expect(
+      normaliseUserAgentForFingerprint(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0'
+      )
+    ).toBe('edge|windows')
+    expect(
+      normaliseUserAgentForFingerprint(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 OPR/120.0.0.0'
+      )
+    ).toBe('opera|windows')
+  })
+
+  it('falls back rather than throwing on junk', () => {
+    expect(normaliseUserAgentForFingerprint('')).toBe('unknown|unknown')
+    expect(normaliseUserAgentForFingerprint('curl/8.4.0')).toBe('other|other')
+  })
+})
 describe('isDeviceUnseen', () => {
   it('returns true when the claim takes the member', async () => {
     mockClaim.mockResolvedValueOnce(true)

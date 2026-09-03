@@ -100,7 +100,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 2. Surfaces and their enforced authorization
 
-### Server functions (`requireAuth`) — 672 surfaces
+### Server functions (`requireAuth`) — 681 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -407,6 +407,10 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/conversation.ts`::setInboxTranslationEnabledFn | conversation.manage |
 | `lib/server/functions/conversation.ts`::dismissInboxTranslationSuggestionFn | conversation.manage |
 | `lib/server/functions/customer-context.ts`::fetchCustomerContextFn | integration.view |
+| `lib/server/functions/entra.ts`::getEntraAvailabilityFn | segment.manage |
+| `lib/server/functions/entra.ts`::searchEntraGroupsFn | segment.manage |
+| `lib/server/functions/entra.ts`::getEntraGroupByIdFn | segment.manage |
+| `lib/server/functions/entra.ts`::previewEntraGroupFn | auth.manage |
 | `lib/server/functions/external-item-search.ts`::searchExternalItemsFn | integration.manage |
 | `lib/server/functions/external-statuses.ts`::fetchExternalStatusesFn | integration.manage |
 | `lib/server/functions/feature-flags.ts`::updateFeatureFlagsFn | settings.manage |
@@ -547,12 +551,17 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/roadmaps.ts`::createRoadmapFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::updateRoadmapFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::deleteRoadmapFn | roadmap.manage |
+| `lib/server/functions/roadmaps.ts`::addPostsToRoadmapFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::createRoadmapColumnFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::updateRoadmapColumnFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::deleteRoadmapColumnFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::reorderRoadmapsFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::getRoadmapPostsFn | roadmap.manage |
 | `lib/server/functions/roadmaps.ts`::getRoadmapDateBucketsFn | roadmap.manage |
+| `lib/server/functions/roadmaps.ts`::getRoadmapMilestonesFn | roadmap.manage |
+| `lib/server/functions/roadmaps.ts`::createMilestoneFn | roadmap.manage |
+| `lib/server/functions/roadmaps.ts`::updateMilestoneFn | roadmap.manage |
+| `lib/server/functions/roadmaps.ts`::deleteMilestoneFn | roadmap.manage |
 | `lib/server/functions/roles.ts`::listRolesFn | member.view |
 | `lib/server/functions/roles.ts`::createRoleFn | role.manage |
 | `lib/server/functions/roles.ts`::updateRoleFn | role.manage |
@@ -983,7 +992,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-191 of 975 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+196 of 989 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 
@@ -996,6 +1005,7 @@ Each is expected to be intentionally public, a pre-auth flow, a signature-verifi
 | `lib/server/functions/bootstrap.ts`::getBootstrapData | server-fn |
 | `lib/server/functions/changelog-categories.ts`::listChangelogCategoriesFn | server-fn |
 | `lib/server/functions/changelog.ts`::getPublicChangelogFn | server-fn |
+| `lib/server/functions/changelog.ts`::listPublicChangelogCollectionsFn | server-fn |
 | `lib/server/functions/changelog.ts`::listPublicChangelogsFn | server-fn |
 | `lib/server/functions/comments.ts`::canPinCommentFn | server-fn |
 | `lib/server/functions/comments.ts`::getCommentPermissionsFn | server-fn |
@@ -1048,6 +1058,7 @@ Each is expected to be intentionally public, a pre-auth flow, a signature-verifi
 | `lib/server/functions/portal.ts`::fetchPublicPostDetail | server-fn |
 | `lib/server/functions/portal.ts`::fetchPublicPosts | server-fn |
 | `lib/server/functions/portal.ts`::fetchPublicRoadmapDateBuckets | server-fn |
+| `lib/server/functions/portal.ts`::fetchPublicRoadmapMilestones | server-fn |
 | `lib/server/functions/portal.ts`::fetchPublicRoadmapPosts | server-fn |
 | `lib/server/functions/portal.ts`::fetchPublicRoadmaps | server-fn |
 | `lib/server/functions/portal.ts`::fetchPublicStatuses | server-fn |
@@ -1057,6 +1068,8 @@ Each is expected to be intentionally public, a pre-auth flow, a signature-verifi
 | `lib/server/functions/portal.ts`::getPrincipalIdForUser | server-fn |
 | `lib/server/functions/post-merge.ts`::getPostMergeInfoFn | server-fn |
 | `lib/server/functions/powered-by.ts`::getShowPoweredByFn | server-fn |
+| `lib/server/functions/profile-name.ts`::getMyNameStatusFn | server-fn |
+| `lib/server/functions/profile-name.ts`::updateMyNameFn | server-fn |
 | `lib/server/functions/public-cache.ts`::setPublicDocumentCacheHeaders | server-fn |
 | `lib/server/functions/public-posts.ts`::findSimilarPostsFn | server-fn |
 | `lib/server/functions/public-posts.ts`::getPostPermissionsFn | server-fn |
@@ -1128,6 +1141,7 @@ Each is expected to be intentionally public, a pre-auth flow, a signature-verifi
 | `routes/api/mcp.ts`::GET | route |
 | `routes/api/mcp.ts`::POST | route |
 | `routes/api/portal/upload.ts`::POST | route |
+| `routes/api/segments/import.ts`::POST | route |
 | `routes/api/storage/$.ts`::GET | route |
 | `routes/api/storage/$.ts`::PUT | route |
 | `routes/api/track.ts`::OPTIONS | route |

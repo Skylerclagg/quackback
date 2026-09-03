@@ -19,6 +19,7 @@ import { Form } from '@/components/ui/form'
 import { ChangelogFormFields } from './changelog-form-fields'
 import { ChangelogMetadataSidebar } from './changelog-metadata-sidebar'
 import { ChangelogMetadataSidebarContent } from './changelog-metadata-sidebar-content'
+import type { AudienceVisibility } from '@/lib/server/policy/audience'
 import { toPublishState, type PublishState } from '@/lib/shared/schemas/changelog'
 import { Route } from '@/routes/admin/changelog'
 import {
@@ -26,6 +27,7 @@ import {
   type PostId,
   type ChangelogCategoryId,
   type SegmentId,
+  type PrincipalId,
 } from '@quackback/ids'
 import type { JSONContent } from '@tiptap/react'
 
@@ -45,6 +47,22 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
   const [notify, setNotify] = useState(true)
   const [segmentIds, setSegmentIds] = useState<SegmentId[]>([])
   const [segmentIdsTouched, setSegmentIdsTouched] = useState(false)
+  const [visibility, setVisibility] = useState<AudienceVisibility>('public')
+  const [visibleSegmentIds, setVisibleSegmentIds] = useState<SegmentId[]>([])
+  const [allowedTeamPrincipalIds, setAllowedTeamPrincipalIds] = useState<PrincipalId[] | null>(null)
+  const [audienceTouched, setAudienceTouched] = useState(false)
+  const handleVisibilityChange = (next: AudienceVisibility) => {
+    setVisibility(next)
+    setAudienceTouched(true)
+  }
+  const handleVisibleSegmentIdsChange = (next: SegmentId[]) => {
+    setVisibleSegmentIds(next)
+    setAudienceTouched(true)
+  }
+  const handleAllowedTeamPrincipalIdsChange = (next: PrincipalId[] | null) => {
+    setAllowedTeamPrincipalIds(next)
+    setAudienceTouched(true)
+  }
   const [publishState, setPublishState] = useState<PublishState>({ type: 'draft' })
   const [displayDateOverride, setDisplayDateOverride] = useState<Date | undefined>(undefined)
   const [displayDateTouched, setDisplayDateTouched] = useState(false)
@@ -86,6 +104,10 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
       setFeaturedImageTouched(false)
       setSegmentIds((entry.segmentIds ?? []) as SegmentId[])
       setSegmentIdsTouched(false)
+      setVisibility(entry.visibility ?? 'public')
+      setVisibleSegmentIds((entry.visibleSegmentIds ?? []) as SegmentId[])
+      setAllowedTeamPrincipalIds((entry.allowedTeamPrincipalIds ?? null) as PrincipalId[] | null)
+      setAudienceTouched(false)
       setHasInitialized(true)
     }
   }, [entry, form, hasInitialized])
@@ -145,6 +167,13 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         // isn't round-tripped; an edited one (including cleared to [])
         // replaces the stored list wholesale.
         ...(segmentIdsTouched && { segmentIds }),
+        // Audience travels as a unit once touched: a 'segment' entry needs its
+        // list, and going back to 'public' clears both narrowing fields.
+        ...(audienceTouched && {
+          visibility,
+          visibleSegmentIds: visibility === 'segment' ? visibleSegmentIds : null,
+          allowedTeamPrincipalIds: visibility === 'public' ? null : allowedTeamPrincipalIds,
+        }),
       },
       {
         onSuccess: () => {
@@ -215,6 +244,12 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
             onNotifyChange={setNotify}
             segmentIds={segmentIds}
             onSegmentIdsChange={handleSegmentIdsChange}
+            visibility={visibility}
+            onVisibilityChange={handleVisibilityChange}
+            visibleSegmentIds={visibleSegmentIds}
+            onVisibleSegmentIdsChange={handleVisibleSegmentIdsChange}
+            allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+            onAllowedTeamPrincipalIdsChange={handleAllowedTeamPrincipalIdsChange}
             authorName={entry?.author?.name}
             publishedAt={entry?.publishedAt}
             displayDateValue={displayDateOverride}
@@ -255,6 +290,12 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
                   onNotifyChange={setNotify}
                   segmentIds={segmentIds}
                   onSegmentIdsChange={handleSegmentIdsChange}
+                  visibility={visibility}
+                  onVisibilityChange={handleVisibilityChange}
+                  visibleSegmentIds={visibleSegmentIds}
+                  onVisibleSegmentIdsChange={handleVisibleSegmentIdsChange}
+                  allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+                  onAllowedTeamPrincipalIdsChange={handleAllowedTeamPrincipalIdsChange}
                   authorName={entry?.author?.name}
                   publishedAt={entry?.publishedAt}
                   displayDateValue={displayDateOverride}

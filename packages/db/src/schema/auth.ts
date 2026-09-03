@@ -134,6 +134,19 @@ export const user = pgTable(
   {
     id: typeIdWithDefault('user')('id').primaryKey(),
     name: text('name').notNull(),
+    /**
+     * Given/family name from the IdP's claims, refreshed by the Entra directory
+     * sync. Team-side surfaces only — every public surface renders `name`, so a
+     * person's legal name never reaches the portal. Null until an OIDC sign-in
+     * supplies them (password and magic-link accounts never do).
+     *
+     * The three name fields are distinct and labelled separately in the admin
+     * UI: `name` is "Display Name", `givenName` is "First Name", `familyName`
+     * is "Last Name". They map 1:1 onto Entra's displayName / givenName /
+     * surname, which is what the self-service write-back PATCHes.
+     */
+    givenName: text('given_name'),
+    familyName: text('family_name'),
     /** Nullable — external users (Slack, etc.) may not have a real email */
     email: text('email'),
     emailVerified: boolean('email_verified').default(false).notNull(),

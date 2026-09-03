@@ -10,6 +10,7 @@ import {
   listChangelogsFn,
   getChangelogFn,
   listPublicChangelogsFn,
+  listPublicChangelogCollectionsFn,
   getPublicChangelogFn,
   topViewedChangelogsFn,
 } from '@/lib/server/functions/changelog'
@@ -31,6 +32,10 @@ export const changelogKeys = {
   topViewed: () => [...changelogKeys.all, 'top-viewed'] as const,
   public: () => [...changelogKeys.all, 'public'] as const,
   publicList: () => [...changelogKeys.public(), 'list'] as const,
+  /** One list per collection scope; `publicList()` stays the invalidation prefix. */
+  publicListFor: (collection?: string) =>
+    [...changelogKeys.publicList(), collection ?? 'all'] as const,
+  publicCollections: () => [...changelogKeys.public(), 'collections'] as const,
   publicDetail: (id: ChangelogId) => [...changelogKeys.public(), 'detail', id] as const,
   categories: () => [...changelogKeys.all, 'categories'] as const,
   settings: () => [...changelogKeys.all, 'settings'] as const,
@@ -103,18 +108,27 @@ export const changelogQueries = {
  * Public changelog queries
  */
 export const publicChangelogQueries = {
-  list: () =>
+  list: (collection?: string) =>
     infiniteQueryOptions({
-      queryKey: changelogKeys.publicList(),
+      queryKey: changelogKeys.publicListFor(collection),
       queryFn: ({ pageParam }) =>
         listPublicChangelogsFn({
           data: {
             cursor: pageParam,
             limit: 10,
+            collection,
           },
         }),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      staleTime: STALE_TIME_MEDIUM,
+    }),
+
+  /** Named collections visible to this viewer (the public tab strip). */
+  collections: () =>
+    queryOptions({
+      queryKey: changelogKeys.publicCollections(),
+      queryFn: () => listPublicChangelogCollectionsFn(),
       staleTime: STALE_TIME_MEDIUM,
     }),
 

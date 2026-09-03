@@ -48,6 +48,8 @@ export type RoadmapId = TypeId<'roadmap'>
 
 /** Roadmap column ID - e.g., roadmap_col_01h455vb4pex5vsknk084sn02q */
 export type RoadmapColumnId = TypeId<'roadmap_col'>
+/** Roadmap timeline milestone ID - e.g., milestone_01h455vb4pex5vsknk084sn02q */
+export type MilestoneId = TypeId<'milestone'>
 
 /** Changelog entry ID - e.g., changelog_01h455vb4pex5vsknk084sn02q */
 export type ChangelogId = TypeId<'changelog'>
@@ -484,6 +486,7 @@ export interface EntityIdMap {
   post_merge_suggestion: PostMergeSuggestionId
   roadmap: RoadmapId
   roadmap_column: RoadmapColumnId
+  roadmap_milestone: MilestoneId
   changelog: ChangelogId
   changelog_category: ChangelogCategoryId
   changelog_sub: ChangelogSubscriptionId

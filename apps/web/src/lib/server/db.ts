@@ -194,6 +194,8 @@ export {
   roadmapsRelations,
   roadmapColumns,
   roadmapColumnsRelations,
+  roadmapMilestones,
+  roadmapMilestonesRelations,
   postTags,
   postTagsRelations,
   // Schema tables - statuses
@@ -493,6 +495,8 @@ export {
 
 // Re-export schema types not covered by @quackback/db/types
 export type {
+  RoadmapMilestone,
+  NewRoadmapMilestone,
   AssistantInvolvementSource,
   AssistantInvolvementStatus,
   AssistantInvolvementTrigger,

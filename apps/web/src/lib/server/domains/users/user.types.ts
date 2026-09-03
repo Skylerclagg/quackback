@@ -181,6 +181,14 @@ export interface EngagedPost {
  */
 export interface PortalUserDetail extends PortalUserListItem {
   createdAt: Date // user.createdAt (account creation)
+  /**
+   * "First Name" (OIDC `given_name`). Team-side surfaces only — the portal
+   * renders `name`, the IdP display name. Null until an SSO sign-in or the
+   * Entra directory sync supplies one.
+   */
+  givenName: string | null
+  /** "Last Name" (OIDC `family_name`). Same visibility rule as `givenName`. */
+  familyName: string | null
   /** All posts this user has engaged with (authored, commented, or voted on) */
   engagedPosts: EngagedPost[]
 }

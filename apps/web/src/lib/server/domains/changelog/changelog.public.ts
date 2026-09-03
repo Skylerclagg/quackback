@@ -15,12 +15,16 @@ import {
   desc,
   inArray,
   sql,
+  changelogCategories,
+  changelogEntryCategories,
 } from '@/lib/server/db'
 import type { ChangelogId, PostStatusId } from '@quackback/ids'
+import type { SQL } from 'drizzle-orm'
 import { NotFoundError } from '@/lib/shared/errors'
 import { computeStatus } from './changelog.service'
 import { getCategoriesForEntries, categoryGateAllows } from './changelog-category.service'
 import { ANONYMOUS_ACTOR, type Actor } from '@/lib/server/policy/types'
+import { audienceViewFilter } from '@/lib/server/policy/audience'
 import type { PublicChangelogEntry, PublicChangelogListResult } from './changelog.types'
 import { contentJsonForClient } from '@/lib/server/content/storage-read-urls'
 import { resignStoredAssetUrl } from '@/lib/server/storage/s3'
@@ -41,6 +45,27 @@ export function publicChangelogConditions(now: Date) {
 }
 
 /**
+ * The per-entry read audience, as a SQL predicate.
+ *
+ * Separate from {@link publicChangelogConditions} because it needs the viewer
+ * and that helper does not take one. Every public read path must apply BOTH:
+ * published-and-not-deleted answers "does this entry exist yet", this answers
+ * "may this viewer see it".
+ *
+ * Callers with no viewer — the sitemap, the RSS feed — pass ANONYMOUS_ACTOR,
+ * which is the correct answer for them rather than a fallback: a public feed
+ * should carry exactly the entries an anonymous visitor may read.
+ */
+export function changelogAudienceFilter(actor: Actor = ANONYMOUS_ACTOR) {
+  return audienceViewFilter(actor, {
+    visibility: changelogEntries.visibility,
+    visibleSegmentIds: changelogEntries.visibleSegmentIds,
+    allowedTeamPrincipalIds: changelogEntries.allowedTeamPrincipalIds,
+    deletedAt: changelogEntries.deletedAt,
+  })
+}
+
+/**
  * Slim public lookup for link embeds: title + published date only, under the
  * same published-only visibility filter, but WITHOUT the view-count increment
  * or linked-post joins of {@link getPublicChangelogById}. An embed resolves on
@@ -52,7 +77,11 @@ export async function getPublicChangelogMetaById(
 ): Promise<{ id: ChangelogId; title: string; publishedAt: Date } | null> {
   const now = new Date()
   const entry = await db.query.changelogEntries.findFirst({
-    where: and(eq(changelogEntries.id, id), ...publicChangelogConditions(now)),
+    where: and(
+      eq(changelogEntries.id, id),
+      ...publicChangelogConditions(now),
+      changelogAudienceFilter()
+    ),
     columns: { id: true, title: true, publishedAt: true, displayDate: true },
   })
   if (!entry || !entry.publishedAt) return null
@@ -77,7 +106,11 @@ export async function getPublicChangelogById(
   const now = new Date()
 
   const entry = await db.query.changelogEntries.findFirst({
-    where: and(eq(changelogEntries.id, id), ...publicChangelogConditions(now)),
+    where: and(
+      eq(changelogEntries.id, id),
+      ...publicChangelogConditions(now),
+      changelogAudienceFilter(actor)
+    ),
   })
 
   if (!entry || !entry.publishedAt) {
@@ -181,17 +214,60 @@ export async function getPublicChangelogById(
  * @param actor - Viewer, for the category segment gate (defaults anonymous)
  * @returns Paginated list of public changelog entries
  */
+export type CollectionFilter = { kind: 'none' } | { kind: 'deny' } | { kind: 'sql'; condition: SQL }
+
+/**
+ * Narrow a public listing to one collection. `'general'` selects entries in no
+ * named collection; a slug selects entries in that category — provided the
+ * viewer may see the category at all (its segment gate and team allowlist).
+ * Otherwise the answer is `deny`, and callers return an empty list rather
+ * than confirming the collection exists.
+ */
+export async function resolveCollectionFilter(
+  collection: string | undefined,
+  actor: Actor
+): Promise<CollectionFilter> {
+  if (!collection) return { kind: 'none' }
+  if (collection === 'general') {
+    return {
+      kind: 'sql',
+      condition: sql`NOT EXISTS (
+        SELECT 1 FROM ${changelogEntryCategories} ec
+        JOIN ${changelogCategories} c ON c.id = ec.category_id
+        WHERE ec.changelog_entry_id = ${changelogEntries.id} AND c.slug IS NOT NULL
+      )`,
+    }
+  }
+  const category = await db.query.changelogCategories.findFirst({
+    where: eq(changelogCategories.slug, collection),
+  })
+  if (!category || !categoryGateAllows([category], actor)) return { kind: 'deny' }
+  return {
+    kind: 'sql',
+    condition: sql`EXISTS (
+      SELECT 1 FROM ${changelogEntryCategories} ec
+      WHERE ec.changelog_entry_id = ${changelogEntries.id} AND ec.category_id = ${category.id}
+    )`,
+  }
+}
+
 export async function listPublicChangelogs(
   params: {
     cursor?: string
     limit?: number
+    /** Collection slug, or 'general' for entries in no collection. */
+    collection?: string
   },
   actor: Actor = ANONYMOUS_ACTOR
 ): Promise<PublicChangelogListResult> {
   const { cursor, limit = 20 } = params
   const now = new Date()
 
-  const conditions = publicChangelogConditions(now)
+  const conditions = [...publicChangelogConditions(now), changelogAudienceFilter(actor)]
+
+  const collectionFilter = await resolveCollectionFilter(params.collection, actor)
+  if (collectionFilter.kind === 'deny') return { items: [], nextCursor: null, hasMore: false }
+  if (collectionFilter.kind === 'sql') conditions.push(collectionFilter.condition)
 
   // Cursor-based pagination. The lookup does NOT filter on deletedAt:
   // if an admin deleted the cursor row between page load and "Load

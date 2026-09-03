@@ -4,7 +4,7 @@
 
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
-import type { ChangelogCategoryId } from '@quackback/ids'
+import type { ChangelogCategoryId, RoadmapId, PrincipalId } from '@quackback/ids'
 import { requireAuth } from './auth-helpers'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import {
@@ -26,6 +26,24 @@ const createCategorySchema = z.object({
     .optional()
     .default('#6b7280'),
   segmentIds: z.array(z.string()).optional(),
+  /**
+   * Collection fields. A slug turns the category into a named changelog — a
+   * tab on the public page at /changelog?changelog=<slug> with its own feed.
+   * "general" is reserved for entries in no collection. null clears it.
+   */
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Lowercase letters, numbers and hyphens only')
+    .refine((value) => value !== 'general', '"general" is reserved')
+    .nullable()
+    .optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+  roadmapId: z.string().nullable().optional(),
+  /** null/omitted = every team actor; [] = admins only; [ids] = admins plus those principals. */
+  allowedTeamPrincipalIds: z.array(z.string()).max(200).nullable().optional(),
 })
 
 const updateCategorySchema = z.object({
@@ -36,6 +54,24 @@ const updateCategorySchema = z.object({
     .regex(/^#[0-9A-Fa-f]{6}$/)
     .optional(),
   segmentIds: z.array(z.string()).optional(),
+  /**
+   * Collection fields. A slug turns the category into a named changelog — a
+   * tab on the public page at /changelog?changelog=<slug> with its own feed.
+   * "general" is reserved for entries in no collection. null clears it.
+   */
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Lowercase letters, numbers and hyphens only')
+    .refine((value) => value !== 'general', '"general" is reserved')
+    .nullable()
+    .optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+  roadmapId: z.string().nullable().optional(),
+  /** null/omitted = every team actor; [] = admins only; [ids] = admins plus those principals. */
+  allowedTeamPrincipalIds: z.array(z.string()).max(200).nullable().optional(),
 })
 
 const idSchema = z.object({ id: z.string() })
@@ -52,7 +88,11 @@ export const createChangelogCategoryFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     log.debug({ name: data.name }, 'create changelog category')
     await requireAuth({ permission: PERMISSIONS.CHANGELOG_MANAGE })
-    return await createChangelogCategory(data)
+    return await createChangelogCategory({
+      ...data,
+      roadmapId: data.roadmapId as RoadmapId | null | undefined,
+      allowedTeamPrincipalIds: data.allowedTeamPrincipalIds as PrincipalId[] | null | undefined,
+    })
   })
 
 export const updateChangelogCategoryFn = createServerFn({ method: 'POST' })
@@ -60,7 +100,11 @@ export const updateChangelogCategoryFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     log.debug({ category_id: data.id }, 'update changelog category')
     await requireAuth({ permission: PERMISSIONS.CHANGELOG_MANAGE })
-    return await updateChangelogCategory(data.id as ChangelogCategoryId, data)
+    return await updateChangelogCategory(data.id as ChangelogCategoryId, {
+      ...data,
+      roadmapId: data.roadmapId as RoadmapId | null | undefined,
+      allowedTeamPrincipalIds: data.allowedTeamPrincipalIds as PrincipalId[] | null | undefined,
+    })
   })
 
 export const deleteChangelogCategoryFn = createServerFn({ method: 'POST' })

@@ -865,6 +865,19 @@ export function UserDetail({
                 ))
               )}
             </RailCard>
+            {/* Team-side only. The portal renders `name` alone, so a person's
+                legal name never appears on a public surface. */}
+            <RailCard title="Name">
+              <KvRow label="Display Name">
+                {user.name || <span className="text-muted-foreground/50">{EM_DASH}</span>}
+              </KvRow>
+              <KvRow label="First Name">
+                {user.givenName || <span className="text-muted-foreground/50">{EM_DASH}</span>}
+              </KvRow>
+              <KvRow label="Last Name">
+                {user.familyName || <span className="text-muted-foreground/50">{EM_DASH}</span>}
+              </KvRow>
+            </RailCard>
             <RailCard title="Account">
               <KvRow label="Account created">{formatDate(user.createdAt)}</KvRow>
               <KvRow label="External ID">

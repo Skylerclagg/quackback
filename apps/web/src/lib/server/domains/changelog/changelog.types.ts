@@ -1,3 +1,4 @@
+import type { AudienceVisibility } from '@/lib/server/policy/audience'
 /**
  * Input/Output types for Changelog Service operations
  */
@@ -38,6 +39,23 @@ export interface CreateChangelogInput {
   categoryIds?: ChangelogCategoryId[]
   /** Publish state */
   publishState: PublishState
+  /**
+   * Read audience. Distinct from `segmentIds`, which is publish-notification
+   * targeting and does not gate reads.
+   *   visibility 'public'  — anyone who can reach the portal
+   *   visibility 'team'    — team accounts only
+   *   visibility 'segment' — team accounts, plus portal users in
+   *                          `visibleSegmentIds`
+   */
+  visibility?: AudienceVisibility
+  /** Required when visibility is 'segment'. */
+  visibleSegmentIds?: SegmentId[] | null
+  /**
+   * Narrows 'team'/'segment' to specific teammates. Tri-state:
+   * null/omitted = every team actor, [] = admins only, [ids] = admins plus
+   * those principals.
+   */
+  allowedTeamPrincipalIds?: PrincipalId[] | null
   displayDate?: Date | null
   /** Hero image URL rendered at the top of the public entry detail page */
   featuredImageUrl?: string | null
@@ -69,6 +87,23 @@ export interface UpdateChangelogInput {
   categoryIds?: ChangelogCategoryId[]
   /** Publish state (if changing) */
   publishState?: PublishState
+  /**
+   * Read audience. Distinct from `segmentIds`, which is publish-notification
+   * targeting and does not gate reads.
+   *   visibility 'public'  — anyone who can reach the portal
+   *   visibility 'team'    — team accounts only
+   *   visibility 'segment' — team accounts, plus portal users in
+   *                          `visibleSegmentIds`
+   */
+  visibility?: AudienceVisibility
+  /** Required when visibility is 'segment'. */
+  visibleSegmentIds?: SegmentId[] | null
+  /**
+   * Narrows 'team'/'segment' to specific teammates. Tri-state:
+   * null/omitted = every team actor, [] = admins only, [ids] = admins plus
+   * those principals.
+   */
+  allowedTeamPrincipalIds?: PrincipalId[] | null
   displayDate?: Date | null
   /** Hero image URL (null clears it) */
   featuredImageUrl?: string | null
@@ -109,6 +144,10 @@ export interface ChangelogEntryWithDetails {
   featuredImageUrl: string | null
   /** Publish-notification segment targeting ([] = broadcast to everyone). */
   segmentIds: SegmentId[]
+  /** Read audience — see {@link CreateChangelogInput.visibility}. */
+  visibility: AudienceVisibility
+  visibleSegmentIds: SegmentId[] | null
+  allowedTeamPrincipalIds: PrincipalId[] | null
   createdAt: Date
   updatedAt: Date
   /** Author information - only shown in admin views */

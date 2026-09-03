@@ -9,14 +9,22 @@ import {
   roadmaps,
   roadmapColumns,
   postStatuses,
+  postTags,
+  postTagAssignments,
   type Roadmap,
   type RoadmapColumn,
   type Transaction,
 } from '@/lib/server/db'
-import type { RoadmapId, RoadmapColumnId } from '@quackback/ids'
+import {
+  createId,
+  type RoadmapId,
+  type RoadmapColumnId,
+  type PostId,
+  type PostTagId,
+} from '@quackback/ids'
 import { positionCaseSql } from '@/lib/server/utils'
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/shared/errors'
-import { roadmapBaseFilterSchema } from '@/lib/shared/roadmap-config'
+import { roadmapBaseFilterSchema, type RoadmapBaseFilter } from '@/lib/shared/roadmap-config'
 import { roadmapViewFilter, type Actor, ANONYMOUS_ACTOR } from '@/lib/server/policy'
 import type {
   CreateRoadmapColumnInput,
@@ -165,6 +173,15 @@ export async function createRoadmap(input: CreateRoadmapInput): Promise<RoadmapW
         frequency: type === 'date' ? (input.frequency ?? 'monthly') : null,
         visibility,
         visibleSegmentIds: visibility === 'segment' ? input.visibleSegmentIds : null,
+        // Omitted stays NULL, which means every team actor — the behaviour
+        // every roadmap had before this column existed.
+        ...(input.allowedTeamPrincipalIds !== undefined && {
+          allowedTeamPrincipalIds: input.allowedTeamPrincipalIds,
+        }),
+        // Timeline. Omitted keeps the column defaults: fully public dates and no
+        // timeline tab on a column roadmap.
+        ...(input.etaDisclosure !== undefined && { etaDisclosure: input.etaDisclosure }),
+        ...(input.timelineEnabled !== undefined && { timelineEnabled: input.timelineEnabled }),
         position,
       })
       .returning()
@@ -226,6 +243,14 @@ export async function updateRoadmap(
                   : null,
             }
           : {}),
+        // Independently optional: editing a roadmap's name must not reset who
+        // on the team can see it. undefined leaves it, null restores "every
+        // team actor", [] closes it to admins.
+        ...(input.allowedTeamPrincipalIds !== undefined
+          ? { allowedTeamPrincipalIds: input.allowedTeamPrincipalIds }
+          : {}),
+        ...(input.etaDisclosure !== undefined ? { etaDisclosure: input.etaDisclosure } : {}),
+        ...(input.timelineEnabled !== undefined ? { timelineEnabled: input.timelineEnabled } : {}),
         updatedAt: new Date(),
       })
       .where(eq(roadmaps.id, id))
@@ -344,4 +369,84 @@ export async function deleteRoadmapColumn(id: RoadmapColumnId): Promise<void> {
   if (!deleted.length) {
     throw new NotFoundError('ROADMAP_COLUMN_NOT_FOUND', `Roadmap column ${id} not found`)
   }
+}
+
+/**
+ * Put posts on a roadmap.
+ *
+ * Upstream has no curated membership — migration 0199 dropped `post_roadmaps`
+ * and roadmaps now derive their contents from `base_filter`, which selects by
+ * status, board, tag or segment. So "add these posts to that roadmap" is
+ * expressed as "give them the tag this roadmap selects on", which is both a
+ * mechanism upstream supports and exactly what the fork→upstream cutover uses
+ * to rebuild the membership it rescued.
+ *
+ * If the roadmap has no tag in its filter yet, one named after it is created
+ * and added, so the first use of this action sets the roadmap up rather than
+ * failing. A roadmap whose filter selects several tags gets the first — adding
+ * a post to the roadmap means satisfying its filter, and any one tag does.
+ *
+ * Returns the tag used so the caller can report it: "added 12 posts (tagged
+ * 'Roadmap: Q3')" is far less mysterious than a silent success.
+ */
+export async function addPostsToRoadmap(
+  roadmapId: RoadmapId,
+  postIds: PostId[]
+): Promise<{ tagId: PostTagId; tagName: string; added: number }> {
+  if (postIds.length === 0) {
+    throw new ValidationError('VALIDATION_ERROR', 'No posts selected')
+  }
+
+  const roadmap = await db.query.roadmaps.findFirst({
+    where: and(eq(roadmaps.id, roadmapId), isNull(roadmaps.deletedAt)),
+  })
+  if (!roadmap) throw new NotFoundError('ROADMAP_NOT_FOUND', `Roadmap ${roadmapId} not found`)
+
+  const filter = roadmapBaseFilterSchema.parse(roadmap.baseFilter ?? {})
+  let tagId = filter.tagIds?.[0] as PostTagId | undefined
+  let tagName: string
+
+  if (tagId) {
+    const tag = await db.query.postTags.findFirst({ where: eq(postTags.id, tagId) })
+    if (!tag) throw new NotFoundError('TAG_NOT_FOUND', `Tag ${tagId} not found`)
+    tagName = tag.name
+  } else {
+    tagName = `Roadmap: ${roadmap.name}`
+    const existing = await db.query.postTags.findFirst({
+      where: and(eq(postTags.name, tagName), isNull(postTags.deletedAt)),
+    })
+    if (existing) {
+      tagId = existing.id as PostTagId
+    } else {
+      const [created] = await db
+        .insert(postTags)
+        .values({
+          id: createId('post_tag') as PostTagId,
+          name: tagName,
+          description: `Posts shown on the "${roadmap.name}" roadmap.`,
+        })
+        .returning()
+      tagId = created!.id as PostTagId
+    }
+    await db
+      .update(roadmaps)
+      .set({
+        // The zod-parsed filter widens every branded id to string, so the whole
+        // object is re-asserted on the way back into the column's typed jsonb.
+        baseFilter: {
+          ...filter,
+          tagIds: [...(filter.tagIds ?? []), tagId],
+        } as RoadmapBaseFilter,
+        updatedAt: new Date(),
+      })
+      .where(eq(roadmaps.id, roadmapId))
+  }
+
+  const inserted = await db
+    .insert(postTagAssignments)
+    .values(postIds.map((postId) => ({ postId, tagId: tagId! })))
+    .onConflictDoNothing()
+    .returning()
+
+  return { tagId: tagId!, tagName, added: inserted.length }
 }

@@ -100,6 +100,8 @@ export async function getPortalUserDetail(
         principalId: principal.id,
         userId: user.id,
         name: user.name,
+        givenName: user.givenName,
+        familyName: user.familyName,
         email: user.email,
         image: user.image,
         imageKey: user.imageKey,
@@ -326,6 +328,8 @@ export async function getPortalUserDetail(
       principalId: principalData.principalId,
       userId: principalData.userId,
       name: principalData.name,
+      givenName: principalData.givenName,
+      familyName: principalData.familyName,
       // Synthetic anon placeholder must never surface (agent inbox, v1 API).
       email: realEmail(principalData.email),
       image: resolveUserAvatarUrl({

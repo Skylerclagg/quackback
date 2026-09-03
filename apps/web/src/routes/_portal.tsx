@@ -18,6 +18,7 @@ import { AuthPopoverProvider } from '@/components/auth/auth-popover-context'
 import { AuthDialog } from '@/components/auth/auth-dialog'
 import { buildPortalAuthDialogConfig } from '@/components/auth/portal-auth-dialog-config'
 import { PortalAccessGate } from '@/components/portal/portal-access-gate'
+import { PortalNamePrompt } from '@/components/portal/name-prompt'
 import type { PortalAccessGateError } from '@/lib/shared/types/portal-gate-error'
 import { generateThemeCSS, readFontSans } from '@/lib/shared/theme'
 import { PortalIntlProvider } from '@/components/portal-intl-provider'
@@ -393,6 +394,8 @@ function PortalLayout() {
                 <Outlet />
               </main>
               <AuthDialog authConfig={authConfig} workspaceName={workspaceName} />
+              {/* Asks once for a missing first/last name; see name-prompt.tsx. */}
+              <PortalNamePrompt enabled={isAuthenticated && preview !== true} />
             </div>
           </PortalPreviewProvider>
         </AuthPopoverProvider>

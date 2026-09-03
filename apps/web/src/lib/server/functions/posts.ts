@@ -16,6 +16,7 @@ import {
 } from '@quackback/ids'
 import { tiptapContentSchema, type TiptapContent } from '@/lib/shared/schemas/posts'
 import { PERMISSIONS } from '@/lib/shared/permissions'
+import { TIMELINE_PRECISIONS } from '@/lib/shared/db-types'
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { requireAuth, policyActorFromAuth } from './auth-helpers'
 import { can } from '@/lib/server/policy/authorize'
@@ -131,8 +132,10 @@ const setPostOwnerSchema = z.object({
 
 const setPostEtaSchema = z.object({
   id: z.string(),
-  // ISO datetime (first of the target month) or null to clear.
+  // ISO datetime or null to clear. Snapped server-side to the start of the
+  // precision's period (a month, by default — the pre-existing behaviour).
   eta: z.string().datetime().nullable(),
+  etaPrecision: z.enum(TIMELINE_PRECISIONS).optional(),
 })
 
 const deletePostSchema = z.object({
@@ -493,7 +496,10 @@ export const setPostEtaFn = createServerFn({ method: 'POST' })
 
     const result = await updatePost(
       data.id as PostId,
-      { eta: data.eta ? new Date(data.eta) : null },
+      {
+        eta: data.eta ? new Date(data.eta) : null,
+        ...(data.etaPrecision !== undefined && { etaPrecision: data.etaPrecision }),
+      },
       {
         principalId: auth.principal.id,
         userId: auth.user.id as UserId,

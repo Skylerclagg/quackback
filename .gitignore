@@ -70,3 +70,13 @@ docs/superpowers/
 
 # Local scratch
 scratchpad/
+
+# Database dumps (may contain production PII) — never commit
+*.dump
+*.backup
+*.sql.gz
+*.sql.zst
+/dumps/
+
+# Extracted production data for the upstream migration — never commit
+/migration-data/

@@ -1,0 +1,13 @@
+{
+  "name": "@quackback/cutover",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "transform": "bun 04-transform.ts"
+  },
+  "dependencies": {
+    "@quackback/ids": "workspace:*",
+    "postgres": "^3.4.9"
+  }
+}

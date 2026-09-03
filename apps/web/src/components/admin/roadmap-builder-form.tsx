@@ -6,8 +6,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { RoadmapView } from '@/lib/client/hooks/use-roadmaps-query'
-import type { PostStatusEntity } from '@/lib/shared/db-types'
-import type { BoardId, PostStatusId, PostTagId, RoadmapColumnId, SegmentId } from '@quackback/ids'
+import {
+  TIMELINE_SPECIFICITIES,
+  type EtaDisclosure,
+  type PostStatusEntity,
+  type TimelineSpecificity,
+} from '@/lib/shared/db-types'
+import { TIMELINE_SPECIFICITY_LABELS } from '@/lib/shared/timeline'
+import type {
+  BoardId,
+  PostStatusId,
+  PostTagId,
+  RoadmapColumnId,
+  SegmentId,
+  PrincipalId,
+} from '@quackback/ids'
+import { TeamAccessField } from '@/components/admin/audience-fields'
 import type { RoadmapFrequency, RoadmapType, RoadmapVisibility } from '@/lib/shared/roadmap-config'
 
 export interface RoadmapBuilderValue {
@@ -23,6 +37,10 @@ export interface RoadmapBuilderValue {
   frequency: RoadmapFrequency | null
   visibility: RoadmapVisibility
   visibleSegmentIds: SegmentId[] | null
+  /** null = every team actor; [] = admins only; [ids] = admins plus those principals. */
+  allowedTeamPrincipalIds: PrincipalId[] | null
+  etaDisclosure: EtaDisclosure
+  timelineEnabled: boolean
   columns: Array<{
     id?: RoadmapColumnId
     statusId: PostStatusId
@@ -124,6 +142,16 @@ export function RoadmapBuilderForm({
   const [visibleSegmentIds, setVisibleSegmentIds] = useState<string[]>(
     roadmap?.visibleSegmentIds ?? []
   )
+  const [allowedTeamPrincipalIds, setAllowedTeamPrincipalIds] = useState<string[] | null>(
+    roadmap?.allowedTeamPrincipalIds ?? null
+  )
+  const [timelineEnabled, setTimelineEnabled] = useState<boolean>(roadmap?.timelineEnabled ?? false)
+  const [disclosureDefault, setDisclosureDefault] = useState<TimelineSpecificity>(
+    roadmap?.etaDisclosure?.default ?? 'day'
+  )
+  const [disclosureSegments, setDisclosureSegments] = useState<
+    Array<{ segmentId: string; specificity: TimelineSpecificity }>
+  >(roadmap?.etaDisclosure?.segments ?? [])
   const [statusIds, setStatusIds] = useState<string[]>(roadmap?.baseFilter.statusIds ?? [])
   const [boardIds, setBoardIds] = useState<string[]>(roadmap?.baseFilter.boardIds ?? [])
   const [tagIds, setTagIds] = useState<string[]>(roadmap?.baseFilter.tagIds ?? [])
@@ -163,6 +191,26 @@ export function RoadmapBuilderForm({
     })
   }
 
+  function addDisclosureRow() {
+    const used = new Set(disclosureSegments.map((row) => row.segmentId))
+    const next = segments.find((segment) => !used.has(segment.id))
+    if (!next) return
+    setDisclosureSegments((current) => [...current, { segmentId: next.id, specificity: 'day' }])
+  }
+
+  function updateDisclosureRow(
+    index: number,
+    patch: Partial<{ segmentId: string; specificity: TimelineSpecificity }>
+  ) {
+    setDisclosureSegments((current) =>
+      current.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    )
+  }
+
+  function removeDisclosureRow(index: number) {
+    setDisclosureSegments((current) => current.filter((_, i) => i !== index))
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     await onSubmit({
@@ -178,6 +226,11 @@ export function RoadmapBuilderForm({
       frequency: type === 'date' ? frequency : null,
       visibility,
       visibleSegmentIds: visibility === 'segment' ? (visibleSegmentIds as SegmentId[]) : null,
+      allowedTeamPrincipalIds:
+        visibility === 'public' ? null : (allowedTeamPrincipalIds as PrincipalId[] | null),
+      etaDisclosure: { default: disclosureDefault, segments: disclosureSegments },
+      // A date roadmap IS the timeline; the toggle only means something on columns.
+      timelineEnabled: type === 'column' ? timelineEnabled : false,
       columns:
         type === 'column' ? columns.map((column, position) => ({ ...column, position })) : [],
     })
@@ -266,6 +319,120 @@ export function RoadmapBuilderForm({
               )}
             </div>
           )}
+
+          {visibility !== 'public' && (
+            <div className="rounded-lg border border-border/60 p-3">
+              <TeamAccessField
+                idPrefix="roadmap"
+                entityLabel="roadmap"
+                value={allowedTeamPrincipalIds}
+                onChange={setAllowedTeamPrincipalIds}
+              />
+            </div>
+          )}
+
+          <div className="space-y-3 rounded-lg border border-border/60 p-3">
+            <div>
+              <h3 className="text-sm font-medium">Timeline</h3>
+              <p className="text-xs text-muted-foreground">
+                {type === 'date'
+                  ? 'This roadmap is a timeline. Choose how precisely dates are shown to each audience.'
+                  : 'Optionally offer a date-bucketed timeline view alongside the columns.'}
+              </p>
+            </div>
+            {type === 'column' && (
+              <label className="flex items-center gap-2 text-[13px]">
+                <Checkbox
+                  checked={timelineEnabled}
+                  onCheckedChange={(next) => setTimelineEnabled(next === true)}
+                />
+                Also offer a timeline view
+              </label>
+            )}
+            {(type === 'date' || timelineEnabled) && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="roadmap-disclosure">Dates shown to everyone as</Label>
+                  <select
+                    id="roadmap-disclosure"
+                    className={selectClass}
+                    value={disclosureDefault}
+                    onChange={(event) =>
+                      setDisclosureDefault(event.target.value as TimelineSpecificity)
+                    }
+                  >
+                    {TIMELINE_SPECIFICITIES.map((specificity) => (
+                      <option key={specificity} value={specificity}>
+                        {TIMELINE_SPECIFICITY_LABELS[specificity]}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Team admins always see exact dates. &ldquo;Hidden&rdquo; removes the timeline
+                    for viewers without an override below.
+                  </p>
+                </div>
+                {segments.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Show more precise dates to
+                    </span>
+                    {disclosureSegments.map((row, index) => (
+                      <div key={`${row.segmentId}-${index}`} className="flex items-center gap-2">
+                        <select
+                          aria-label="Segment"
+                          className={selectClass}
+                          value={row.segmentId}
+                          onChange={(event) =>
+                            updateDisclosureRow(index, { segmentId: event.target.value })
+                          }
+                        >
+                          {segments.map((segment) => (
+                            <option key={segment.id} value={segment.id}>
+                              {segment.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          aria-label="Specificity"
+                          className={selectClass}
+                          value={row.specificity}
+                          onChange={(event) =>
+                            updateDisclosureRow(index, {
+                              specificity: event.target.value as TimelineSpecificity,
+                            })
+                          }
+                        >
+                          {TIMELINE_SPECIFICITIES.map((specificity) => (
+                            <option key={specificity} value={specificity}>
+                              {TIMELINE_SPECIFICITY_LABELS[specificity]}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeDisclosureRow(index)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addDisclosureRow}
+                      disabled={disclosureSegments.length >= segments.length}
+                    >
+                      Add segment override
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           <div className="space-y-3 rounded-lg border border-border/60 p-3">
             <div>

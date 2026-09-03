@@ -17,12 +17,19 @@ import { RoadmapSidebar } from './roadmap-sidebar'
 import { RoadmapColumn } from './roadmap-column'
 import { RoadmapCardOverlay } from './roadmap-card'
 import { RoadmapFiltersBar } from './roadmap/roadmap-filters-bar'
+import { MilestoneDialog, type MilestoneDialogItem } from './roadmap/milestone-dialog'
+import type { MilestoneStripItem } from '@/components/shared/roadmap-milestones-strip'
+import { RoadmapMilestonesStrip } from '@/components/shared/roadmap-milestones-strip'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import type { TimelinePrecision } from '@/lib/shared/timeline'
 import { EmptyState } from '@/components/shared/empty-state'
-import { useRoadmaps } from '@/lib/client/hooks/use-roadmaps-query'
+import { useRoadmaps, useRoadmapMilestones } from '@/lib/client/hooks/use-roadmaps-query'
 import { useRoadmapDateBuckets } from '@/lib/client/hooks/use-roadmaps-query'
 import { useRoadmapSelection } from './use-roadmap-selection'
 import { useRoadmapFilters } from './roadmap/use-roadmap-filters'
 import { useChangePostStatusId, useSetPostEta } from '@/lib/client/mutations/posts'
+import { useDeleteMilestone } from '@/lib/client/mutations/roadmaps'
 import { useSegments } from '@/lib/client/hooks/use-segments-queries'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { roadmapPostsKeys } from '@/lib/client/hooks/use-roadmap-posts-query'
@@ -46,11 +53,31 @@ export function RoadmapAdmin() {
   const { data: roadmaps } = useRoadmaps()
   const changeStatus = useChangePostStatusId()
   const setEta = useSetPostEta()
+  const deleteMilestone = useDeleteMilestone()
+  // A column roadmap with `timelineEnabled` offers both presentations; a date
+  // roadmap is only ever the timeline.
+  const [view, setView] = useState<'columns' | 'timeline'>('columns')
+  const [milestoneDialogOpen, setMilestoneDialogOpen] = useState(false)
+  const [editingMilestone, setEditingMilestone] = useState<MilestoneDialogItem | null>(null)
+  const [deletingMilestone, setDeletingMilestone] = useState<MilestoneStripItem | null>(null)
   const queryClient = useQueryClient()
 
   const handleCardClick = (postId: string) => {
     navigate({ search: { ...search, post: postId } })
   }
+
+  // The ETA picker on a card. Dragging between buckets only sets the month;
+  // this is how an admin sets an exact day, or deliberately shows a quarter.
+  const handleSetEta = (postId: string, date: Date, precision: TimelinePrecision) =>
+    setEta.mutate(
+      { postId: postId as PostId, eta: date.toISOString(), etaPrecision: precision },
+      { onError: () => toast.error('Could not update the ETA. Try again.') }
+    )
+  const handleClearEta = (postId: string) =>
+    setEta.mutate(
+      { postId: postId as PostId, eta: null },
+      { onError: () => toast.error('Could not clear the ETA. Try again.') }
+    )
 
   // Auto-select first roadmap
   useEffect(() => {
@@ -60,10 +87,16 @@ export function RoadmapAdmin() {
   }, [roadmaps, selectedRoadmapId, setSelectedRoadmap])
 
   const selectedRoadmap = roadmaps?.find((r) => r.id === selectedRoadmapId)
-  const { data: dateBuckets = [] } = useRoadmapDateBuckets(
-    (selectedRoadmapId ?? 'roadmap_00000000000000000000000000') as RoadmapId,
-    { enabled: selectedRoadmap?.type === 'date' }
-  )
+  const showTimeline =
+    selectedRoadmap?.type === 'date' || (!!selectedRoadmap?.timelineEnabled && view === 'timeline')
+  const roadmapIdForQueries = (selectedRoadmapId ??
+    'roadmap_00000000000000000000000000') as RoadmapId
+  const { data: dateBuckets = [] } = useRoadmapDateBuckets(roadmapIdForQueries, {
+    enabled: showTimeline,
+  })
+  const { data: milestones = [] } = useRoadmapMilestones(roadmapIdForQueries, {
+    enabled: showTimeline,
+  })
 
   // Track dragged post for overlay
   const [activePost, setActivePost] = useState<RoadmapViewPost | null>(null)
@@ -159,7 +192,7 @@ export function RoadmapAdmin() {
           },
         }
       )
-    } else if (selectedRoadmap?.type === 'date' && targetBucketId) {
+    } else if (showTimeline && targetBucketId) {
       const bucket = dateBuckets.find((item) => item.id === targetBucketId)
       const currentEta = draggedPost?.eta ? new Date(draggedPost.eta).toISOString() : null
       if (bucket && (bucket.targetMonth ?? null) !== currentEta) {
@@ -198,6 +231,44 @@ export function RoadmapAdmin() {
                 onToggleTag={toggleTag}
                 onToggleSegment={toggleSegment}
               />
+              {selectedRoadmap.type === 'column' && selectedRoadmap.timelineEnabled && (
+                <div className="flex items-center gap-1" role="tablist" aria-label="Roadmap view">
+                  <Button
+                    type="button"
+                    size="sm"
+                    role="tab"
+                    aria-selected={view === 'columns'}
+                    variant={view === 'columns' ? 'secondary' : 'ghost'}
+                    onClick={() => setView('columns')}
+                  >
+                    Columns
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    role="tab"
+                    aria-selected={view === 'timeline'}
+                    variant={view === 'timeline' ? 'secondary' : 'ghost'}
+                    onClick={() => setView('timeline')}
+                  >
+                    Timeline
+                  </Button>
+                </div>
+              )}
+              {showTimeline && (
+                <RoadmapMilestonesStrip
+                  milestones={milestones}
+                  onAdd={() => {
+                    setEditingMilestone(null)
+                    setMilestoneDialogOpen(true)
+                  }}
+                  onEdit={(milestone) => {
+                    setEditingMilestone(milestone)
+                    setMilestoneDialogOpen(true)
+                  }}
+                  onDelete={(milestone) => setDeletingMilestone(milestone)}
+                />
+              )}
             </div>
 
             <DndContext
@@ -208,7 +279,7 @@ export function RoadmapAdmin() {
             >
               <div className="flex-1 overflow-auto p-4 sm:p-6">
                 <div className="flex items-stretch gap-4 sm:gap-5">
-                  {selectedRoadmap.type === 'column' &&
+                  {!showTimeline &&
                     selectedRoadmap.columns.map((column) => (
                       <RoadmapColumn
                         key={column.id}
@@ -220,9 +291,11 @@ export function RoadmapAdmin() {
                         color={column.color}
                         filters={filters}
                         onCardClick={handleCardClick}
+                        onSetEta={handleSetEta}
+                        onClearEta={handleClearEta}
                       />
                     ))}
-                  {selectedRoadmap.type === 'date' &&
+                  {showTimeline &&
                     dateBuckets.map((bucket) => (
                       <RoadmapColumn
                         key={bucket.id}
@@ -242,10 +315,46 @@ export function RoadmapAdmin() {
                         color={bucket.noEta ? '#6b7280' : '#3b82f6'}
                         filters={filters}
                         onCardClick={handleCardClick}
+                        onSetEta={handleSetEta}
+                        onClearEta={handleClearEta}
                       />
                     ))}
                 </div>
               </div>
+
+              <ConfirmDialog
+                open={deletingMilestone !== null}
+                onOpenChange={(open) => !open && setDeletingMilestone(null)}
+                title="Delete milestone"
+                description={
+                  deletingMilestone
+                    ? `"${deletingMilestone.title}" will be removed from the timeline. This cannot be undone.`
+                    : undefined
+                }
+                confirmLabel="Delete"
+                variant="destructive"
+                isPending={deleteMilestone.isPending}
+                onConfirm={() => {
+                  if (!deletingMilestone) return
+                  deleteMilestone.mutate(
+                    { roadmapId: roadmapIdForQueries, milestoneId: deletingMilestone.id },
+                    {
+                      onSuccess: () => setDeletingMilestone(null),
+                      onError: () => toast.error('Could not delete the milestone. Try again.'),
+                    }
+                  )
+                }}
+              />
+
+              <MilestoneDialog
+                open={milestoneDialogOpen}
+                onOpenChange={(open) => {
+                  setMilestoneDialogOpen(open)
+                  if (!open) setEditingMilestone(null)
+                }}
+                roadmapId={roadmapIdForQueries}
+                editing={editingMilestone}
+              />
 
               {createPortal(
                 <DragOverlay dropAnimation={null}>

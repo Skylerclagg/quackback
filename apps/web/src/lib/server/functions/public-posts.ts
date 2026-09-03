@@ -568,6 +568,7 @@ export const listPublicRoadmapsFn = createServerFn({ method: 'GET' }).handler(as
     frequency: roadmap.frequency,
     visibility: roadmap.visibility,
     visibleSegmentIds: roadmap.visibleSegmentIds as SegmentId[] | null,
+    timelineEnabled: roadmap.timelineEnabled,
     position: roadmap.position,
     columns: roadmap.columns.map((column) => ({
       id: String(column.id),
@@ -630,6 +631,7 @@ export const getPublicRoadmapPostsFn = createServerFn({ method: 'GET' })
         voteCount: item.voteCount,
         statusId: item.statusId ? String(item.statusId) : null,
         eta: toIsoStringOrNull(item.eta),
+        etaPrecision: item.etaPrecision,
         board: {
           id: String(item.board.id),
           name: item.board.name,

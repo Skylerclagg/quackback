@@ -53,7 +53,11 @@ function queryForAttribute(
 ): ReturnType<typeof sql> {
   // Identified end-users only (type='user'); excludes anonymous visitors so the
   // value counts match what segments actually evaluate.
-  const baseJoin = sql`FROM "user" u INNER JOIN principal p ON p.user_id = u.id WHERE p.role = 'user' AND p.type = 'user'`
+  // Audience matches resolveMatchingPrincipals exactly: any human principal
+  // (team or portal), gated on principal.type='user' rather than role, so the
+  // value suggestions a rule builder offers cover the same people the rule
+  // will actually match.
+  const baseJoin = sql`FROM "user" u INNER JOIN principal p ON p.user_id = u.id WHERE p.type = 'user'`
   switch (attribute) {
     case 'country': {
       const upperQuery = query.toUpperCase()

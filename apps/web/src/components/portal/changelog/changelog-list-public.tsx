@@ -9,10 +9,10 @@ import { publicChangelogQueries, changelogCategoryQueries } from '@/lib/client/q
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 import type { ChangelogCategoryId } from '@quackback/ids'
 
-export function ChangelogListPublic() {
+export function ChangelogListPublic({ collection }: { collection?: string } = {}) {
   const intl = useIntl()
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery(
-    publicChangelogQueries.list()
+    publicChangelogQueries.list(collection)
   )
   const { data: categories = [] } = useQuery(changelogCategoryQueries.list())
   const [activeCategoryId, setActiveCategoryId] = useState<ChangelogCategoryId | null>(null)

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { listPublicRoadmapMilestones } from '@/lib/server/domains/roadmaps/roadmap.milestone'
 import { createServerFn } from '@tanstack/react-start'
 import {
   type PostId,
@@ -560,6 +561,7 @@ export const fetchPublicRoadmaps = createServerFn({ method: 'GET' }).handler(asy
     frequency: r.frequency,
     visibility: r.visibility,
     visibleSegmentIds: r.visibleSegmentIds as SegmentId[] | null,
+    timelineEnabled: r.timelineEnabled,
     position: r.position,
     columns: r.columns.map((column) => ({
       id: column.id,
@@ -640,6 +642,7 @@ export const fetchPublicRoadmapPosts = createServerFn({ method: 'GET' })
         commentCount: item.commentCount,
         statusId: item.statusId ? String(item.statusId) : null,
         eta: toIsoStringOrNull(item.eta),
+        etaPrecision: item.etaPrecision,
         board: { id: String(item.board.id), name: item.board.name, slug: item.board.slug },
       })),
     }
@@ -653,6 +656,26 @@ export const fetchPublicRoadmapDateBuckets = createServerFn({ method: 'GET' })
     const auth = hasAuthCredentials() ? await getOptionalAuth() : null
     const actor = await policyActorFromAuth(auth)
     return getPublicRoadmapDateBuckets(data.roadmapId as RoadmapId, actor)
+  })
+
+export const fetchPublicRoadmapMilestones = createServerFn({ method: 'GET' })
+  .validator(z.object({ roadmapId: roadmapIdSchema }))
+  .handler(async ({ data }) => {
+    // Private portal + unauthorised caller → an empty list, indistinguishable
+    // from a roadmap with no milestones. Mirrors fetchPublicRoadmapDateBuckets.
+    const access = await resolvePortalAccessForRequest()
+    if (!access.granted) return []
+    const auth = hasAuthCredentials() ? await getOptionalAuth() : null
+    const actor = await policyActorFromAuth(auth)
+    return (await listPublicRoadmapMilestones(data.roadmapId as RoadmapId, actor)).map((m) => ({
+      id: String(m.id),
+      roadmapId: String(m.roadmapId),
+      title: m.title,
+      description: m.description,
+      timelineDate: m.timelineDate.toISOString(),
+      timelinePrecision: m.timelinePrecision,
+      timelinePosition: m.timelinePosition,
+    }))
   })
 
 const getCommentsSectionDataSchema = z.object({ postId: z.string() })

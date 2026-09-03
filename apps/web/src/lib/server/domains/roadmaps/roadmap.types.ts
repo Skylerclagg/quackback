@@ -1,3 +1,5 @@
+import type { EtaDisclosure, TimelinePrecision } from '@/lib/shared/db-types'
+import type { PrincipalId } from '@quackback/ids'
 /**
  * Input/Output types for RoadmapService operations
  */
@@ -42,6 +44,16 @@ export interface CreateRoadmapInput {
   frequency?: RoadmapFrequency | null
   visibility?: RoadmapVisibility
   visibleSegmentIds?: SegmentId[] | null
+  /**
+   * Narrows the 'team' and 'segment' tiers to specific teammates. Tri-state:
+   * omitted/null = every team actor, [] = admins only, [ids] = admins plus
+   * those principals. See policy/audience.ts.
+   */
+  allowedTeamPrincipalIds?: PrincipalId[] | null
+  /** Per-audience cap on ETA specificity. See policy/roadmaps.ts etaDisclosureFor. */
+  etaDisclosure?: EtaDisclosure
+  /** Offer a date-bucketed timeline tab on a column roadmap. */
+  timelineEnabled?: boolean
   columns?: RoadmapColumnInput[]
 }
 
@@ -57,6 +69,16 @@ export interface UpdateRoadmapInput {
   frequency?: RoadmapFrequency | null
   visibility?: RoadmapVisibility
   visibleSegmentIds?: SegmentId[] | null
+  /**
+   * Narrows the 'team' and 'segment' tiers to specific teammates. Tri-state:
+   * omitted/null = every team actor, [] = admins only, [ids] = admins plus
+   * those principals. See policy/audience.ts.
+   */
+  allowedTeamPrincipalIds?: PrincipalId[] | null
+  /** Per-audience cap on ETA specificity. See policy/roadmaps.ts etaDisclosureFor. */
+  etaDisclosure?: EtaDisclosure
+  /** Offer a date-bucketed timeline tab on a column roadmap. */
+  timelineEnabled?: boolean
   columns?: RoadmapColumnInput[]
 }
 
@@ -71,6 +93,11 @@ export interface RoadmapViewPost {
   statusId: PostStatusId | null
   /** Target ship date (time-based roadmap); serialized across the RPC boundary. */
   eta: Date | string | null
+  /**
+   * How vaguely `eta` is shown. On public reads both fields arrive already
+   * coarsened to the viewer's disclosure cap — see etaDisclosureFor.
+   */
+  etaPrecision: TimelinePrecision
   board: {
     id: BoardId
     name: string

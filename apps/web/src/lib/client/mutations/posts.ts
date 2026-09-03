@@ -1,3 +1,4 @@
+import type { TimelinePrecision } from '@/lib/shared/timeline'
 /**
  * Post mutations for admin inbox
  *
@@ -257,8 +258,16 @@ export function useBulkChangePostStatus() {
 export function useSetPostEta() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ postId, eta }: { postId: PostId; eta: string | null }) =>
-      setPostEtaFn({ data: { id: postId, eta } }),
+    mutationFn: ({
+      postId,
+      eta,
+      etaPrecision,
+    }: {
+      postId: PostId
+      eta: string | null
+      /** Omitted keeps the stored precision; dragging between buckets sets only the month. */
+      etaPrecision?: TimelinePrecision
+    }) => setPostEtaFn({ data: { id: postId, eta, ...(etaPrecision && { etaPrecision }) } }),
     onMutate: async ({ postId, eta }) => {
       await queryClient.cancelQueries({ queryKey: inboxKeys.detail(postId) })
       await queryClient.cancelQueries({ queryKey: inboxKeys.lists() })

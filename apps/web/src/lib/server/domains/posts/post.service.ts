@@ -42,6 +42,7 @@ import {
   buildEventActor,
 } from '@/lib/server/events/dispatch'
 import { announcePublishedPost } from './post.announce'
+import { normalizeTimelineDate } from '@/lib/shared/timeline'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { recordAuditEvent } from '@/lib/server/audit/log'
 import { markdownToTiptapJson, projectContentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
@@ -52,7 +53,6 @@ import { createActivity } from '@/lib/server/domains/activity/activity.service'
 import { canCreatePost, ANONYMOUS_ACTOR, isTeamActor, type Actor } from '@/lib/server/policy'
 import { contentHoldReason } from '@/lib/server/content/content-holds'
 import { getPortalConfig } from '@/lib/server/domains/settings/settings.service'
-import { startOfUtcMonth } from '@/lib/shared/utils/date'
 import { extractMentions, extractMentionExcerpts } from './extract-mentions'
 import { syncPostMentions } from './sync-post-mentions'
 import { validatePostCustomFieldValues } from '@/lib/shared/post-custom-fields'
@@ -429,10 +429,14 @@ export async function updatePost(
   }
   if (input.statusId !== undefined) updateData.statusId = input.statusId
   if (input.ownerPrincipalId !== undefined) updateData.ownerPrincipalId = input.ownerPrincipalId
+  if (input.etaPrecision !== undefined) updateData.etaPrecision = input.etaPrecision
   if (input.eta !== undefined) {
-    // ETAs are month-granular; truncate to the first of the UTC month here so
-    // the invariant holds no matter which caller supplies the timestamp.
-    updateData.eta = input.eta ? startOfUtcMonth(input.eta) : null
+    // Snap to the start of the ETA's precision period so the stored date never
+    // says more than the card shows: a "Q3 2026" post carries July 1st, not the
+    // day someone typed. Precision comes from the input, else the stored row,
+    // else 'month' — which is exactly the month-start truncation this always did.
+    const precision = input.etaPrecision ?? existingPost.etaPrecision ?? 'month'
+    updateData.eta = input.eta ? normalizeTimelineDate(input.eta, precision) : null
   }
   if (input.pinned !== undefined) {
     updateData.pinnedAt = input.pinned ? new Date() : null

@@ -29,12 +29,48 @@ export type MappedProfileClaims = {
   locale: string | null
   /** Strictly coerced `email_verified`. */
   emailVerified: boolean
+  /** OIDC `given_name`. Present ONLY when the claim carried a value — see below. */
+  givenName?: string
+  /** OIDC `family_name`. Present ONLY when the claim carried a value. */
+  familyName?: string
+}
+
+/**
+ * Read a name claim, treating blank and non-string as absent.
+ *
+ * Returns null rather than '' so callers cannot accidentally write an empty
+ * string over a real name.
+ */
+function readNameClaim(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 export function mapProfileClaims(profile: unknown): MappedProfileClaims {
-  const p = profile as { locale?: unknown; email_verified?: unknown } | null | undefined
-  return {
+  const p = profile as
+    | { locale?: unknown; email_verified?: unknown; given_name?: unknown; family_name?: unknown }
+    | null
+    | undefined
+
+  const mapped: MappedProfileClaims = {
     locale: typeof p?.locale === 'string' && p.locale.length > 0 ? p.locale : null,
     emailVerified: isAffirmativeClaim(p?.email_verified),
   }
+
+  // Assigned only when the claim has a value, never set to null/undefined.
+  // This return is spread OVER the resolved user info, so a key present with
+  // an empty value would overwrite the stored column. A directory that stops
+  // releasing given_name — or a person who filled theirs in by hand and then
+  // signed in again — must not lose the name that way. Omitting the key
+  // leaves the existing column untouched; including it refreshes from the
+  // directory, which is what makes the directory authoritative while it
+  // actually has an answer.
+  const givenName = readNameClaim(p?.given_name)
+  if (givenName) mapped.givenName = givenName
+
+  const familyName = readNameClaim(p?.family_name)
+  if (familyName) mapped.familyName = familyName
+
+  return mapped
 }

@@ -33,6 +33,10 @@ import {
 import type { FieldOperator } from '@/lib/shared/segment-builtin-fields'
 import { SearchableInput } from '@/components/ui/searchable-input'
 import { fetchSegmentAttributeValuesFn } from '@/lib/server/functions/admin'
+import { getEntraAvailabilityFn, previewEntraGroupFn } from '@/lib/server/functions/entra'
+import { EntraGroupPicker } from '@/components/admin/segments/entra-group-picker'
+import { SegmentImportSection } from '@/components/admin/segments/segment-import-section'
+import { useQuery } from '@tanstack/react-query'
 
 // Attributes with DB-backed value typeahead. Matches SEARCHABLE_ATTRIBUTES
 // in segment-attribute-values.ts; kept duplicated here to avoid pulling
@@ -131,6 +135,131 @@ function getOperatorsForAttribute(
   ]
 }
 
+/**
+ * Whether the workspace has an enabled Entra identity provider — gates the
+ * `entra_group` rule attribute in the picker. Called per condition row; React
+ * Query dedupes to one request. Saved entra_group rows still render when
+ * unavailable (via BUILTIN_FIELD_MAP), they just can't be newly picked.
+ */
+function useEntraAvailability(): boolean {
+  const { data } = useQuery({
+    queryKey: ['admin', 'entra-availability'],
+    queryFn: () => getEntraAvailabilityFn(),
+    staleTime: 5 * 60 * 1000,
+  })
+  return data?.available ?? false
+}
+
+interface EntraPreview {
+  members?: number
+  uncastMembers?: number
+  addresses: number
+  matched: number
+  unmatchedSample: string[]
+  attributes?: { mail: number; upn: number; identities: number; otherMails: number }
+  propertiesHidden?: boolean
+  raw?: { cast: string; uncast: string }
+  error?: string
+}
+
+/**
+ * Verbatim first page from Graph, collapsed by default. Contains real
+ * directory data, so it is admin-only, capped at three members, and
+ * deliberately something to review before sharing.
+ */
+function EntraRawDump({ raw }: { raw?: { cast: string; uncast: string } }) {
+  if (!raw) return null
+  return (
+    <details className="text-muted-foreground">
+      <summary className="cursor-pointer">
+        Raw Graph response (contains real data — redact before sharing)
+      </summary>
+      <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted/50 p-2 text-xs leading-relaxed">
+        {`— with user filter —
+${raw.cast}
+
+— without user filter —
+${raw.uncast}`}
+      </pre>
+    </details>
+  )
+}
+
+/**
+ * Outcome of a group dry-run, phrased so each failure points somewhere. An
+ * empty segment looks the same whether the group is empty, its members expose
+ * no address, or those addresses match no account here — this separates the
+ * three.
+ */
+function EntraGroupPreview({ result }: { result: EntraPreview }) {
+  if (result.error) {
+    return <p className="text-xs text-destructive">{result.error}</p>
+  }
+  if (result.addresses === 0) {
+    const members = result.members ?? 0
+    return (
+      <div className="text-xs space-y-1">
+        {members === 0 ? (
+          <p className="text-destructive">
+            Graph returned <span className="font-medium">no members</span> for this group
+            {result.uncastMembers ? ` (${result.uncastMembers} without the user filter)` : ''}.
+          </p>
+        ) : result.propertiesHidden ? (
+          <div className="space-y-1">
+            <p className="text-destructive">
+              <span className="font-medium">{members}</span> members came back, but Entra hid every
+              detail about them.
+            </p>
+            <p className="text-muted-foreground">
+              The app registration can list this group but not read its members. In Entra, add the{' '}
+              <span className="font-medium text-foreground">application</span> permission{' '}
+              <code className="font-mono">User.Read.All</code> (or{' '}
+              <code className="font-mono">Directory.Read.All</code>), grant admin consent, then
+              restart the app so it requests a fresh token.
+            </p>
+          </div>
+        ) : (
+          <p className="text-destructive">
+            <span className="font-medium">{members}</span> members came back, but none exposed an
+            address this app can read.
+          </p>
+        )}
+        {result.attributes && members > 0 && (
+          <p className="text-muted-foreground">
+            Populated: mail {result.attributes.mail}, UPN {result.attributes.upn}, identities{' '}
+            {result.attributes.identities}, otherMails {result.attributes.otherMails}
+          </p>
+        )}
+        <EntraRawDump raw={result.raw} />
+      </div>
+    )
+  }
+  return (
+    <div className="text-xs space-y-1">
+      <p className={result.matched === 0 ? 'text-destructive' : 'text-muted-foreground'}>
+        <span className="font-medium text-foreground">{result.matched}</span> of{' '}
+        <span className="font-medium text-foreground">{result.addresses}</span> group addresses
+        match an existing account
+        {result.matched === 0 && ' — this rule would add nobody'}.
+      </p>
+      <EntraRawDump raw={result.raw} />
+      {result.unmatchedSample.length > 0 && (
+        <details className="text-muted-foreground">
+          <summary className="cursor-pointer">Examples that didn&apos;t match</summary>
+          <ul className="mt-1 space-y-0.5 font-mono">
+            {result.unmatchedSample.map((email) => (
+              <li key={email}>{email}</li>
+            ))}
+          </ul>
+          <p className="mt-1 font-sans">
+            These people either have no account here yet, or signed in under a different address.
+          </p>
+        </details>
+      )}
+    </div>
+  )
+}
+
 function RuleConditionRow({
   condition,
   onChange,
@@ -152,6 +281,26 @@ function RuleConditionRow({
       ? (companyAttributes?.find((a) => a.key === companyAttrKey) ?? null)
       : null
   const builtinField = BUILTIN_FIELD_MAP.get(condition.attribute)
+  const entraAvailable = useEntraAvailability()
+  const isEntraGroup = condition.attribute === 'entra_group'
+  const [preview, setPreview] = useState<EntraPreview | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  const runPreview = async () => {
+    setPreviewing(true)
+    try {
+      setPreview(await previewEntraGroupFn({ data: { groupId: condition.value } }))
+    } catch (error) {
+      setPreview({
+        addresses: 0,
+        matched: 0,
+        unmatchedSample: [],
+        error: error instanceof Error ? error.message : 'Could not reach Microsoft Graph.',
+      })
+    } finally {
+      setPreviewing(false)
+    }
+  }
 
   const operators = getOperatorsForAttribute(
     condition.attribute,
@@ -215,7 +364,13 @@ function RuleConditionRow({
               { group: 'company', label: 'Company' },
             ] as const
           ).map(({ group, label }, i) => {
-            const fields = BUILTIN_FIELDS.filter((f) => f.group === group)
+            // Only offer the Entra rule when an Entra provider is configured;
+            // an already-saved Entra row keeps rendering regardless.
+            const fields = BUILTIN_FIELDS.filter(
+              (f) =>
+                f.group === group &&
+                (f.key !== 'entra_group' || entraAvailable || condition.attribute === 'entra_group')
+            )
             return (
               <React.Fragment key={group}>
                 {i > 0 && <SelectSeparator />}
@@ -300,7 +455,32 @@ function RuleConditionRow({
         />
       )}
 
-      {!isPresenceOp && allowedValues && allowedValues.length > 0 && (
+      {isEntraGroup && (
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <EntraGroupPicker
+              className="flex-1"
+              value={condition.value}
+              onChange={(groupId) => {
+                setPreview(null)
+                onChange({ ...condition, value: groupId })
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0"
+              disabled={!condition.value || previewing}
+              onClick={runPreview}
+            >
+              {previewing ? 'Checking…' : 'Preview'}
+            </Button>
+          </div>
+          {preview && <EntraGroupPreview result={preview} />}
+        </div>
+      )}
+      {!isEntraGroup && !isPresenceOp && allowedValues && allowedValues.length > 0 && (
         <Select
           value={condition.value || String(allowedValues[0])}
           onValueChange={(val) => onChange({ ...condition, value: val })}
@@ -317,7 +497,7 @@ function RuleConditionRow({
           </SelectContent>
         </Select>
       )}
-      {!isPresenceOp && !allowedValues && isBoolean && (
+      {!isEntraGroup && !isPresenceOp && !allowedValues && isBoolean && (
         <Select
           value={condition.value || 'true'}
           onValueChange={(val) => onChange({ ...condition, value: val })}
@@ -331,7 +511,7 @@ function RuleConditionRow({
           </SelectContent>
         </Select>
       )}
-      {!isPresenceOp && !allowedValues && !isBoolean && useSearchableInput && (
+      {!isEntraGroup && !isPresenceOp && !allowedValues && !isBoolean && useSearchableInput && (
         <SearchableInput
           className="flex-1"
           value={condition.value}
@@ -341,11 +521,7 @@ function RuleConditionRow({
             const res = await fetchSegmentAttributeValuesFn({
               data: {
                 attribute: condition.attribute as
-                  | 'country'
-                  | 'locale'
-                  | 'name'
-                  | 'email'
-                  | 'signup_source',
+                  'country' | 'locale' | 'name' | 'email' | 'signup_source',
                 query,
                 limit: 20,
               },
@@ -357,7 +533,7 @@ function RuleConditionRow({
           }}
         />
       )}
-      {!isPresenceOp && !allowedValues && !isBoolean && !useSearchableInput && (
+      {!isEntraGroup && !isPresenceOp && !allowedValues && !isBoolean && !useSearchableInput && (
         <Input
           className="h-8 text-xs flex-1"
           type={isNumeric ? 'number' : 'text'}
@@ -613,6 +789,13 @@ export function SegmentFormDialog({
             </Button>
           </DialogFooter>
         </form>
+
+        {/* CSV bulk-add for manual segments (dynamic membership comes from
+            rules). Rendered outside the <form> above so an upload never trips
+            the Save submit, and vice versa. */}
+        {isEditing && initialValues?.id && type === 'manual' && (
+          <SegmentImportSection segmentId={initialValues.id} segmentName={name || 'this segment'} />
+        )}
       </DialogContent>
     </Dialog>
   )

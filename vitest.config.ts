@@ -38,7 +38,11 @@ export default defineConfig({
       enabled: false,
     },
     env: {
-      DATABASE_URL: 'postgresql://postgres:password@localhost:5432/quackback_test',
+      // Hardcoding this ignored a DATABASE_URL already exported in the shell, so a
+      // local Postgres on any non-default port was unreachable no matter how the
+      // suite was invoked. CI exports exactly the fallback, so its behaviour is unchanged.
+      DATABASE_URL:
+        process.env.DATABASE_URL ?? 'postgresql://postgres:password@localhost:5432/quackback_test',
     },
     deps: {
       optimizer: {

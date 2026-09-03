@@ -43,6 +43,35 @@ export type RoadmapFrequency = (typeof ROADMAP_FREQUENCIES)[number]
 export const ROADMAP_VISIBILITIES = ['public', 'team', 'segment'] as const
 export type RoadmapVisibility = (typeof ROADMAP_VISIBILITIES)[number]
 
+/**
+ * How vaguely a timeline item's date is shown. The stored date is normalised to
+ * the start of that period on write, so a "Q3 2026" item never carries the
+ * exact day it was planned for.
+ */
+export const TIMELINE_PRECISIONS = ['day', 'month', 'quarter', 'year'] as const
+export type TimelinePrecision = (typeof TIMELINE_PRECISIONS)[number]
+
+/**
+ * Per-audience cap on date specificity. A viewer's items are coarsened to their
+ * cap server-side; 'hidden' removes the timeline for that viewer entirely.
+ */
+export const TIMELINE_SPECIFICITIES = ['hidden', 'year', 'quarter', 'month', 'day'] as const
+export type TimelineSpecificity = (typeof TIMELINE_SPECIFICITIES)[number]
+
+/**
+ * roadmaps.eta_disclosure. Team admins always see full dates. Portal viewers
+ * take the finest cap among `default` and any `segments` entry they match.
+ * Member-role teammates keep full specificity unless named in `teamMembers`.
+ */
+export interface EtaDisclosure {
+  default: TimelineSpecificity
+  segments: Array<{ segmentId: string; specificity: TimelineSpecificity }>
+  teamMembers?: Array<{ principalId: string; specificity: TimelineSpecificity }>
+}
+
+/** Fully public dates — what every roadmap has until an admin restricts it. */
+export const DEFAULT_ETA_DISCLOSURE: EtaDisclosure = { default: 'day', segments: [] }
+
 export interface RoadmapBaseFilter {
   statusIds?: PostStatusId[]
   boardIds?: BoardId[]

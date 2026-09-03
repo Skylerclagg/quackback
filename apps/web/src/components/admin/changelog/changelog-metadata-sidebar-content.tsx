@@ -32,9 +32,11 @@ import { listSegmentsFn } from '@/lib/server/functions/admin'
 import { changelogSettingsQueries } from '@/lib/client/queries/changelog'
 import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 import { cn, tomorrowAt } from '@/lib/shared/utils'
-import type { PostId, ChangelogCategoryId, SegmentId } from '@quackback/ids'
+import type { PostId, ChangelogCategoryId, SegmentId, PrincipalId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
-import { TagIcon, EnvelopeIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { TagIcon, EnvelopeIcon, PhotoIcon, XMarkIcon, EyeIcon } from '@heroicons/react/24/outline'
+import { AudienceFields } from '@/components/admin/audience-fields'
+import type { AudienceVisibility } from '@/lib/server/policy/audience'
 
 interface ChangelogMetadataSidebarContentProps {
   publishState: PublishState
@@ -48,6 +50,13 @@ interface ChangelogMetadataSidebarContentProps {
   /** Publish-notification targeting; empty = notify every subscriber. */
   segmentIds?: SegmentId[]
   onSegmentIdsChange?: (segmentIds: SegmentId[]) => void
+  /** Read audience; see AudienceFields. Omit `visibility` to hide the control. */
+  visibility?: AudienceVisibility
+  onVisibilityChange?: (visibility: AudienceVisibility) => void
+  visibleSegmentIds?: SegmentId[]
+  onVisibleSegmentIdsChange?: (segmentIds: SegmentId[]) => void
+  allowedTeamPrincipalIds?: PrincipalId[] | null
+  onAllowedTeamPrincipalIdsChange?: (ids: PrincipalId[] | null) => void
   authorName?: string | null
   publishedAt?: string | null
   displayDateValue?: Date
@@ -74,6 +83,12 @@ export function ChangelogMetadataSidebarContent({
   onNotifyChange,
   segmentIds = [],
   onSegmentIdsChange = () => {},
+  visibility,
+  onVisibilityChange = () => {},
+  visibleSegmentIds = [],
+  onVisibleSegmentIdsChange = () => {},
+  allowedTeamPrincipalIds = null,
+  onAllowedTeamPrincipalIdsChange = () => {},
   authorName,
   publishedAt,
   displayDateValue,
@@ -253,6 +268,30 @@ export function ChangelogMetadataSidebarContent({
             checked={notify}
             onCheckedChange={(checked) => onNotifyChange(checked === true)}
           />
+        </div>
+      )}
+
+      {/* Audience — who can read the entry at all. Distinct from "Notify
+          segments" below, which only targets the publish fan-out. */}
+      {visibility !== undefined && (
+        <div className="space-y-2">
+          <SidebarRow icon={<EyeIcon className="h-4 w-4" />} label="Audience">
+            {null}
+          </SidebarRow>
+          <div className="space-y-3">
+            <AudienceFields
+              idPrefix="changelog-entry"
+              entityLabel="entry"
+              visibility={visibility}
+              onVisibilityChange={onVisibilityChange}
+              visibleSegmentIds={visibleSegmentIds}
+              onVisibleSegmentIdsChange={(next) => onVisibleSegmentIdsChange(next as SegmentId[])}
+              allowedTeamPrincipalIds={allowedTeamPrincipalIds}
+              onAllowedTeamPrincipalIdsChange={(next) =>
+                onAllowedTeamPrincipalIdsChange(next as PrincipalId[] | null)
+              }
+            />
+          </div>
         </div>
       )}
 

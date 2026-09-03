@@ -18,8 +18,9 @@ import {
   foreignKey,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
-import { typeIdWithDefault, typeIdColumn } from '@quackback/ids/drizzle'
+import { typeIdWithDefault, typeIdColumn, typeIdColumnNullable } from '@quackback/ids/drizzle'
 import { changelogEntries } from './changelog'
+import { roadmaps } from './boards'
 
 export const changelogCategories = pgTable(
   'changelog_categories',
@@ -29,6 +30,28 @@ export const changelogCategories = pgTable(
     color: text('color').notNull(),
     // Segments this category is restricted to; [] = everyone (no gating).
     segmentIds: jsonb('segment_ids').$type<string[]>().notNull().default([]),
+    /**
+     * Public URL key, so a category can act as a named changelog
+     * (/changelog?changelog=<slug>). Nullable: a plain label has no page of its
+     * own, and inventing slugs for existing labels would mint URLs nobody
+     * linked to.
+     */
+    slug: text('slug'),
+    /** Shown on the collection's own page; labels leave it null. */
+    description: text('description'),
+    /**
+     * Informational link to a roadmap. ON DELETE SET NULL — removing a roadmap
+     * must not take a changelog with it.
+     */
+    roadmapId: typeIdColumnNullable('roadmap')('roadmap_id').references(() => roadmaps.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * Narrows the category to specific teammates. Tri-state, same as roadmaps
+     * and changelog_entries: null = every team actor, [] = admins only,
+     * [ids] = admins plus those principals. Read with `?? null`, never `?? []`.
+     */
+    allowedTeamPrincipalIds: jsonb('allowed_team_principal_ids').$type<string[] | null>(),
     position: integer('position').default(0).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -36,6 +59,10 @@ export const changelogCategories = pgTable(
     // Case-insensitively unique label names.
     uniqueIndex('changelog_category_name_lower_idx').on(sql`lower(${table.name})`),
     index('changelog_category_position_idx').on(table.position),
+    uniqueIndex('changelog_category_slug_unique')
+      .on(table.slug)
+      .where(sql`${table.slug} IS NOT NULL`),
+    index('changelog_category_roadmap_id_idx').on(table.roadmapId),
   ]
 )
 

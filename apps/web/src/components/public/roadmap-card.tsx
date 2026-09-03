@@ -3,6 +3,7 @@ import { ChevronUpIcon, Squares2X2Icon, CalendarIcon } from '@heroicons/react/24
 import { ChatBubbleLeftIcon } from '@heroicons/react/24/outline'
 import { Badge } from '@/components/ui/badge'
 import { formatMonthYear } from '@/lib/shared/utils'
+import { formatTimelineLabel, type TimelinePrecision } from '@/lib/shared/timeline'
 
 interface RoadmapCardProps {
   id: string
@@ -15,6 +16,11 @@ interface RoadmapCardProps {
   }
   /** Target ship date; rendered as a "Mar 2027" chip when present. */
   eta?: Date | string | null
+  /**
+   * How vaguely to show it. Arrives already coarsened to the viewer's
+   * disclosure cap, so rendering it verbatim is safe.
+   */
+  etaPrecision?: TimelinePrecision | null
 }
 
 export function RoadmapCard({
@@ -24,8 +30,10 @@ export function RoadmapCard({
   commentCount,
   board,
   eta,
+  etaPrecision,
 }: RoadmapCardProps): React.ReactElement {
-  const etaLabel = formatMonthYear(eta)
+  const etaLabel =
+    eta && etaPrecision ? formatTimelineLabel(new Date(eta), etaPrecision) : formatMonthYear(eta)
   return (
     <Link
       to="/b/$slug/posts/$postId"

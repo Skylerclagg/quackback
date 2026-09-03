@@ -14,6 +14,7 @@ import { typeIdWithDefault, typeIdColumn, typeIdColumnNullable } from '@quackbac
 import { principal } from './auth'
 import { posts } from './posts'
 import type { TiptapContent } from '../types'
+import { ROADMAP_VISIBILITIES } from '../types'
 
 /** pgvector column, 1536 dims (OpenAI text-embedding-3-small). Local to this
  *  file, mirroring the per-schema-file `vector` customType convention (see
@@ -55,6 +56,22 @@ export const changelogEntries = pgTable(
     // of these segments. [] = broadcast to every subscriber. Same "segment
     // list, [] = everyone" convention as the segment-gate primitive.
     segmentIds: jsonb('segment_ids').$type<string[]>().notNull().default([]),
+    /**
+     * Read audience. Distinct from `segmentIds` directly above, which decides
+     * who gets NOTIFIED on publish and has never gated reads — the two sitting
+     * side by side is the single easiest thing to confuse in this table.
+     *
+     * Tiers mirror roadmaps so `policy/audience.ts` serves both surfaces.
+     */
+    visibility: text('visibility', { enum: ROADMAP_VISIBILITIES }).default('public').notNull(),
+    /** Consulted only when `visibility === 'segment'`. */
+    visibleSegmentIds: jsonb('visible_segment_ids').$type<string[] | null>(),
+    /**
+     * Tri-state, and null is the meaningful default: null = every team actor,
+     * [] = admins only, [ids] = admins plus those member-role principals.
+     * Read it with `?? null`, never `?? []`.
+     */
+    allowedTeamPrincipalIds: jsonb('allowed_team_principal_ids').$type<string[] | null>(),
     // Semantic embedding for Quinn grounding (Quinn Phase 4). Embedded on
     // publish/edit; drafts stay null. Track the model version so a re-embed
     // can find rows without losing data (mirrors posts.embedding_model).

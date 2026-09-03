@@ -187,8 +187,21 @@ export async function listPortalUsers(
        WHERE activity_devices.principal_id = ${principal.id})
     )`
 
-    // Build conditions array - filter for role='user' (portal users only)
-    const conditions = [eq(principal.role, 'user')]
+    // Portal users only (role='user') — EXCEPT when filtering by segment.
+    //
+    // Segment membership is deliberately open to any human principal,
+    // teammates included (see segment.evaluation.ts), and the member count on
+    // the segments page counts every user_segments row. A role='user' filter
+    // here made the two disagree: a segment reported N members and then listed
+    // fewer, with the admins and members silently missing from the very
+    // segment they belong to.
+    //
+    // Dropping the ROLE condition is safe because the TYPE condition below
+    // still pins principal.type to 'user' or 'anonymous'. Service principals
+    // default to role='member', so widening by role alone — without that type
+    // condition — would leak API keys and integrations into a list of people.
+    const filteringBySegment = Boolean(segmentIds && segmentIds.length > 0)
+    const conditions = filteringBySegment ? [] : [eq(principal.role, 'user')]
 
     // Lifecycle view: identified users by default, engaged anonymous
     // principals (leads) on request. The two views never mix.

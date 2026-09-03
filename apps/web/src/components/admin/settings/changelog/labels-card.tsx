@@ -24,6 +24,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SettingsCard } from '@/components/admin/settings/settings-card'
 import { SegmentMultiSelect } from '@/components/admin/segments/segment-multi-select'
+import { TeamAccessField } from '@/components/admin/audience-fields'
+import { Textarea } from '@/components/ui/textarea'
+import { useRoadmaps } from '@/lib/client/hooks/use-roadmaps-query'
 import { cn } from '@/lib/shared/utils'
 import { listSegmentsFn } from '@/lib/server/functions/admin'
 import {
@@ -78,6 +81,10 @@ function ColorPickerGrid({
   )
 }
 
+const selectClass =
+  'h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 interface CategoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -90,6 +97,11 @@ function CategoryDialog({ open, onOpenChange, category, segments, onSaved }: Cat
   const [name, setName] = useState('')
   const [color, setColor] = useState('#6b7280')
   const [segmentIds, setSegmentIds] = useState<string[]>([])
+  const [slug, setSlug] = useState('')
+  const [description, setDescription] = useState('')
+  const [roadmapId, setRoadmapId] = useState('')
+  const [allowedTeamPrincipalIds, setAllowedTeamPrincipalIds] = useState<string[] | null>(null)
+  const { data: roadmaps = [] } = useRoadmaps({ enabled: open })
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -101,10 +113,18 @@ function CategoryDialog({ open, onOpenChange, category, segments, onSaved }: Cat
         setName(category.name)
         setColor(category.color)
         setSegmentIds(category.segmentIds)
+        setSlug(category.slug ?? '')
+        setDescription(category.description ?? '')
+        setRoadmapId(category.roadmapId ?? '')
+        setAllowedTeamPrincipalIds(category.allowedTeamPrincipalIds ?? null)
       } else {
         setName('')
         setColor(randomColor())
         setSegmentIds([])
+        setSlug('')
+        setDescription('')
+        setRoadmapId('')
+        setAllowedTeamPrincipalIds(null)
       }
       setError(null)
     }
@@ -116,6 +136,21 @@ function CategoryDialog({ open, onOpenChange, category, segments, onSaved }: Cat
       setError('Name is required')
       return
     }
+    const trimmedSlug = slug.trim().toLowerCase()
+    if (trimmedSlug && !SLUG_RE.test(trimmedSlug)) {
+      setError('Slug may contain lowercase letters, numbers and hyphens only')
+      return
+    }
+    if (trimmedSlug === 'general') {
+      setError('"general" is reserved for entries that are in no collection')
+      return
+    }
+    const collectionFields = {
+      slug: trimmedSlug || null,
+      description: trimmedSlug ? description.trim() || null : null,
+      roadmapId: trimmedSlug && roadmapId ? roadmapId : null,
+      allowedTeamPrincipalIds: trimmedSlug ? allowedTeamPrincipalIds : null,
+    }
 
     setIsSaving(true)
     setError(null)
@@ -124,11 +159,11 @@ function CategoryDialog({ open, onOpenChange, category, segments, onSaved }: Cat
       let saved: ChangelogCategory
       if (isEdit) {
         saved = await updateChangelogCategoryFn({
-          data: { id: category.id, name: trimmedName, color, segmentIds },
+          data: { id: category.id, name: trimmedName, color, segmentIds, ...collectionFields },
         })
       } else {
         saved = await createChangelogCategoryFn({
-          data: { name: trimmedName, color, segmentIds },
+          data: { name: trimmedName, color, segmentIds, ...collectionFields },
         })
       }
       onSaved(saved)
@@ -142,7 +177,7 @@ function CategoryDialog({ open, onOpenChange, category, segments, onSaved }: Cat
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit category' : 'New category'}</DialogTitle>
         </DialogHeader>
@@ -189,6 +224,68 @@ function CategoryDialog({ open, onOpenChange, category, segments, onSaved }: Cat
             />
           </div>
         )}
+
+        <div className="space-y-3 rounded-lg border border-border/60 p-3">
+          <div>
+            <h3 className="text-sm font-medium">Collection</h3>
+            <p className="text-xs text-muted-foreground">
+              Give this category a slug to make it a named changelog: a tab on the public page with
+              its own feed. Leave blank for a plain label.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="category-slug">Slug</Label>
+            <Input
+              id="category-slug"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="e.g. mobile-app"
+              maxLength={80}
+            />
+            {slug.trim() && (
+              <p className="text-xs text-muted-foreground font-mono">
+                /changelog?changelog={slug.trim().toLowerCase()}
+              </p>
+            )}
+          </div>
+          {slug.trim() && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="category-description">Description</Label>
+                <Textarea
+                  id="category-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Shown at the top of the collection"
+                  maxLength={500}
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category-roadmap">Linked roadmap</Label>
+                <select
+                  id="category-roadmap"
+                  className={selectClass}
+                  value={roadmapId}
+                  onChange={(e) => setRoadmapId(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {roadmaps.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <TeamAccessField
+                idPrefix="category"
+                entityLabel="collection"
+                value={allowedTeamPrincipalIds}
+                onChange={setAllowedTeamPrincipalIds}
+              />
+            </>
+          )}
+        </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

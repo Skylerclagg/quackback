@@ -1,3 +1,4 @@
+import type { AudienceVisibility } from '@/lib/server/policy/audience'
 /* oxlint-disable max-lines -- notifyChangelogPublished builds the full email
    body payload alongside the existing claim/release writes */
 /**
@@ -25,7 +26,7 @@ import {
   lte,
   inArray,
 } from '@/lib/server/db'
-import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
+import type { ChangelogId, PrincipalId, PostId, SegmentId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { markdownToTiptapJson, projectContentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
@@ -65,6 +66,23 @@ const log = logger.child({ component: 'changelog' })
  * @param author - Author information
  * @returns Created changelog entry with details
  */
+/**
+ * A segment-gated entry with no segments admits nobody but the team, which is
+ * never what the author meant — they wanted 'team'. Mirrors the identical
+ * guard in roadmap.service.ts so the two surfaces reject the same shape.
+ */
+function validateAudience(input: {
+  visibility?: AudienceVisibility
+  visibleSegmentIds?: SegmentId[] | null
+}): void {
+  if (input.visibility === 'segment' && !input.visibleSegmentIds?.length) {
+    throw new ValidationError(
+      'VALIDATION_ERROR',
+      'Segment-visible changelog entries require at least one segment'
+    )
+  }
+}
+
 export async function createChangelog(
   input: CreateChangelogInput,
   author: { principalId: PrincipalId; name: string }
@@ -108,6 +126,8 @@ export async function createChangelog(
     principalId: author.principalId,
   })
 
+  validateAudience(input)
+
   const [entry] = await db
     .insert(changelogEntries)
     .values({
@@ -121,6 +141,15 @@ export async function createChangelog(
       ...(displayDate != null && { displayDate }),
       ...(input.featuredImageUrl != null && { featuredImageUrl: input.featuredImageUrl }),
       ...(input.segmentIds != null && { segmentIds: input.segmentIds }),
+      // Read audience. Omitted leaves the column defaults ('public' + NULL
+      // allowlist), which is how every pre-existing entry behaves.
+      ...(input.visibility != null && { visibility: input.visibility }),
+      ...(input.visibleSegmentIds !== undefined && {
+        visibleSegmentIds: input.visibleSegmentIds,
+      }),
+      ...(input.allowedTeamPrincipalIds !== undefined && {
+        allowedTeamPrincipalIds: input.allowedTeamPrincipalIds,
+      }),
     })
     .returning()
 
@@ -235,6 +264,25 @@ export async function updateChangelog(
   // (including []) replaces it wholesale.
   if (input.segmentIds !== undefined) {
     updateData.segmentIds = input.segmentIds
+  }
+
+  // Read audience. Each field is independently optional so a caller editing
+  // only the title cannot accidentally reset the audience. Note the asymmetry
+  // that matters: for the two list columns `undefined` means "leave alone"
+  // while `null` means "back to the default", and for the allowlist that
+  // default is every team actor, not nobody.
+  validateAudience({
+    visibility: input.visibility,
+    visibleSegmentIds: input.visibleSegmentIds,
+  })
+  if (input.visibility !== undefined) {
+    updateData.visibility = input.visibility
+  }
+  if (input.visibleSegmentIds !== undefined) {
+    updateData.visibleSegmentIds = input.visibleSegmentIds
+  }
+  if (input.allowedTeamPrincipalIds !== undefined) {
+    updateData.allowedTeamPrincipalIds = input.allowedTeamPrincipalIds
   }
 
   // Update the entry
@@ -422,6 +470,9 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
       ? resignStoredAssetUrl(entry.featuredImageUrl)
       : entry.featuredImageUrl,
     segmentIds: (entry.segmentIds ?? []) as ChangelogEntryWithDetails['segmentIds'],
+    visibility: (entry.visibility ?? 'public') as AudienceVisibility,
+    visibleSegmentIds: (entry.visibleSegmentIds ?? null) as SegmentId[] | null,
+    allowedTeamPrincipalIds: (entry.allowedTeamPrincipalIds ?? null) as PrincipalId[] | null,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
     viewCount: entry.viewCount,

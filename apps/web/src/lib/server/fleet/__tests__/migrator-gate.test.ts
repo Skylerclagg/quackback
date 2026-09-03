@@ -347,6 +347,13 @@ describe('replayGateVerdict', () => {
       '0270_github_channel',
       '0271_widget_installed_sdk_version',
       '0272_kb_url_id',
+      // Fork re-port: two nullable ADD COLUMNs, no data write, so the span
+      // stays non-mutating and this case still documents only 0257/0262/0263.
+      '0273_user_given_family_name',
+      '0274_changelog_audience',
+      '0275_roadmap_team_allowlist',
+      '0276_changelog_category_collections',
+      '0277_roadmap_timeline',
     ])
     const verdict = replayGateVerdict(before, verdictsFor(replaySetFor(before)), false)
     expect(verdict.ok).toBe(false)

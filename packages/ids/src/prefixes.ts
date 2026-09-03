@@ -28,6 +28,9 @@ export const ID_PREFIXES = {
   // Planning domain
   roadmap: 'roadmap',
   roadmap_column: 'roadmap_col',
+  // Dated free-text entries on a roadmap timeline. Encoded prefix matches the
+  // fork's so ids it minted stay valid across the cutover.
+  roadmap_milestone: 'milestone',
   changelog: 'changelog',
   changelog_category: 'changelog_category',
   changelog_sub: 'changelog_sub',
