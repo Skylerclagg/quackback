@@ -1,4 +1,5 @@
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { listChangelogSourcesFn } from '@/lib/server/functions/changelog-sources'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { useState, useCallback, useEffect, useMemo, startTransition } from 'react'
@@ -51,6 +52,13 @@ export function ChangelogList() {
 
   const deleteChangelogMutation = useDeleteChangelog()
   const updateChangelogMutation = useUpdateChangelog()
+  // Source names for the "Imported" badge; shares the settings card's cache key.
+  const sourcesQuery = useQuery({
+    queryKey: ['admin', 'changelog', 'sources'],
+    queryFn: () => listChangelogSourcesFn(),
+    staleTime: 60_000,
+  })
+  const sourceNames = new Map((sourcesQuery.data ?? []).map((src) => [src.id, src.name]))
   const [entryToUnpublish, setEntryToUnpublish] = useState<ChangelogId | null>(null)
 
   const { value: searchValue, setValue: setSearchValue } = useDebouncedSearch({
@@ -218,6 +226,11 @@ export function ChangelogList() {
                       onEdit={handleEdit}
                       onDelete={handleDelete}
                       onUnpublish={handleUnpublish}
+                      sourceName={
+                        entry.sourceId
+                          ? (sourceNames.get(entry.sourceId) ?? 'external source')
+                          : null
+                      }
                     />
                   </div>
                 ))}

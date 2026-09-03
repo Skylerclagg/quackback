@@ -41,6 +41,8 @@ interface ChangelogListItemProps {
   onDelete?: (id: ChangelogId) => void
   /** Published/scheduled entries only: back to Drafts, nobody notified. */
   onUnpublish?: (id: ChangelogId) => void
+  /** Name of the external source this entry was imported from, if any. */
+  sourceName?: string | null
 }
 
 const STATUS_CONFIG = {
@@ -62,6 +64,7 @@ export function ChangelogListItem({
   onEdit,
   onDelete,
   onUnpublish,
+  sourceName,
 }: ChangelogListItemProps) {
   const config = STATUS_CONFIG[status]
   const contentPreview = stripMarkdownPreview(content, 150)
@@ -81,7 +84,17 @@ export function ChangelogListItem({
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Status badge */}
-        <StatusBadge name={config.label} color={config.color} className="mb-1" />
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          <StatusBadge name={config.label} color={config.color} />
+          {sourceName && (
+            <span
+              className="inline-flex items-center rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground"
+              title={`Imported from ${sourceName}. Title, notes and date follow the source page; status, labels and audience are yours.`}
+            >
+              Imported · {sourceName}
+            </span>
+          )}
+        </div>
 
         {/* Title */}
         <h3 className="font-semibold text-base text-foreground line-clamp-1">{title}</h3>

@@ -27,6 +27,7 @@ import type {
   PostId,
   PostStatusId,
   SegmentId,
+  ChangelogSourceId,
 } from '@quackback/ids'
 import { computeStatus } from './changelog.service'
 import { getCategoriesForEntries } from './changelog-category.service'
@@ -177,6 +178,7 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
         : entry.featuredImageUrl,
       segmentIds: (entry.segmentIds ?? []) as ChangelogEntryWithDetails['segmentIds'],
       visibility: (entry.visibility ?? 'public') as AudienceVisibility,
+      sourceId: (entry.sourceId ?? null) as ChangelogSourceId | null,
       visibleSegmentIds: (entry.visibleSegmentIds ?? null) as SegmentId[] | null,
       allowedTeamPrincipalIds: (entry.allowedTeamPrincipalIds ?? null) as PrincipalId[] | null,
       createdAt: entry.createdAt,

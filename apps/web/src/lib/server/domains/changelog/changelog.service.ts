@@ -26,7 +26,7 @@ import {
   lte,
   inArray,
 } from '@/lib/server/db'
-import type { ChangelogId, PrincipalId, PostId, SegmentId } from '@quackback/ids'
+import type { ChangelogId, PrincipalId, PostId, SegmentId, ChangelogSourceId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { markdownToTiptapJson, projectContentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
@@ -471,6 +471,7 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
       : entry.featuredImageUrl,
     segmentIds: (entry.segmentIds ?? []) as ChangelogEntryWithDetails['segmentIds'],
     visibility: (entry.visibility ?? 'public') as AudienceVisibility,
+    sourceId: (entry.sourceId ?? null) as ChangelogSourceId | null,
     visibleSegmentIds: (entry.visibleSegmentIds ?? null) as SegmentId[] | null,
     allowedTeamPrincipalIds: (entry.allowedTeamPrincipalIds ?? null) as PrincipalId[] | null,
     createdAt: entry.createdAt,

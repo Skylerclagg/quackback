@@ -13,6 +13,7 @@ import { updateChangelogSchema } from '@/lib/shared/schemas/changelog'
 import type { TiptapContent } from '@/lib/shared/schemas/posts'
 import { useDeleteChangelog, useUpdateChangelog } from '@/lib/client/mutations/changelog'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { listChangelogSourcesFn } from '@/lib/server/functions/changelog-sources'
 import { TrashIcon } from '@heroicons/react/24/solid'
 import { changelogQueries } from '@/lib/client/queries/changelog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -81,6 +82,17 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
   const { data: entry, isLoading } = useQuery({
     ...changelogQueries.detail(entryId),
   })
+
+  // Source name for the imported-entry notice; shares the settings card's cache key.
+  const sourcesQuery = useQuery({
+    queryKey: ['admin', 'changelog', 'sources'],
+    queryFn: () => listChangelogSourcesFn(),
+    enabled: !!entry?.sourceId,
+    staleTime: 60_000,
+  })
+  const importedFrom = entry?.sourceId
+    ? (sourcesQuery.data?.find((src) => src.id === entry.sourceId)?.name ?? 'an external changelog')
+    : null
 
   const form = useForm({
     resolver: standardSchemaResolver(updateChangelogSchema),
@@ -226,6 +238,12 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         <div className="flex flex-1 min-h-0">
           {/* Left: Content editor */}
           <div className="flex-1 overflow-y-auto">
+            {importedFrom && (
+              <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                Imported from {importedFrom}. Title, notes and date follow the source page and
+                refresh on each sync; status, labels and audience are yours to set here.
+              </p>
+            )}
             <ChangelogFormFields
               form={form}
               contentJson={contentJson}

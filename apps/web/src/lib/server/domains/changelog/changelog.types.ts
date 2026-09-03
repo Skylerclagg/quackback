@@ -10,6 +10,7 @@ import type {
   PrincipalId,
   PostId,
   SegmentId,
+  ChangelogSourceId,
 } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 
@@ -148,6 +149,8 @@ export interface ChangelogEntryWithDetails {
   visibility: AudienceVisibility
   visibleSegmentIds: SegmentId[] | null
   allowedTeamPrincipalIds: PrincipalId[] | null
+  /** External changelog source this entry was imported from, if any. */
+  sourceId: ChangelogSourceId | null
   createdAt: Date
   updatedAt: Date
   /** Author information - only shown in admin views */
