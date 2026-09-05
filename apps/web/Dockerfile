@@ -89,6 +89,12 @@ RUN bun build apps/web/scripts/fleet-migrator.ts \
     --bundle \
     --outfile=/tmp/fleet-migrator.mjs
 
+# Fork → upstream cutover, runnable from the container (scripts/cutover/README.md, "Coolify").
+RUN bun build scripts/cutover/fork-cutover.ts \
+    --target=bun \
+    --bundle \
+    --outfile=/tmp/fork-cutover.mjs
+
 # ============================================================================
 # Production runner
 # ============================================================================
@@ -111,6 +117,7 @@ COPY --from=builder --chown=quackback:nodejs /app/apps/web/.output ./.output
 COPY --from=builder --chown=quackback:nodejs /tmp/migrate.mjs ./migrate.mjs
 COPY --from=builder --chown=quackback:nodejs /tmp/seed.mjs ./seed.mjs
 COPY --from=builder --chown=quackback:nodejs /tmp/fleet-migrator.mjs ./fleet-migrator.mjs
+COPY --from=builder --chown=quackback:nodejs /tmp/fork-cutover.mjs ./fork-cutover.mjs
 COPY --from=builder --chown=quackback:nodejs /app/packages/db/drizzle ./drizzle
 
 # Copy entrypoint script

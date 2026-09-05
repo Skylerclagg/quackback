@@ -15,6 +15,15 @@ if [ "$QUACKBACK_ROLE" = "migrator" ]; then
   exec sh -c "bun /app/fleet-migrator.mjs enrol && bun /app/fleet-migrator.mjs run"
 fi
 
+# One-shot fork → upstream cutover (scripts/cutover/README.md, "Coolify").
+# Both steps read the ledger and do nothing once the database is past the fork
+# tip, so the variable can stay set until an operator removes it.
+if [ "$FORK_CUTOVER" = "auto" ]; then
+  echo ""
+  echo "FORK_CUTOVER=auto — cutover pre-step (extract + ledger rewind)"
+  bun /app/fork-cutover.mjs pre
+fi
+
 # Migrations: skipped in K8s where a pre-upgrade Helm hook Job runs them
 # before pods roll. Set SKIP_MIGRATIONS=true to opt out of the on-start
 # migration step. Default behavior matches `docker run` ergonomics.
@@ -26,6 +35,12 @@ else
   echo "Running database migrations..."
   bun /app/migrate.mjs
   echo "Migrations complete."
+fi
+
+if [ "$FORK_CUTOVER" = "auto" ]; then
+  echo ""
+  echo "FORK_CUTOVER=auto — cutover post-step (transform)"
+  bun /app/fork-cutover.mjs post
 fi
 
 # Optionally seed the database

@@ -70,6 +70,33 @@ bun scripts/cutover/04-transform.ts            # dry run
 bun scripts/cutover/04-transform.ts --apply    # commit
 ```
 
+## Coolify (no tooling on the host)
+
+The steps above need psql and a route to the database. On Coolify the app
+container is the only place with Bun and `DATABASE_URL`, so the image carries
+the runbook as one command, `/app/fork-cutover.mjs`, and the entrypoint runs it
+around the normal migration step when `FORK_CUTOVER=auto` is set:
+
+1. **Back up.** Terminal into the `postgres` service and write a dump onto its
+   volume, where a redeploy cannot lose it:
+   `pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" > /var/lib/postgresql/pre-cutover.dump`
+2. In the app resource's environment variables add `FORK_CUTOVER=auto`.
+3. Deploy `main`. The start-up log shows `pre` (extract + rewind), the migrator
+   applying upstream `0126`–`0272` plus `0273`+, then `post` (the transform).
+4. Check the site, then remove `FORK_CUTOVER` again. Leaving it set is safe —
+   both steps are no-ops once the ledger is past the fork tip — but a
+   variable that reads like an instruction should not outlive its purpose.
+
+If a step refuses, the log says which state it found and nothing is changed.
+`bun /app/fork-cutover.mjs status` from the app container prints the ledger
+and cutover state; `post --dry-run` prints what the transform would do.
+
+What went wrong the first time, for the record: deployed without the rewind,
+the migrator saw only the port's `0273`+ as pending (the fork's ledger
+high-water mark is newer than upstream's `0126`), and `0276` failed on a table
+that upstream creates in a migration it had skipped. The run is one
+transaction, so it rolled back and production was untouched.
+
 ## What step 4 does
 
 - **Normalises `allowed_team_principal_ids`** on `roadmaps` and
