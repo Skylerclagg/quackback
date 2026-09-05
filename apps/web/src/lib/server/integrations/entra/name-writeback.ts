@@ -102,16 +102,33 @@ async function refreshDelegatedToken(
  * PATCH the person's own Entra profile with the names they just saved here.
  * Resolves to a result, never rejects: see the file header.
  */
-export async function writeNameBackToEntra(
-  userId: UserId,
-  name: { givenName?: string | null; familyName?: string | null }
-): Promise<NameWriteBackResult> {
-  // Graph's field for a family name is `surname`. Only the parts that were
-  // actually provided are sent, so a first-name-only save cannot blank the
-  // surname in the directory.
+export interface NameWriteBack {
+  givenName?: string | null
+  familyName?: string | null
+  /** The display name the person ends up with here; Graph's `displayName`. */
+  displayName?: string | null
+}
+
+/**
+ * The Graph PATCH body for a save. Graph's field for a family name is
+ * `surname`. Only the values actually provided are sent, so a first-name-only
+ * save cannot blank the surname in the directory. The display name travels
+ * too: a profile Entra created as "unknown" only stops saying so when we send
+ * the real one, and sending a name the directory already has is a no-op.
+ */
+export function buildNamePatch(name: NameWriteBack): Record<string, string> {
   const patch: Record<string, string> = {}
   if (name.givenName?.trim()) patch.givenName = name.givenName.trim()
   if (name.familyName?.trim()) patch.surname = name.familyName.trim()
+  if (name.displayName?.trim()) patch.displayName = name.displayName.trim()
+  return patch
+}
+
+export async function writeNameBackToEntra(
+  userId: UserId,
+  name: NameWriteBack
+): Promise<NameWriteBackResult> {
+  const patch = buildNamePatch(name)
   if (Object.keys(patch).length === 0) return { status: 'skipped', reason: 'no-entra-account' }
   try {
     const { listIdentityProviders } =

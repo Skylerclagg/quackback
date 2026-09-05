@@ -101,11 +101,15 @@ export const updateMyNameFn = createServerFn({ method: 'POST' })
       }
       log.info({ user_id: userId }, 'profile names updated')
 
+      // The directory gets the parts that were typed plus the display name this
+      // save ends up with, so a profile Entra created as "unknown" is repaired
+      // even when the app already showed the real name.
       const entra =
-        data.givenName || data.familyName
+        data.givenName || data.familyName || displayName !== current.name
           ? await writeNameBackToEntra(userId, {
               givenName: data.givenName,
               familyName: data.familyName,
+              displayName,
             })
           : ({ status: 'skipped', reason: 'no-entra-account' } as const)
       return { givenName, familyName, displayName, entra }

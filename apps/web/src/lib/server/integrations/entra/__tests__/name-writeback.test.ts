@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { buildNamePatch } from '../name-writeback'
 import { grantedScopes, hasProfileWriteScope } from '../name-writeback'
 
 describe('grantedScopes', () => {
@@ -38,5 +39,18 @@ describe('hasProfileWriteScope', () => {
   it('accepts the broader delegated write scopes too', () => {
     expect(hasProfileWriteScope('User.ReadWrite.All')).toBe(true)
     expect(hasProfileWriteScope('Directory.AccessAsUser.All')).toBe(true)
+  })
+})
+
+describe('buildNamePatch', () => {
+  it('maps the parts to Graph fields and includes the display name', () => {
+    expect(
+      buildNamePatch({ givenName: ' Skyler ', familyName: 'Clagg', displayName: 'Skyler Clagg' })
+    ).toEqual({ givenName: 'Skyler', surname: 'Clagg', displayName: 'Skyler Clagg' })
+  })
+
+  it('sends only what was provided, so a partial save cannot blank a field', () => {
+    expect(buildNamePatch({ givenName: 'Skyler' })).toEqual({ givenName: 'Skyler' })
+    expect(buildNamePatch({ displayName: '  ' })).toEqual({})
   })
 })
