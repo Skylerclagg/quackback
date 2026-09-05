@@ -1,24 +1,33 @@
 # ============================================================================
-# Quackback — Coolify stack (build from source)
+# Quackback — Coolify stack (build from source): app + MinIO
 # ============================================================================
-# Same stack as docker-compose.prod.yml (app + PostgreSQL + MinIO), with ONE
-# difference: the app service is BUILT from the checked-out commit instead of
-# pulling the prebuilt ghcr.io/quackbackio/quackback image. Use this when
-# deploying a fork (or unreleased commits on main) via Coolify — the upstream
-# `latest` image only moves on tagged releases, so it will never contain your
-# own commits.
+# Same app service as docker-compose.prod.yml, BUILT from the checked-out
+# commit instead of pulling ghcr.io/quackbackio/quackback (the upstream image
+# only moves on tagged releases and never contains a fork's commits).
 #
-# Coolify setup:
-#   - Resource type: Docker Compose, pointed at this repo/branch
-#   - Compose file: docker-compose.coolify.yml
-#   - Fill in the same variables as .env.prod.example in Coolify's
-#     "Environment Variables" tab (SECRET_KEY, BASE_URL, POSTGRES_*, MINIO_*, …)
-#   - Attach your domain to the `app` service (container port 3000); use
-#     "Force Rebuild" if a deploy ever seems to reuse stale layers
+# PostgreSQL is NOT part of this stack. It is a separate Coolify database
+# resource, for three reasons:
+#   - a redeploy of a compose stack restarts every service in it, the
+#     database included;
+#   - Coolify's scheduled backups only exist for database resources;
+#   - a database inside the stack is removed with the stack, so moving or
+#     rebuilding the app must not be able to take the data with it.
 #
-# Migrations run automatically on app startup. Keep this file in sync with
-# docker-compose.prod.yml when pulling upstream changes — only the app
-# service's image/build stanza should differ.
+# Coolify setup (full runbook: deploy/coolify/README.md):
+#   - PostgreSQL resource: image `pgvector/pgvector:pg18` — the app creates the
+#     `vector` and `pg_trgm` extensions at start, and Coolify's default
+#     postgres image has no pgvector. Enable scheduled backups on it.
+#   - This resource: Docker Compose from this repo/branch, compose file
+#     docker-compose.coolify.yml, "Connect To Predefined Network" ON so `app`
+#     reaches the database by its internal hostname.
+#   - Environment variables: DATABASE_URL (the database resource's internal
+#     URL, password URL-encoded), BASE_URL, SECRET_KEY, MINIO_ROOT_USER,
+#     MINIO_ROOT_PASSWORD, S3_BUCKET, plus email — see .env.prod.example.
+#   - Attach the domain to the `app` service (container port 3000); use
+#     "Force Rebuild" if a deploy ever seems to reuse stale layers.
+#
+# Migrations run automatically on app startup. FORK_CUTOVER=auto additionally
+# runs the fork → upstream cutover once (scripts/cutover/README.md).
 #
 # ---------------------------------------------------------------------------
 # NO DRAGONFLY / REDIS. Upstream moved jobs, KV, presence and realtime onto
@@ -37,42 +46,25 @@ services:
     container_name: quackback-app
     restart: unless-stopped
     init: true
-    # Coolify writes its "Environment Variables" tab to a .env file next to the
-    # compose file at deploy time; this carries the optional settings (email,
-    # S3_REGION, …) into the container. Marked optional so the stack also runs
-    # under plain `docker compose` with the variables exported in the shell.
     env_file:
       - path: .env
         required: false
-    # Internal wiring is fixed here (derived from the configured secrets) so it
-    # can't point at the wrong host — these override env_file. BASE_URL and
-    # SECRET_KEY are re-declared with :? so a half-configured stack refuses to
-    # start instead of booting broken.
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-quackback}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL to the PostgreSQL resource's internal URL}
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: ${S3_BUCKET:-quackback}
       S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
       S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
       S3_FORCE_PATH_STYLE: 'true'
-      # MinIO has no public port, so the browser can't reach it directly:
-      # serve uploads through the app's /api/storage proxy.
       S3_PROXY: 'true'
       BASE_URL: ${BASE_URL:?set BASE_URL}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
     ports:
       - '${APP_PORT:-3000}:3000'
     depends_on:
-      postgres:
-        condition: service_healthy
       minio-init:
         condition: service_completed_successfully
     healthcheck:
-      # Use Bun (always in the image) so we don't depend on curl/wget. The
-      # container listens on 3000 regardless of the published APP_PORT.
-      # Path is /api/health/ready — upstream split liveness from readiness, and
-      # the plain /api/health this file used to probe no longer reflects
-      # migration completion.
       test:
         [
           'CMD',
@@ -85,41 +77,13 @@ services:
       retries: 5
       start_period: 40s
 
-  postgres:
-    build:
-      context: ./docker/postgres
-      dockerfile: Dockerfile
-    container_name: quackback-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-quackback}
-    # No host port — Postgres is reachable only on the internal network.
-    volumes:
-      - postgres_data:/var/lib/postgresql
-      - ./docker/postgres/init-pgcron.sql:/docker-entrypoint-initdb.d/init-pgcron.sql
-    # pg_cron is preloaded for existing volumes; the analytics queue runs on the
-    # app job tier, not through pg_cron. Do NOT drop the preload — removing a
-    # shared_preload_libraries entry from an image an existing volume was
-    # created under is an upgrade-path risk, and it buys nothing.
-    command: postgres -c shared_preload_libraries=pg_cron -c cron.database_name=${POSTGRES_DB:-quackback} -c max_connections=200
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   minio:
-    # Pinned, matching docker-compose.prod.yml. `latest` meant a redeploy could
-    # silently move the object store under a running deployment.
     image: minio/minio:${MINIO_IMAGE_TAG:-RELEASE.2025-04-22T22-12-26Z}
     container_name: quackback-minio
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
-    # No host port — object storage is internal; uploads are served via the app.
     command: server /data
     volumes:
       - minio_data:/data
@@ -129,9 +93,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Creates the upload bucket on first start. It does NOT set a public download
-  # policy — the bucket stays private and is served through the app's
-  # /api/storage proxy (S3_PROXY=true above).
+  # Creates the upload bucket once MinIO is healthy, then exits.
   minio-init:
     image: minio/mc:${MC_IMAGE_TAG:-RELEASE.2025-04-16T18-13-26Z}
     container_name: quackback-minio-init
@@ -150,5 +112,4 @@ services:
     restart: 'no'
 
 volumes:
-  postgres_data:
   minio_data:

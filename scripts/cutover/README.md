@@ -72,6 +72,10 @@ bun scripts/cutover/04-transform.ts --apply    # commit
 
 ## Coolify (no tooling on the host)
 
+Moving the database out of the app stack at the same time? Do that first:
+`deploy/coolify/README.md` covers the new resource and the data copy, and its
+step 3 folds this cutover into the switch-over deploy.
+
 The steps above need psql and a route to the database. On Coolify the app
 container is the only place with Bun and `DATABASE_URL`, so the image carries
 the runbook as one command, `/app/fork-cutover.mjs`, and the entrypoint runs it
