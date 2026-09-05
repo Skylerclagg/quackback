@@ -138,11 +138,17 @@ export function PortalNamePrompt({ enabled }: { enabled: boolean }) {
               })}
             </DialogTitle>
             <DialogDescription>
-              {intl.formatMessage({
-                id: 'portal.namePrompt.description',
-                defaultMessage:
-                  'Your account is missing a name. Add it so the team knows who they are talking to.',
-              })}
+              {data?.displayNameIsPlaceholder
+                ? intl.formatMessage({
+                    id: 'portal.namePrompt.description',
+                    defaultMessage:
+                      'Your account is missing a name. Add it so the team knows who they are talking to.',
+                  })
+                : intl.formatMessage({
+                    id: 'portal.namePrompt.descriptionParts',
+                    defaultMessage:
+                      'Add your first and last name so the team knows who they are talking to.',
+                  })}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">

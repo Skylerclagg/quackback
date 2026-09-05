@@ -48,6 +48,7 @@ import { isSyntheticAnonEmail } from '@/lib/shared/anonymous-email'
 import { decodeSsoClaims } from './sso-claims-decode'
 import { takeResolvedClaims } from './resolved-claims-stash'
 import { logger } from '@/lib/server/logger'
+import { handleNamePartsFillAfter } from './fill-name-parts'
 
 const log = logger.child({ component: 'auth-hooks' })
 
@@ -1348,6 +1349,14 @@ export const hooksAfter = createAuthMiddleware(async (ctx) => {
   await handleCallbackPolicyCleanup(
     ctx as Parameters<typeof handleCallbackPolicyCleanup>[0],
     workspace,
+    providers,
+    registeredOidcIds
+  )
+  // Fill empty first/last name from the IdP (ID token claims, else userinfo).
+  // Runs after cleanup so a refused sign-in is not decorated; never overwrites
+  // a value someone typed. See fill-name-parts.ts.
+  await handleNamePartsFillAfter(
+    ctx as Parameters<typeof handleNamePartsFillAfter>[0],
     providers,
     registeredOidcIds
   )
