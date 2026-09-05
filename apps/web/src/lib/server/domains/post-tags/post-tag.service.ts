@@ -21,6 +21,8 @@ import {
   boards,
   postTagAssignments,
   posts,
+  isNotNull,
+  desc,
 } from '@/lib/server/db'
 import type { PostTagId, BoardId } from '@quackback/ids'
 import { NotFoundError, ValidationError, ConflictError, InternalError } from '@/lib/shared/errors'
@@ -57,6 +59,14 @@ export async function createPostTag(input: CreateTagInput): Promise<PostTag> {
   })
   const duplicate = existingTags.find((tag) => tag.name.toLowerCase() === trimmedName.toLowerCase())
   if (duplicate) {
+    // A deleted tag still owns its name (the unique index does not know about
+    // soft deletes), and it can be brought back with its assignments intact.
+    if (duplicate.deletedAt) {
+      throw new ConflictError(
+        'DUPLICATE_DELETED_NAME',
+        `A deleted tag named "${trimmedName}" exists. Restore it under Deleted tags, or choose another name.`
+      )
+    }
     throw new ConflictError('DUPLICATE_NAME', `A tag with name "${trimmedName}" already exists`)
   }
 
@@ -179,6 +189,35 @@ export async function deletePostTag(id: PostTagId): Promise<void> {
   if (result.length === 0) {
     throw new NotFoundError('TAG_NOT_FOUND', `PostTag with ID ${id} not found`)
   }
+}
+
+/**
+ * Tags that were deleted, newest deletion first. Deletion is soft and keeps
+ * the tag's assignments, so any of these can be restored in place.
+ */
+export async function listDeletedPostTags(): Promise<PostTag[]> {
+  return db.query.postTags.findMany({
+    where: isNotNull(postTags.deletedAt),
+    orderBy: [desc(postTags.deletedAt), asc(postTags.name)],
+  })
+}
+
+/**
+ * Bring a deleted tag back. Its assignments were never removed, so it reappears
+ * on every post that carried it. The name cannot collide: the deleted row kept
+ * it reserved the whole time.
+ */
+export async function restorePostTag(id: PostTagId): Promise<PostTag> {
+  log.debug({ tag_id: id }, 'restore tag')
+  const [tag] = await db
+    .update(postTags)
+    .set({ deletedAt: null })
+    .where(and(eq(postTags.id, id), isNotNull(postTags.deletedAt)))
+    .returning()
+  if (!tag) {
+    throw new NotFoundError('TAG_NOT_FOUND', `Deleted tag with ID ${id} not found`)
+  }
+  return tag
 }
 
 /**

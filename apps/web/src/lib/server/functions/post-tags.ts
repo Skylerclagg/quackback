@@ -13,6 +13,8 @@ import {
   createPostTag,
   updatePostTag,
   deletePostTag,
+  listDeletedPostTags,
+  restorePostTag,
 } from '@/lib/server/domains/post-tags/post-tag.service'
 import { logger } from '@/lib/server/logger'
 
@@ -168,6 +170,29 @@ export const deletePostTagFn = createServerFn({ method: 'POST' })
     await deletePostTag(data.id as PostTagId)
     log.info({ tag_id: data.id }, 'tag deleted')
     return { id: data.id as PostTagId }
+  })
+
+/**
+ * Deleted tags, for the restore list. Manage permission rather than view:
+ * this is the undo surface for deletion, not a browsing one.
+ */
+export const fetchDeletedTags = createServerFn({ method: 'GET' }).handler(async () => {
+  await requireAuth({ permission: PERMISSIONS.TAG_MANAGE })
+  return listDeletedPostTags()
+})
+
+/**
+ * Bring a deleted tag back, assignments and all.
+ */
+export const restorePostTagFn = createServerFn({ method: 'POST' })
+  .validator(deleteTagSchema)
+  .handler(async ({ data }) => {
+    log.debug({ tag_id: data.id }, 'restore tag')
+    await requireAuth({ permission: PERMISSIONS.TAG_MANAGE })
+
+    const tag = await restorePostTag(data.id as PostTagId)
+    log.info({ tag_id: data.id }, 'tag restored')
+    return tag
   })
 
 /**

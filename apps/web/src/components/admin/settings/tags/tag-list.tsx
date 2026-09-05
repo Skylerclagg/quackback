@@ -1,8 +1,15 @@
 import { useState, useEffect, useTransition } from 'react'
 import { Switch } from '@/components/ui/switch'
 import { useRouter } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { PlusIcon, TrashIcon, PencilSquareIcon, ArrowPathIcon } from '@heroicons/react/24/solid'
+import {
+  PlusIcon,
+  TrashIcon,
+  PencilSquareIcon,
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
+} from '@heroicons/react/24/solid'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -19,7 +26,13 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SettingsCard } from '@/components/admin/settings/settings-card'
 import { cn } from '@/lib/shared/utils'
 import type { PostTag } from '@/lib/shared/db-types'
-import { createPostTagFn, updatePostTagFn, deletePostTagFn } from '@/lib/server/functions/post-tags'
+import {
+  createPostTagFn,
+  updatePostTagFn,
+  deletePostTagFn,
+  fetchDeletedTags,
+  restorePostTagFn,
+} from '@/lib/server/functions/post-tags'
 
 // ============================================================================
 // Constants
@@ -324,12 +337,26 @@ interface TagListProps {
 
 export function TagList({ initialTags }: TagListProps) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [, startTransition] = useTransition()
+  // The post tag picker reads the cached admin tag list (5 min stale time),
+  // which the router's loader invalidation never touches — so a tag created
+  // here was missing from the picker until the cache expired. Every change on
+  // this page refreshes it.
+  function refresh() {
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'tags'] })
+    startTransition(() => router.invalidate())
+  }
   const [tags, setTags] = useState(initialTags)
   const [savingField, setSavingField] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTag, setEditingTag] = useState<PostTag | null>(null)
   const [deletingTag, setDeletingTag] = useState<PostTag | null>(null)
+  // Deleted tags load on demand: the list is empty for most workspaces and
+  // only matters when something was removed by mistake.
+  const [deletedTags, setDeletedTags] = useState<PostTag[] | null>(null)
+  const [loadingDeleted, setLoadingDeleted] = useState(false)
+  const [restoringId, setRestoringId] = useState<string | null>(null)
 
   // Change color inline — save immediately
   const handleColorChange = async (tag: PostTag, color: string) => {
@@ -339,7 +366,7 @@ export function TagList({ initialTags }: TagListProps) {
 
     try {
       await updatePostTagFn({ data: { id: tag.id, color } })
-      startTransition(() => router.invalidate())
+      refresh()
     } catch {
       toast.error('Failed to update color')
       setTags((prev) => prev.map((t) => (t.id === tag.id ? { ...t, color: previousColor } : t)))
@@ -354,7 +381,7 @@ export function TagList({ initialTags }: TagListProps) {
     } else {
       setTags((prev) => [...prev, saved])
     }
-    startTransition(() => router.invalidate())
+    refresh()
   }
 
   function openCreate() {
@@ -372,11 +399,40 @@ export function TagList({ initialTags }: TagListProps) {
     try {
       await deletePostTagFn({ data: { id: deletingTag.id } })
       setTags((prev) => prev.filter((t) => t.id !== deletingTag.id))
-      startTransition(() => router.invalidate())
+      setDeletedTags((prev) => (prev ? [{ ...deletingTag, deletedAt: new Date() }, ...prev] : prev))
+      refresh()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete tag')
     } finally {
       setDeletingTag(null)
+    }
+  }
+
+  async function showDeleted() {
+    setLoadingDeleted(true)
+    try {
+      setDeletedTags(await fetchDeletedTags())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load deleted tags')
+    } finally {
+      setLoadingDeleted(false)
+    }
+  }
+
+  async function handleRestore(tag: PostTag) {
+    setRestoringId(tag.id)
+    try {
+      const restored = await restorePostTagFn({ data: { id: tag.id } })
+      setDeletedTags((prev) => prev?.filter((t) => t.id !== tag.id) ?? prev)
+      setTags((prev) => [...prev, restored].sort((a, b) => a.name.localeCompare(b.name)))
+      refresh()
+      toast.success(`Restored "${restored.name}"`, {
+        description: 'It is back on every post that had it.',
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to restore tag')
+    } finally {
+      setRestoringId(null)
     }
   }
 
@@ -465,6 +521,50 @@ export function TagList({ initialTags }: TagListProps) {
             <span className="text-sm">Add new tag</span>
           </button>
         </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Deleted tags"
+        description="Deleting a tag keeps its assignments. Restore one to bring it back on every post that had it."
+        contentClassName="p-4"
+      >
+        {deletedTags === null ? (
+          <Button variant="outline" size="sm" onClick={showDeleted} disabled={loadingDeleted}>
+            {loadingDeleted ? 'Loading…' : 'Show deleted tags'}
+          </Button>
+        ) : deletedTags.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No deleted tags.</p>
+        ) : (
+          <div className="space-y-1">
+            {deletedTags.map((tag) => (
+              <div
+                key={tag.id}
+                className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50"
+              >
+                <span
+                  className="h-3 w-3 rounded-full shrink-0 opacity-50"
+                  style={{ backgroundColor: tag.color }}
+                />
+                <span className="text-sm font-medium text-muted-foreground line-through">
+                  {tag.name}
+                </span>
+                <span className="text-xs text-muted-foreground truncate flex-1">
+                  {tag.deletedAt ? `Deleted ${new Date(tag.deletedAt).toLocaleDateString()}` : ''}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7"
+                  onClick={() => handleRestore(tag)}
+                  disabled={restoringId === tag.id}
+                >
+                  <ArrowUturnLeftIcon className="h-3.5 w-3.5 mr-1.5" />
+                  {restoringId === tag.id ? 'Restoring…' : 'Restore'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </SettingsCard>
 
       {/* Create/Edit dialog */}
