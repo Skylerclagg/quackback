@@ -268,6 +268,10 @@ export function useAddComment() {
       queryClient.invalidateQueries({ queryKey: inboxKeys.detail(typedPostId) })
       // Also invalidate portal query so comments appear there too
       queryClient.invalidateQueries({ queryKey: ['portal', 'post', typedPostId] })
+      // A team comment flips the post's responded state: the inbox list under
+      // the Unresponded filter and the filter pane's facet counts both live
+      // under lists(), and neither would otherwise refetch.
+      queryClient.invalidateQueries({ queryKey: inboxKeys.lists() })
     },
   })
 }

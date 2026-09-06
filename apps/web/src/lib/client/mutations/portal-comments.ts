@@ -19,6 +19,7 @@ import {
 import type { PostId, PostCommentId } from '@quackback/ids'
 import { portalDetailQueries } from '@/lib/client/queries/portal-detail'
 import { commentKeys } from '@/lib/client/hooks/use-comments-query'
+import { inboxKeys } from '@/lib/client/hooks/use-inbox-query'
 import { addReplyToTree, replaceOptimisticInTree } from '@/lib/client/utils/comment-tree-helpers'
 import type { TiptapContent } from '@/lib/shared/db-types'
 
@@ -181,6 +182,9 @@ export function useCreateComment({ postId, author, onSuccess, onError }: UseCrea
       queryClient.invalidateQueries({ queryKey })
       // Also invalidate admin inbox detail so comments appear in admin context
       queryClient.invalidateQueries({ queryKey: ['inbox', 'detail', postId] })
+      // A team comment flips the post's responded state: the inbox list under
+      // the Unresponded filter and the filter pane's counts live under lists().
+      queryClient.invalidateQueries({ queryKey: inboxKeys.lists() })
       onSuccess?.(data)
     },
   })
@@ -225,6 +229,7 @@ export function useDeleteComment({
       queryClient.invalidateQueries({ queryKey: portalDetailQueries.postDetail(postId).queryKey })
       queryClient.invalidateQueries({ queryKey: ['inbox', 'detail', postId] })
       queryClient.invalidateQueries({ queryKey: ['activity', 'post', postId] })
+      queryClient.invalidateQueries({ queryKey: inboxKeys.lists() })
       onSuccess?.()
     },
     onError,
@@ -251,6 +256,7 @@ export function useRestoreComment({
       queryClient.invalidateQueries({ queryKey: portalDetailQueries.postDetail(postId).queryKey })
       queryClient.invalidateQueries({ queryKey: ['inbox', 'detail', postId] })
       queryClient.invalidateQueries({ queryKey: ['activity', 'post', postId] })
+      queryClient.invalidateQueries({ queryKey: inboxKeys.lists() })
       onSuccess?.()
     },
     onError,

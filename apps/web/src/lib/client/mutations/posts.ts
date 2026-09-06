@@ -191,6 +191,9 @@ export function useChangePostStatusId() {
     },
     onSettled: (_data, _error, { postId, statusId }, context) => {
       queryClient.invalidateQueries({ queryKey: inboxKeys.detail(postId) })
+      // Status facet counts moved with the post; the optimistic list patch above
+      // cannot update them.
+      queryClient.invalidateQueries({ queryKey: inboxKeys.lists() })
       // Narrow roadmap refresh: only the source and destination status columns
       // (across every roadmap/filter combo) rather than the whole roadmap tree.
       const previousStatusId = context?.previousStatusId ?? null
