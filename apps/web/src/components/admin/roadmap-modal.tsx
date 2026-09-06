@@ -115,7 +115,7 @@ function RoadmapModalContent({ postId, currentUser, onClose }: RoadmapModalConte
       />
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Post content layout */}
         <div className="flex">
           {/* Vote sidebar */}

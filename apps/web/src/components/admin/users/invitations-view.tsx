@@ -133,7 +133,7 @@ export function InvitationsView({ status }: InvitationsViewProps) {
       )}
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
         {portal.isLoading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />

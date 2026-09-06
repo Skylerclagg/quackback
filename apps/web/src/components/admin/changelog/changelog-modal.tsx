@@ -267,7 +267,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         {/* Main content area - 2 column layout on desktop */}
         <div className="flex flex-1 min-h-0">
           {/* Left: Content editor */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="px-4 sm:px-6 pt-4 space-y-2 empty:hidden">
               {locked && (
                 <div className="flex items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

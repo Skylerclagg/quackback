@@ -160,7 +160,7 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
             {/* Main content area - 2 column layout on desktop */}
             <div className="flex flex-1 min-h-0">
               {/* Left: Content editor */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 <ChangelogFormFields
                   form={form}
                   contentJson={contentJson}
