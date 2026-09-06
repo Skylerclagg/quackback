@@ -373,6 +373,7 @@ went stale the moment a queue moved.
 | `sla-breach-sweep`       | `* * * * *`    | 1           | 3           | 60s   |
 | `snooze-sweep`           | `* * * * *`    | 1           | 3           | 60s   |
 | `changelog-source-sync`  | `17 * * * *`   | 1           | 3           | 60s   |
+| `post-auto-close`        | `40 * * * *`   | 1           | 3           | 60s   |
 | `workflow-sweep`         | `*/5 * * * *`  | 1           | 3           | 60s   |
 | `workflow-retention`     | `0 4 * * *`    | 1           | 3           | 60s   |
 | `email-log-retention`    | `0 6 * * *`    | 1           | 3           | 60s   |

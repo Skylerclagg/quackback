@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { BoardId } from '@quackback/ids'
 
 const mutate = vi.fn()
@@ -14,6 +15,14 @@ vi.mock('@/lib/client/mutations', () => ({
 }))
 
 const navigate = vi.fn()
+// The form reads the status list for the auto-close target; stub it so the
+// render needs no server function.
+vi.mock('@/lib/client/queries/admin', () => ({
+  adminQueries: {
+    statuses: () => ({ queryKey: ['admin', 'statuses'], queryFn: async () => [] }),
+  },
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
 }))
@@ -34,7 +43,11 @@ beforeEach(() => {
 
 describe('<BoardGeneralForm> rename navigation', () => {
   it('navigates to the new slug when a rename changes it', async () => {
-    render(<BoardGeneralForm board={board} />)
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <BoardGeneralForm board={board} />
+      </QueryClientProvider>
+    )
     fireEvent.change(screen.getByLabelText('Board name'), {
       target: { value: 'Issue Tracker' },
     })
@@ -57,7 +70,11 @@ describe('<BoardGeneralForm> rename navigation', () => {
   })
 
   it('does not navigate when the slug is unchanged', async () => {
-    render(<BoardGeneralForm board={board} />)
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <BoardGeneralForm board={board} />
+      </QueryClientProvider>
+    )
     fireEvent.change(screen.getByLabelText('Description'), {
       target: { value: 'Updated description' },
     })

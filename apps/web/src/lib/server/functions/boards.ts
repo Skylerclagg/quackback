@@ -53,6 +53,14 @@ const boardSettingsSchema = z
   .object({
     roadmapStatusIds: z.array(z.string()).optional(),
     requireTag: z.boolean().optional(),
+    autoClose: z
+      .object({
+        afterDays: z.number().int().min(1).max(365),
+        toStatusId: z.string().min(1),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict()
 

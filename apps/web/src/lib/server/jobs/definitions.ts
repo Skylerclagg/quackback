@@ -212,6 +212,15 @@ export const JOB_DEFINITIONS: readonly JobDefinition[] = [
       ),
   },
   {
+    name: 'post-auto-close',
+    cron: '40 * * * *',
+    maxAttempts: 3,
+    handler: () =>
+      import('@/lib/server/domains/posts/post-auto-close').then((m) => m.runPostAutoClose),
+    cronEnabled: () =>
+      import('@/lib/server/domains/posts/post-auto-close').then((m) => m.isPostAutoCloseDue()),
+  },
+  {
     name: 'workflow-sweep',
     cron: '*/5 * * * *',
     maxAttempts: 3,

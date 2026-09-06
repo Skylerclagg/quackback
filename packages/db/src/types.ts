@@ -100,6 +100,12 @@ export interface BoardSettings {
   roadmapStatusIds?: PostStatusId[] // Status IDs to show on roadmap
   /** Portal submissions on this board must carry at least one (public) tag. */
   requireTag?: boolean
+  /**
+   * Move posts that have sat in a Complete-category status for `afterDays`
+   * days into `toStatusId` (a Closed-category status). Null/absent = off.
+   * Evaluated hourly by the post-auto-close job.
+   */
+  autoClose?: { afterDays: number; toStatusId: PostStatusId } | null
   customFields?: BoardCustomField[] // Extra intake fields the submission form renders
 }
 

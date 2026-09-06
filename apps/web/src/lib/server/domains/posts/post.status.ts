@@ -7,6 +7,7 @@
 import { db, posts, boards, postStatuses, eq } from '@/lib/server/db'
 import { type PostId, type PostStatusId, type UserId, type PrincipalId } from '@quackback/ids'
 import { dispatchPostStatusChanged, buildEventActor } from '@/lib/server/events/dispatch'
+import type { EventActor } from '@/lib/server/events/types'
 import { NotFoundError } from '@/lib/shared/errors'
 import { createActivity } from '@/lib/server/domains/activity/activity.service'
 import type { ChangeStatusResult } from './post.types'
@@ -36,6 +37,31 @@ export async function changeStatus(
     email?: string
     displayName?: string
   }
+): Promise<ChangeStatusResult> {
+  return applyStatusChange(postId, statusId, buildEventActor(actor), actor.principalId, {})
+}
+
+/**
+ * A status change made by the system rather than a person — the board's
+ * auto-close sweep today. Same path as {@link changeStatus}: the post moves,
+ * the activity is recorded (with no principal and a `reason`), and
+ * post.status_changed fires for integrations and subscribers as usual.
+ */
+export async function changeStatusBySystem(
+  postId: PostId,
+  statusId: PostStatusId,
+  reason: 'auto-close'
+): Promise<ChangeStatusResult> {
+  const actor: EventActor = { type: 'service', displayName: 'Auto-close' }
+  return applyStatusChange(postId, statusId, actor, null, { reason })
+}
+
+async function applyStatusChange(
+  postId: PostId,
+  statusId: PostStatusId,
+  eventActor: EventActor,
+  activityPrincipalId: PrincipalId | null,
+  activityExtra: Record<string, unknown>
 ): Promise<ChangeStatusResult> {
   // Get existing post
   const existingPost = await db.query.posts.findFirst({ where: eq(posts.id, postId) })
@@ -74,7 +100,7 @@ export async function changeStatus(
 
   // Dispatch post.status_changed event for webhooks, Slack, etc.
   await dispatchPostStatusChanged(
-    buildEventActor(actor),
+    eventActor,
     {
       id: updatedPost.id,
       title: updatedPost.title,
@@ -87,7 +113,7 @@ export async function changeStatus(
 
   createActivity({
     postId,
-    principalId: actor.principalId,
+    principalId: activityPrincipalId,
     type: 'status.changed',
     metadata: {
       fromName: previousStatusName,
@@ -97,6 +123,7 @@ export async function changeStatus(
       // target status by slug even after a rename.
       toSlug: newStatus.slug,
       toColor: newStatus.color ?? null,
+      ...activityExtra,
     },
   })
 
