@@ -50,6 +50,8 @@ interface CreatePostInput {
   contentJson: unknown
   /** Answers to the board's configured custom fields, keyed by field key. */
   customFields?: Record<string, unknown>
+  /** Public tag ids picked on the submit form. */
+  tagIds?: string[]
 }
 
 interface UserEditPostInput {
@@ -204,7 +206,7 @@ export function useCreatePublicPost() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ boardId, title, content, contentJson, customFields }: CreatePostInput) =>
+    mutationFn: ({ boardId, title, content, contentJson, customFields, tagIds }: CreatePostInput) =>
       createPublicPostFn({
         data: {
           boardId,
@@ -212,6 +214,7 @@ export function useCreatePublicPost() {
           content,
           contentJson: contentJson as { type: 'doc'; content?: unknown[] },
           customFields,
+          tagIds,
         },
       }),
     onSuccess: (newPost) => {
