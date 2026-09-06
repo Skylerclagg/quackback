@@ -47,10 +47,12 @@ export function ModalHeader({
             <XMarkIcon className="h-4 w-4" />
           </Button>
 
-          <div className="hidden sm:flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground/60">{section}</span>
-            <span className="text-muted-foreground/40">/</span>
-            <span className="text-foreground/80 font-medium truncate max-w-[240px]">{title}</span>
+          <div className="flex min-w-0 items-center gap-2 text-sm">
+            <span className="hidden sm:inline text-muted-foreground/60">{section}</span>
+            <span className="hidden sm:inline text-muted-foreground/40">/</span>
+            <span className="text-foreground/80 font-medium truncate max-w-[45vw] sm:max-w-[240px]">
+              {title}
+            </span>
           </div>
         </div>
 

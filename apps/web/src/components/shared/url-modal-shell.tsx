@@ -22,7 +22,10 @@ export function UrlModalShell({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[95vw] sm:w-[90vw] lg:max-w-5xl xl:max-w-6xl h-[85vh] p-0 gap-0 flex flex-col"
+        // Phones: full-screen, 100dvh, so the body scrolls inside the modal and
+        // the comment composer stays reachable with the keyboard open. From sm
+        // up: the centred dialog as before.
+        className="max-sm:inset-0 max-sm:top-0 max-sm:left-0 max-sm:translate-x-0 max-sm:translate-y-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-screen max-sm:max-w-none max-sm:rounded-none sm:w-[90vw] lg:max-w-5xl xl:max-w-6xl sm:h-[85vh] p-0 gap-0 flex flex-col"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">{srTitle}</DialogTitle>

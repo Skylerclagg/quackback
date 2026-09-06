@@ -7,7 +7,13 @@ import { ModalFooter } from '@/components/shared/modal-footer'
 import { useUrlModal } from '@/lib/client/hooks/use-url-modal'
 import { useSuspenseQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { JSONContent } from '@tiptap/react'
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid'
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  AdjustmentsHorizontalIcon,
+} from '@heroicons/react/24/solid'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { StatusDropdown } from '@/components/shared/status-dropdown'
 import { toast } from 'sonner'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ModalHeader } from '@/components/shared/modal-header'
@@ -140,6 +146,8 @@ function PostModalContent({
   const [showMergeDialog, setShowMergeDialog] = useState(false)
   const [showMergeOthersDialog, setShowMergeOthersDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  // Below lg the metadata sidebar is hidden; this sheet is how it opens there.
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'comments' | 'activity'>('comments')
 
   // Duplicate badge indicator — derived from merge suggestions (deduped by React Query with SimilarPostsCard)
@@ -401,6 +409,27 @@ function PostModalContent({
                 className="w-full bg-transparent border-0 outline-none text-2xl font-semibold text-foreground placeholder:text-muted-foreground/60 placeholder:font-normal caret-primary mb-4"
               />
 
+              {/* Small screens: the sidebar is hidden, so status lives here and the
+                  rest opens in a sheet. */}
+              <div className="lg:hidden mb-4 flex flex-wrap items-center gap-2">
+                <StatusDropdown
+                  currentStatus={currentStatus}
+                  statuses={statuses}
+                  onStatusChange={(statusId) => void handleStatusChange(statusId)}
+                  disabled={isUpdating}
+                  variant="button"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMobileDetailsOpen(true)}
+                >
+                  <AdjustmentsHorizontalIcon className="h-4 w-4 mr-1.5" />
+                  Details
+                </Button>
+              </div>
+
               {/* Rich text editor */}
               <RichTextEditor
                 value={contentJson || ''}
@@ -559,6 +588,46 @@ function PostModalContent({
           <CustomerContextPanel email={post.authorEmail} />
         </div>
       </ScrollArea>
+
+      {/* Small screens: the metadata sidebar as a bottom sheet */}
+      <Sheet open={mobileDetailsOpen} onOpenChange={setMobileDetailsOpen}>
+        <SheetContent side="bottom" className="h-[85dvh] overflow-y-auto p-0 lg:hidden">
+          <SheetHeader className="px-4 pt-4 pb-0">
+            <SheetTitle>Post details</SheetTitle>
+          </SheetHeader>
+          <Suspense fallback={<MetadataSidebarSkeleton variant="column" />}>
+            <MetadataSidebar
+              postId={postId}
+              voteCount={post.voteCount}
+              status={currentStatus}
+              board={post.board}
+              authorName={post.authorName}
+              authorAvatarUrl={(post.principalId && post.avatarUrls?.[post.principalId]) || null}
+              authorPrincipalId={post.principalId}
+              createdAt={new Date(post.createdAt)}
+              eta={post.eta ?? null}
+              tags={post.tags}
+              canEdit
+              showVoters
+              allStatuses={statuses}
+              allTags={tags}
+              allBoards={boards}
+              onStatusChange={handleStatusChange}
+              onEtaChange={handleEtaChange}
+              onTagsChange={handleTagsChange}
+              onBoardChange={handleBoardChange}
+              owner={currentOwner}
+              ownerCandidates={canSetOwner ? ownerCandidates : undefined}
+              onOwnerChange={canSetOwner ? handleOwnerChange : undefined}
+              isUpdating={isUpdating}
+              hideSubscribe
+              variant="column"
+              manageActions={manageActions}
+              className="block w-full border-0 bg-transparent"
+            />
+          </Suspense>
+        </SheetContent>
+      </Sheet>
 
       {/* Footer */}
       <ModalFooter

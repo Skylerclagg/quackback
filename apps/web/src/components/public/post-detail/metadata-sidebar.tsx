@@ -290,6 +290,8 @@ interface MetadataSidebarProps {
   hideVote?: boolean
   /** Visual variant: 'column' (default border-l) or 'card' (floating card) */
   variant?: 'column' | 'card'
+  /** Extra root classes; the admin modal uses it to show the sidebar inside a sheet on small screens. */
+  className?: string
   /** Additional post IDs whose voters should be merged (e.g. for merge preview) */
   votersAdditionalPostIds?: PostId[]
   /** Hide subscription controls in voters modal */
@@ -342,6 +344,7 @@ export function MetadataSidebar({
   hideSubscribe = false,
   hideVote = false,
   variant = 'column',
+  className,
   votersAdditionalPostIds,
   votersReadonly = false,
   showVoters = false,
@@ -434,7 +437,8 @@ export function MetadataSidebar({
     <aside
       className={cn(
         'hidden lg:block w-72 shrink-0 animate-in fade-in duration-200 fill-mode-backwards',
-        !isCard && 'border-s border-border/30 bg-muted/5'
+        !isCard && 'border-s border-border/30 bg-muted/5',
+        className
       )}
       style={{ animationDelay: '100ms' }}
     >

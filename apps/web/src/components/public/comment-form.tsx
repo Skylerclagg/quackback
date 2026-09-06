@@ -264,7 +264,7 @@ export function CommentForm({
                   <button
                     type="button"
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors',
+                      'inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 sm:py-1 text-xs transition-colors',
                       'hover:bg-muted/80',
                       selectedStatus
                         ? 'bg-muted/60 border border-border/50'
@@ -368,7 +368,7 @@ export function CommentForm({
                       onClick={() => setIsPrivate(!isPrivate)}
                       disabled={isPrivateLocked}
                       className={cn(
-                        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors',
+                        'inline-flex items-center gap-1 rounded-md px-2 py-1.5 sm:py-1 text-xs transition-colors',
                         isPrivate
                           ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
                           : 'text-muted-foreground hover:text-foreground hover:bg-muted/80',
@@ -394,7 +394,7 @@ export function CommentForm({
                   size="sm"
                   onClick={onCancel}
                   disabled={isSubmitting}
-                  className="h-7 text-xs"
+                  className="h-9 sm:h-7 text-xs"
                 >
                   {intl.formatMessage({
                     id: 'portal.commentForm.cancel',
@@ -402,7 +402,12 @@ export function CommentForm({
                   })}
                 </Button>
               )}
-              <Button type="submit" size="sm" disabled={isSubmitting} className="h-7 text-xs">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSubmitting}
+                className="h-9 sm:h-7 text-xs"
+              >
                 {isSubmitting
                   ? intl.formatMessage({
                       id: 'portal.commentForm.submitting',
