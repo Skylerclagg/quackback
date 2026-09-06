@@ -23,4 +23,8 @@ describe('resolvePublicTagSelection', () => {
       /at least one tag/
     )
   })
+  it('does not require a tag while there is none to choose', () => {
+    expect(resolvePublicTagSelection([], [], { requireTag: true })).toEqual([])
+    expect(resolvePublicTagSelection([], undefined, { requireTag: true })).toEqual([])
+  })
 })

@@ -119,7 +119,8 @@ export function FeedbackHeaderAnimated({
   const selectedBoard = boards.find((b) => b.id === selectedBoardId)
   const boardCustomFields = selectedBoard?.settings?.customFields ?? []
   const requireTag = selectedBoard?.settings?.requireTag ?? false
-  const tagRequirementMet = !requireTag || selectedTagIds.length > 0
+  // Same rule as the server: nothing is required while there is no tag to pick.
+  const tagRequirementMet = !requireTag || tags.length === 0 || selectedTagIds.length > 0
   const toggleTag = (id: string) =>
     setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]))
 

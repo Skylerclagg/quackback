@@ -113,7 +113,8 @@ export function BoardGeneralForm({ board }: BoardGeneralFormProps) {
             <Label htmlFor="board-require-tag">Require a tag on new posts</Label>
             <p className="text-xs text-muted-foreground">
               People submitting on the portal must pick at least one tag (team-only tags are never
-              offered). Widget and team submissions are exempt.
+              offered). Widget and team submissions are exempt, and nothing is required while no
+              portal-visible tag exists.
             </p>
           </div>
           <Switch
