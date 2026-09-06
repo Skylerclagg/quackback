@@ -16,6 +16,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ALL_PERMISSIONS, PERMISSIONS } from '@/lib/shared/permissions'
 import { RoleEditor } from '../role-editor'
+import { PERMISSION_LABELS } from '@/lib/client/permission-labels'
+
+// Rows are labelled by their plain-English name; the raw key lives in the tooltip.
+const labelOf = (key: keyof typeof PERMISSION_LABELS) => PERMISSION_LABELS[key].label
 
 const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
@@ -105,7 +109,7 @@ describe('RoleEditor', () => {
 
   it('toggles a key into the save payload', async () => {
     renderEditor()
-    const row = screen.getByLabelText(PERMISSIONS.TICKET_VIEW)
+    const row = screen.getByLabelText(labelOf(PERMISSIONS.TICKET_VIEW))
     fireEvent.click(row)
     fireEvent.click(screen.getByText('Save role'))
     await waitFor(() => expect(updateRoleFn).toHaveBeenCalled())
@@ -119,7 +123,7 @@ describe('RoleEditor', () => {
   it('renders above-ceiling keys disabled', () => {
     renderEditor()
     fireEvent.click(screen.getByRole('button', { name: /Workspace/ }))
-    const billing = screen.getByLabelText(PERMISSIONS.BILLING_MANAGE)
+    const billing = screen.getByLabelText(labelOf(PERMISSIONS.BILLING_MANAGE))
     expect((billing as HTMLButtonElement).disabled).toBe(true)
     expect(screen.getByText("You don't hold this")).toBeTruthy()
   })
@@ -146,18 +150,18 @@ describe('RoleEditor', () => {
   it('search filters the visible keys and expands matches', () => {
     renderEditor()
     // Collapsed by default: billing.manage (workspace) isn't rendered yet.
-    expect(screen.queryByLabelText(PERMISSIONS.BILLING_MANAGE)).toBeNull()
+    expect(screen.queryByLabelText(labelOf(PERMISSIONS.BILLING_MANAGE))).toBeNull()
     fireEvent.change(screen.getByPlaceholderText(/Filter \d+ permissions/), {
       target: { value: 'billing' },
     })
-    expect(screen.queryByLabelText(PERMISSIONS.TICKET_VIEW)).toBeNull()
-    expect(screen.getByLabelText(PERMISSIONS.BILLING_MANAGE)).toBeTruthy()
+    expect(screen.queryByLabelText(labelOf(PERMISSIONS.TICKET_VIEW))).toBeNull()
+    expect(screen.getByLabelText(labelOf(PERMISSIONS.BILLING_MANAGE))).toBeTruthy()
   })
 
   it('opens categories carrying newly-shipped keys by default', () => {
     renderEditor()
     // ticket.export-style New key: its category (support) starts expanded.
-    expect(screen.getByLabelText(PERMISSIONS.TICKET_VIEW)).toBeTruthy()
+    expect(screen.getByLabelText(labelOf(PERMISSIONS.TICKET_VIEW))).toBeTruthy()
   })
 
   it('renders system presets read-only (no Save, offers Duplicate)', () => {

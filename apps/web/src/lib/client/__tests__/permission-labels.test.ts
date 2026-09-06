@@ -5,8 +5,8 @@
  * status_page were missing from the old hand-maintained map).
  */
 import { describe, it, expect } from 'vitest'
-import { PERMISSION_CATEGORIES } from '@/lib/shared/permissions'
-import { CATEGORY_LABELS } from '../permission-labels'
+import { PERMISSIONS, PERMISSION_CATEGORIES } from '@/lib/shared/permissions'
+import { CATEGORY_LABELS, PERMISSION_LABELS } from '../permission-labels'
 
 describe('CATEGORY_LABELS', () => {
   it('labels every permission category', () => {
@@ -20,6 +20,24 @@ describe('CATEGORY_LABELS', () => {
     const known = new Set<string>(PERMISSION_CATEGORIES)
     for (const key of Object.keys(CATEGORY_LABELS)) {
       expect(known.has(key), `stale label '${key}'`).toBe(true)
+    }
+  })
+})
+
+describe('PERMISSION_LABELS', () => {
+  it('names and describes every permission in plain English', () => {
+    for (const key of Object.values(PERMISSIONS)) {
+      const entry = PERMISSION_LABELS[key]
+      expect(entry, `missing entry for '${key}'`).toBeTruthy()
+      expect(entry.label).not.toMatch(/[._]/)
+      expect(entry.label).not.toBe(key)
+      expect(entry.description.length).toBeGreaterThan(15)
+    }
+  })
+  it('has no entries for unknown permissions', () => {
+    const known = new Set<string>(Object.values(PERMISSIONS))
+    for (const key of Object.keys(PERMISSION_LABELS)) {
+      expect(known.has(key), `stale entry '${key}'`).toBe(true)
     }
   })
 })

@@ -8,7 +8,8 @@ import {
   PERMISSIONS,
   type PermissionKey,
 } from '@/lib/shared/permissions'
-import { CATEGORY_LABELS } from '@/lib/client/permission-labels'
+import { CATEGORY_LABELS, PERMISSION_LABELS } from '@/lib/client/permission-labels'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePermissions, useHasPermission } from '@/lib/client/use-permissions'
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { createRoleFn, updateRoleFn, deleteRoleFn, listRolesFn } from '@/lib/server/functions/roles'
@@ -40,8 +41,7 @@ import { CUSTOM_ROLE_BADGE } from './role-ui'
 type RoleWithMeta = Awaited<ReturnType<typeof listRolesFn>>['roles'][number]
 
 type RoleEditorProps =
-  | { mode: 'edit'; roleId: string }
-  | { mode: 'create'; duplicateFromId?: string }
+  { mode: 'edit'; roleId: string } | { mode: 'create'; duplicateFromId?: string }
 
 const ROLES_TAB = { to: '/admin/settings/members', search: { tab: 'roles' } } as const
 
@@ -172,7 +172,15 @@ export function RoleEditor(props: RoleEditorProps) {
     navigate({ to: '/admin/settings/members/roles/new', search: { from: role?.id } })
 
   const query = search.trim().toLowerCase()
-  const visible = PERMISSION_CATALOGUE.filter((p) => !query || p.key.toLowerCase().includes(query))
+  const visible = PERMISSION_CATALOGUE.filter((p) => {
+    if (!query) return true
+    const { label, description } = PERMISSION_LABELS[p.key]
+    return (
+      p.key.toLowerCase().includes(query) ||
+      label.toLowerCase().includes(query) ||
+      description.toLowerCase().includes(query)
+    )
+  })
 
   const toggle = (key: PermissionKey) => {
     setSelected((prev) => {
@@ -355,10 +363,22 @@ export function RoleEditor(props: RoleEditorProps) {
                         <Checkbox
                           checked={selected.has(p.key)}
                           disabled={readOnly || aboveCeiling}
-                          aria-label={p.key}
+                          aria-label={PERMISSION_LABELS[p.key].label}
                           onCheckedChange={() => toggle(p.key)}
                         />
-                        <span className="font-mono text-xs">{p.key}</span>
+                        <TooltipProvider delayDuration={150}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-4">
+                                {PERMISSION_LABELS[p.key].label}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="start" className="max-w-xs">
+                              <p>{PERMISSION_LABELS[p.key].description}</p>
+                              <p className="mt-1 font-mono text-[11px] opacity-70">{p.key}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         {newKeys.has(p.key) && (
                           <Badge size="sm" variant="outline">
                             New
