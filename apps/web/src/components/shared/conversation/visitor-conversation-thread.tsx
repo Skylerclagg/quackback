@@ -688,6 +688,14 @@ export function VisitorConversationThread({
   // The newest visitor message is "Seen" once the agent's read watermark
   // reaches it.
   const lastVisitorMessage = [...messages].reverse().find((m) => m.senderType === 'visitor')
+  // Once a person has replied, the thread is fronted by them rather than the
+  // assistant: the latest human agent reply's author. Assistant turns keep the
+  // assistant identity, as does a hand-off that nobody has answered yet.
+  const humanAgent =
+    [...messages]
+      .reverse()
+      .find((m) => m.senderType === 'agent' && !m.isAssistant && m.author?.displayName)?.author ??
+    null
   const lastVisitorSeen =
     !!agentReadAt &&
     !!lastVisitorMessage &&
@@ -1144,7 +1152,34 @@ export function VisitorConversationThread({
           identity — the AI is always available, so no availability promise is
           made at any point (matching the AI-first messenger model). Without an
           assistant, the classic live presence strip shows. */}
-      {showHeader && assistant ? (
+      {showHeader && humanAgent ? (
+        <div className="flex items-center gap-2.5 px-4 py-2 border-b border-border/40 shrink-0">
+          <Avatar
+            src={humanAgent.avatarUrl}
+            name={humanAgent.displayName ?? ''}
+            className="size-7 text-xs"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight text-foreground">
+              {humanAgent.displayName}
+            </p>
+            <p className="text-[11px] leading-tight text-muted-foreground">
+              {teamName ? (
+                <FormattedMessage
+                  id="widget.messenger.agent.fromTeam"
+                  defaultMessage="from {team}"
+                  values={{ team: teamName }}
+                />
+              ) : (
+                <FormattedMessage
+                  id="widget.messenger.agent.onTheTeam"
+                  defaultMessage="On the team"
+                />
+              )}
+            </p>
+          </div>
+        </div>
+      ) : showHeader && assistant ? (
         <div className="flex items-center gap-2.5 px-4 py-2 border-b border-border/40 shrink-0">
           <Avatar src={assistant.avatarUrl} name={assistant.name} className="size-7 text-xs" />
           <div className="min-w-0">
