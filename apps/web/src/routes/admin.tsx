@@ -12,6 +12,7 @@ import { UpdateBanner } from '@/components/admin/update-banner'
 import { PlanNoticeBanner } from '@/components/admin/plan-notice-banner'
 import { getPlanNotice } from '@/lib/server/functions/plan-notice'
 import { isProductEnabled } from '@/lib/shared/types/settings'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
 
 export const Route = createFileRoute('/admin')({
   beforeLoad: async ({ location }) => {
@@ -110,6 +111,8 @@ function usePostIdFromUrl(): string | undefined {
 }
 
 function AdminLayout() {
+  // Resolve the assistant's configured name early; static labels read the store.
+  useAssistantName()
   const {
     initialUserData,
     latestVersion,

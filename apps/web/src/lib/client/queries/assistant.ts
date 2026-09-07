@@ -1,5 +1,8 @@
 import { queryOptions } from '@tanstack/react-query'
-import { getAssistantSettingsFn } from '@/lib/server/functions/assistant-settings'
+import {
+  getAssistantSettingsFn,
+  getAssistantIdentityFn,
+} from '@/lib/server/functions/assistant-settings'
 import {
   listGuidanceRulesFn,
   listAssistantToolsFn,
@@ -13,6 +16,7 @@ const TOOLS_STALE_TIME = 5 * 60 * 1000
 
 export const assistantKeys = {
   settings: () => ['assistant', 'settings'] as const,
+  identity: () => ['assistant', 'identity'] as const,
   guidanceRules: () => ['assistant', 'guidanceRules'] as const,
   guidanceRuleStats: () => ['assistant', 'guidanceRuleStats'] as const,
   tools: () => ['assistant', 'tools'] as const,
@@ -25,6 +29,13 @@ export const assistantQueries = {
       queryKey: assistantKeys.settings(),
       queryFn: getAssistantSettingsFn,
       staleTime: STALE_TIME,
+    }),
+  /** Display name + avatar only; readable by any teammate (see useAssistantName). */
+  identity: () =>
+    queryOptions({
+      queryKey: assistantKeys.identity(),
+      queryFn: getAssistantIdentityFn,
+      staleTime: TOOLS_STALE_TIME,
     }),
 
   guidanceRules: () =>

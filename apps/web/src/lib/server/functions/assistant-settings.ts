@@ -105,3 +105,16 @@ export const updateWidgetAssistantDeploymentFn = createServerFn({ method: 'POST'
       await import('@/lib/server/domains/settings/settings.widget')
     return updateWidgetAssistantDeployment(data, configActor(ctx))
   })
+
+/**
+ * The assistant's display identity, for any signed-in teammate. Read-only and
+ * gated only by a session: the inbox nav, analytics and workflow builder name
+ * the assistant, and a member without assistant.manage must see the
+ * configured name too.
+ */
+export const getAssistantIdentityFn = createServerFn({ method: 'GET' }).handler(async () => {
+  await requireAuth()
+  const { getAssistantSettings } = await import('@/lib/server/domains/settings/settings.assistant')
+  const { config } = await getAssistantSettings()
+  return { name: config.identity.name, avatarUrl: config.identity.avatarUrl }
+})

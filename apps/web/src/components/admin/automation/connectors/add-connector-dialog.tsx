@@ -19,6 +19,8 @@ import {
   connectorCreateInputSchema,
   type ConnectorAuthMode,
 } from '@/lib/shared/assistant/connectors'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 export function AddConnectorDialog({
   open,
@@ -27,6 +29,7 @@ export function AddConnectorDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const navigate = useNavigate()
   const create = useCreateConnector()
@@ -103,8 +106,10 @@ export function AddConnectorDialog({
           <DialogDescription>
             {intl.formatMessage({
               id: 'automation.connectors.add.description',
-              defaultMessage:
+              defaultMessage: withAssistantName(
                 'Connect Quinn to an external MCP server. Tools are discovered automatically.',
+                assistantName
+              ),
             })}
           </DialogDescription>
         </DialogHeader>

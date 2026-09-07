@@ -18,6 +18,8 @@ import {
   type AssistantCopilotKnowledge,
 } from '@/lib/shared/assistant/config'
 import { isAssistantFieldManaged, ManagedSettingHint } from './assistant-form'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 /**
  * Every knowledge source's admin label, help text, and readiness live in one
@@ -136,6 +138,7 @@ function KnowledgeCard({
   busy: boolean
   onToggle: (source: string, next: boolean) => void
 }) {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   return (
     <SettingsCard
@@ -145,7 +148,10 @@ function KnowledgeCard({
       })}
       description={intl.formatMessage({
         id: 'automation.knowledge.description',
-        defaultMessage: 'Choose what Quinn is allowed to draw on when it answers.',
+        defaultMessage: withAssistantName(
+          'Choose what Quinn is allowed to draw on when it answers.',
+          assistantName
+        ),
       })}
     >
       <div className="space-y-4">

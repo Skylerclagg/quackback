@@ -26,6 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { assistantQueries } from '@/lib/client/queries/assistant'
 import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 const AGENT_TABS = ['basics', 'knowledge', 'guidance'] as const
 type AgentTab = (typeof AGENT_TABS)[number]
@@ -63,6 +65,7 @@ function AssistantAgentPage() {
 }
 
 function AssistantAgentSettings() {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const settingsQuery = useQuery(assistantQueries.settings())
   const { settings } = Route.useRouteContext()
@@ -111,14 +114,16 @@ function AssistantAgentSettings() {
             <h1 className="text-lg font-semibold text-foreground">
               {intl.formatMessage({
                 id: 'automation.agent.title',
-                defaultMessage: 'Quinn Agent',
+                defaultMessage: withAssistantName('Quinn Agent', assistantName),
               })}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {intl.formatMessage({
                 id: 'automation.agent.pageDescription',
-                defaultMessage:
+                defaultMessage: withAssistantName(
                   'The customer-facing agent. Replies in Messenger and anywhere else Quinn speaks for you.',
+                  assistantName
+                ),
               })}
             </p>
           </div>

@@ -25,6 +25,8 @@ import {
 import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
 import type { ConnectorToolDTO, ConnectorToolPolicy } from '@/lib/shared/assistant/connectors'
 import { useState } from 'react'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 // Trailing underscore on "connectors_" escapes nesting under the list route,
 // which has no Outlet. URL stays /admin/automation/connectors/:connectorId.
@@ -146,6 +148,7 @@ function ToolGroup({
 }
 
 function ConnectorDetailPage() {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const { connectorId } = Route.useParams()
   const navigate = useNavigate()
@@ -238,7 +241,10 @@ function ConnectorDetailPage() {
 
       <SettingsCard
         title="Available to"
-        description="Which Quinn agents can use this connector's tools."
+        description={withAssistantName(
+          "Which Quinn agents can use this connector's tools.",
+          assistantName
+        )}
       >
         <div className="space-y-3">
           {(['agent', 'copilot'] as const).map((agent) => (
@@ -280,7 +286,10 @@ function ConnectorDetailPage() {
 
       <SettingsCard
         title="Tool permissions"
-        description="Choose when Quinn is allowed to use each tool."
+        description={withAssistantName(
+          'Choose when Quinn is allowed to use each tool.',
+          assistantName
+        )}
         contentClassName="p-0"
       >
         <ToolGroup
@@ -303,7 +312,10 @@ function ConnectorDetailPage() {
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="Disconnect this connector?"
-        description="Quinn will stop calling its tools. Existing approval cards fail closed."
+        description={withAssistantName(
+          'Quinn will stop calling its tools. Existing approval cards fail closed.',
+          assistantName
+        )}
         confirmLabel="Disconnect"
         onConfirm={() => {
           remove.mutate(connector.id, {

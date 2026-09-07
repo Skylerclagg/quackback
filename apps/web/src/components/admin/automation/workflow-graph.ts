@@ -63,6 +63,7 @@ import { CSAT_FACES, TICKET_STATUS_CATEGORIES } from '@/lib/shared/db-types'
 import type { TiptapContent, TicketStatusCategory } from '@/lib/shared/db-types'
 import { isEmptyTiptapDoc } from '@/lib/shared/utils/is-empty-tiptap-doc'
 import { truncate } from '@/lib/shared/utils/string'
+import { assistantName } from '@/lib/client/assistant-name'
 
 // ---------------------------------------------------------------------------
 // Graph JSON types (plain-string ids: the exact shape the save mutation takes)
@@ -105,7 +106,9 @@ export const BLOCK_STEP_LABELS: Record<BlockStepKind, string> = {
   message: 'Message',
   send_ticket_form: 'Send ticket form',
   show_reply_time: 'Show expected reply time',
-  let_assistant_answer: 'Let Quinn answer',
+  get let_assistant_answer() {
+    return `Let ${assistantName()} answer`
+  },
   disable_composer: 'Disable replies',
   reply_buttons: 'Reply buttons',
   collect_data: 'Collect data',
@@ -1853,7 +1856,7 @@ export function graphToTree(graph: WorkflowGraphJson): Result<WorkflowTree> {
           outs,
           LET_ASSISTANT_ESCALATED_KEY,
           'escalated',
-          'Let Quinn answer',
+          `Let ${assistantName()} answer`,
           walkFrom
         )
         if (!resolved.ok) return resolved

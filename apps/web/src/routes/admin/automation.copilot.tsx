@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { assistantQueries } from '@/lib/client/queries/assistant'
 import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 const COPILOT_TABS = ['knowledge', 'guidance'] as const
 type CopilotTab = (typeof COPILOT_TABS)[number]
@@ -55,6 +57,7 @@ function AssistantCopilotPage() {
 }
 
 function AssistantCopilotSettings() {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const settingsQuery = useQuery(assistantQueries.settings())
   const { tab: requestedTab = 'knowledge' } = Route.useSearch()
@@ -96,7 +99,7 @@ function AssistantCopilotSettings() {
             <h1 className="text-lg font-semibold text-foreground">
               {intl.formatMessage({
                 id: 'automation.copilot.title',
-                defaultMessage: 'Quinn Copilot',
+                defaultMessage: withAssistantName('Quinn Copilot', assistantName),
               })}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">

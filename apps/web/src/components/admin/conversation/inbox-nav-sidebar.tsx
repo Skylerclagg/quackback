@@ -64,6 +64,7 @@ import {
   type InboxView,
   type InboxNavItem,
 } from '@/lib/client/conversation/inbox-scope'
+import { assistantName } from '@/lib/client/assistant-name'
 
 // Start with the broad conversation queue, then progressively narrow to the
 // teammate's own work and secondary personal feeds.
@@ -81,7 +82,13 @@ export const CONVERSATION_VIEWS = [
   { view: 'spam', label: 'Spam', Icon: NoSymbolIcon },
 ] as const
 
-const QUINN_VIEW = { view: 'quinn', label: 'Quinn activity', Icon: SparklesIcon } as const
+const QUINN_VIEW = {
+  view: 'quinn',
+  get label() {
+    return `${assistantName()} activity`
+  },
+  Icon: SparklesIcon,
+} as const
 
 /** The Tickets nav section (UNIFIED-INBOX-SPEC.md §2.3), visible only when
  *  `supportTickets` is enabled — see `useSupportTicketsEnabled`. */
@@ -204,7 +211,7 @@ export function scopeLabelFor(
     case 'spam':
       return 'Spam'
     case 'quinn':
-      return 'Quinn activity'
+      return `${assistantName()} activity`
     case 'saved':
       return 'Saved messages'
     case 'mine':

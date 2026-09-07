@@ -31,6 +31,7 @@ import {
   type TriggerType,
   type WorkflowGraphJson,
 } from './workflow-graph'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 export type WorkflowTemplateCategory =
   'popular' | 'routing' | 'sla' | 'housekeeping' | 'customer_facing'
@@ -853,7 +854,7 @@ export function templateGalleryChips(
   }
 
   if (templateNeedsQuinn(template) && !ctx.quinnOn) {
-    chips.push({ kind: 'prereq', label: 'Needs Quinn on' })
+    chips.push({ kind: 'prereq', label: withAssistantName('Needs Quinn on') })
   }
   if (templateUsesOfficeHours(template)) {
     chips.push({ kind: 'note', label: 'Uses office hours' })

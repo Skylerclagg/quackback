@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/shared/utils'
 import { SUPPORTED_LOCALES } from '@/lib/shared/i18n'
 import { WIDGET_LOCALE_LABELS, type WidgetTranslations } from '@/lib/shared/widget/translations'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
 
 export const Route = createFileRoute('/admin/settings/channels_/messenger')({
   beforeLoad: ({ context }) => {
@@ -35,6 +36,7 @@ export const Route = createFileRoute('/admin/settings/channels_/messenger')({
 })
 
 export function MessengerChannelPage() {
+  const assistantName = useAssistantName()
   const router = useRouter()
   const updateWidgetConfig = useUpdateWidgetConfig()
   const updatePortalConfig = useUpdatePortalConfig()
@@ -239,7 +241,10 @@ export function MessengerChannelPage() {
         </div>
       </SettingsCard>
 
-      <SettingsCard title="Quinn" description="Assistant identity is configured in Automation.">
+      <SettingsCard
+        title={assistantName}
+        description="Assistant identity is configured in Automation."
+      >
         <div className="flex items-center justify-between py-1">
           <p className="text-sm text-muted-foreground">
             {messengerConfig?.assistant?.enabled === false

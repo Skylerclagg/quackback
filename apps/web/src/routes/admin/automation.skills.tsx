@@ -29,6 +29,8 @@ import {
 import { skillInputSchema, type SkillDTO } from '@/lib/shared/assistant/skills'
 import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
 import { BackLink } from '@/components/ui/back-link'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 export const Route = createFileRoute('/admin/automation/skills')({
   beforeLoad: ({ context }) => {
@@ -47,6 +49,7 @@ export const Route = createFileRoute('/admin/automation/skills')({
 })
 
 function SkillsPage() {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const list = useQuery(skillQueries.list())
   const create = useCreateSkill()
@@ -141,8 +144,10 @@ function SkillsPage() {
             <p className="mt-0.5 text-xs text-muted-foreground">
               {intl.formatMessage({
                 id: 'automation.skills.description',
-                defaultMessage:
+                defaultMessage: withAssistantName(
                   'Procedures Quinn follows for specific situations. Loaded only when relevant.',
+                  assistantName
+                ),
               })}
             </p>
           </div>
@@ -216,8 +221,10 @@ function SkillsPage() {
       <p className="text-xs text-muted-foreground">
         {intl.formatMessage({
           id: 'automation.skills.footer',
-          defaultMessage:
+          defaultMessage: withAssistantName(
             "Quinn always sees each skill's name and when to use it; the full instructions load only when a conversation calls for them.",
+            assistantName
+          ),
         })}
       </p>
 
@@ -251,8 +258,10 @@ function SkillsPage() {
               <p className="text-[11.5px] text-muted-foreground">
                 {intl.formatMessage({
                   id: 'automation.skills.whenHint',
-                  defaultMessage:
+                  defaultMessage: withAssistantName(
                     'Always visible to Quinn. Keep it to one line; it decides when the skill loads.',
+                    assistantName
+                  ),
                 })}
               </p>
             </div>

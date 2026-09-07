@@ -40,6 +40,11 @@ function setAssistantConfig(
   queryClient.setQueryData<AssistantSettings>(assistantKeys.settings(), (current) =>
     current ? { ...current, ...result } : current
   )
+  // The name store behind useAssistantName() follows an identity edit at once.
+  queryClient.setQueryData(assistantKeys.identity(), {
+    name: result.config.identity.name,
+    avatarUrl: result.config.identity.avatarUrl,
+  })
 }
 
 export function useCreateGuidanceRule() {

@@ -36,6 +36,8 @@ import { AnalyticsCsatDistribution } from './analytics-csat-card'
 import { AnalyticsResponseDistribution } from './analytics-response-distribution'
 import { AnalyticsTeammatePerformance } from './analytics-teammate-performance'
 import { ChartSkeleton, StatusChartSkeleton, SectionSkeleton } from './analytics-skeletons'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 // Defer recharts (~580KB minified, including victory-vendor) and the chart
 // primitives that wrap it. Analytics is admin-gated and rarely the first
@@ -146,6 +148,7 @@ const periods: Array<{ value: AnalyticsPeriod; label: string }> = [
 ]
 
 export function AnalyticsPage() {
+  const assistantName = useAssistantName()
   const { settings } = useRouteContext({ from: '__root__' })
   const flags = settings?.featureFlags as FeatureFlags | undefined
   // Product reports follow product availability. Visitor reporting is always on.
@@ -475,7 +478,12 @@ export function AnalyticsPage() {
                 {section === 'ai' &&
                   (data.ai.involved === 0 ? (
                     <Card className="overflow-hidden">
-                      <AnalyticsEmpty message="Quinn hasn't handled any conversations this period" />
+                      <AnalyticsEmpty
+                        message={withAssistantName(
+                          "Quinn hasn't handled any conversations this period",
+                          assistantName
+                        )}
+                      />
                     </Card>
                   ) : (
                     <StatSection
@@ -483,7 +491,7 @@ export function AnalyticsPage() {
                         {
                           label: 'Conversations',
                           value: data.ai.involved.toLocaleString(),
-                          caption: 'Quinn engaged',
+                          caption: withAssistantName('Quinn engaged', assistantName),
                         },
                         { label: 'Resolution rate', value: `${data.ai.resolutionRate}%` },
                         { label: 'Escalation rate', value: `${data.ai.escalationRate}%` },

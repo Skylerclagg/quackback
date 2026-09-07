@@ -61,6 +61,7 @@ import {
   type StepSectionData,
   type Tone,
 } from './step-content'
+import { assistantName } from '@/lib/client/assistant-name'
 
 export { ACTION_TONE, describeBranchPath }
 export type { ChipData, IconKey, RulePart, StepSectionData, Tone }
@@ -395,7 +396,7 @@ function buildStepNodeData(
         tone: 'pink',
         chips: [
           {
-            label: `Escalates after ${assistantEscalatePhrase(ctx.assistantEscalateMinutes ?? ASSISTANT_WAIT_MINUTES_WHEN_AUTO_CLOSE_OFF)} if Quinn can't reply`,
+            label: `Escalates after ${assistantEscalatePhrase(ctx.assistantEscalateMinutes ?? ASSISTANT_WAIT_MINUTES_WHEN_AUTO_CLOSE_OFF)} if ${assistantName()} can't reply`,
             tone: 'amber',
             wrap: true,
           },

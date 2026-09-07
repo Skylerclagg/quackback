@@ -92,6 +92,9 @@ export const BARE_GATE_CLASSIFICATIONS: Record<string, Classification> = {
   // Assistant proposals are item-scoped after authentication. Reads/rejections
   // require visibility of the concrete parent; approval additionally checks
   // every permission declared by the current Writer tool specification.
+  'lib/server/functions/assistant-settings.ts::getAssistantIdentityFn': END_USER(
+    'any signed-in principal reads the assistant display name and avatar; nothing else is returned'
+  ),
   'lib/server/functions/assistant-pending-actions.ts::getAssistantPendingActionFn':
     DYNAMIC_PERMISSION(
       [PERMISSIONS.CONVERSATION_VIEW, PERMISSIONS.TICKET_VIEW],

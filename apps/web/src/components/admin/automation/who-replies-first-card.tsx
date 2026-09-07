@@ -6,6 +6,8 @@ import { usePermission } from '@/lib/client/hooks/use-permission'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import { WHO_REPLIES_FIRST } from '@/lib/shared/assistant/who-replies-first'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 /**
  * The rule the server now enforces: the agent answers first, and a live
@@ -13,6 +15,7 @@ import type { FeatureFlags } from '@/lib/shared/types/settings'
  * links so a workflows-only admin is not sent to Access denied.
  */
 export function WhoRepliesFirstCard() {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const canAgent = usePermission(PERMISSIONS.ASSISTANT_MANAGE)
@@ -67,7 +70,7 @@ export function WhoRepliesFirstCard() {
             >
               {intl.formatMessage({
                 id: 'automation.whoRepliesFirst.manageQuinn',
-                defaultMessage: 'Manage Quinn',
+                defaultMessage: withAssistantName('Manage Quinn', assistantName),
               })}
             </Link>
           )}

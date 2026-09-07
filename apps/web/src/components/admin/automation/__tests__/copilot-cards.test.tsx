@@ -35,6 +35,9 @@ const config = {
   },
 }
 
+// The configured assistant name comes from a query; pin the default here.
+vi.mock('@/lib/client/hooks/use-assistant-name', () => ({ useAssistantName: () => 'Quinn' }))
+
 vi.mock('@/lib/server/functions/assistant-settings', () => ({
   getAssistantSettingsFn: vi.fn(async () => ({ config, revision: 4, managedFieldPaths: [] })),
   updateAssistantIdentityFn: vi.fn(),

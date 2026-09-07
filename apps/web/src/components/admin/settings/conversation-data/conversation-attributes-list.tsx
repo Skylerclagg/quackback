@@ -46,6 +46,8 @@ import {
   type ConversationAttributeItem,
 } from '@/lib/client/queries/conversation-attributes'
 import { cn } from '@/lib/shared/utils'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },
@@ -632,6 +634,7 @@ function AttributeRow({
   onArchive: () => void
   onRestore: () => void
 }) {
+  const assistantName = useAssistantName()
   const archived = !!attribute.archivedAt
   const typeInfo = FIELD_TYPES.find((t) => t.value === attribute.fieldType)
 
@@ -666,8 +669,11 @@ function AttributeRow({
               className="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded border bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
               title={
                 attribute.detectOnClose
-                  ? 'Quinn classifies this attribute and re-checks on close'
-                  : 'Quinn classifies this attribute'
+                  ? withAssistantName(
+                      'Quinn classifies this attribute and re-checks on close',
+                      assistantName
+                    )
+                  : withAssistantName('Quinn classifies this attribute', assistantName)
               }
             >
               AI

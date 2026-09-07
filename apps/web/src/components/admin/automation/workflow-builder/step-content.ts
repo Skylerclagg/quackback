@@ -39,6 +39,7 @@ import {
 } from '../workflow-graph'
 import { truncate } from '@/lib/shared/utils/string'
 import { ASSISTANT_WAIT_MINUTES_WHEN_AUTO_CLOSE_OFF } from '@/lib/shared/workflows/abandoned-auto-close'
+import { assistantName } from '@/lib/client/assistant-name'
 
 export type Tone = 'amber' | 'violet' | 'green' | 'blue' | 'pink'
 
@@ -271,7 +272,7 @@ export function buildStepNodeData(step: TreeStep, ctx: StepContentContext): Step
         tone: 'pink',
         chips: [
           {
-            label: `Escalates after ${assistantEscalatePhrase(ctx.assistantEscalateMinutes ?? ASSISTANT_WAIT_MINUTES_WHEN_AUTO_CLOSE_OFF)} if Quinn can't reply`,
+            label: `Escalates after ${assistantEscalatePhrase(ctx.assistantEscalateMinutes ?? ASSISTANT_WAIT_MINUTES_WHEN_AUTO_CLOSE_OFF)} if ${assistantName()} can't reply`,
             tone: 'amber',
             wrap: true,
           },

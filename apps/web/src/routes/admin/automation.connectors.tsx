@@ -20,6 +20,8 @@ import {
 } from '@/lib/client/mutations/assistant-connectors'
 import { toast } from 'sonner'
 import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 export const Route = createFileRoute('/admin/automation/connectors')({
   beforeLoad: ({ context }) => {
@@ -38,6 +40,7 @@ export const Route = createFileRoute('/admin/automation/connectors')({
 })
 
 function ConnectorsPage() {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const list = useQuery(connectorQueries.list())
   const [addOpen, setAddOpen] = useState(false)
@@ -68,8 +71,10 @@ function ConnectorsPage() {
             <p className="mt-0.5 text-xs text-muted-foreground">
               {intl.formatMessage({
                 id: 'automation.connectors.description',
-                defaultMessage:
+                defaultMessage: withAssistantName(
                   'Give Quinn tools from external MCP servers. One catalog, mapped onto each agent.',
+                  assistantName
+                ),
               })}
             </p>
           </div>

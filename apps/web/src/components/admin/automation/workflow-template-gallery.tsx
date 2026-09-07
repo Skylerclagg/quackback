@@ -23,6 +23,7 @@ import {
   type WorkflowTemplate,
   type WorkflowTemplateCategory,
 } from './workflow-templates'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 interface WorkflowTemplateGalleryProps {
   open: boolean
@@ -157,7 +158,7 @@ function TemplateCard({
         <span className="text-[13px] font-semibold leading-tight">{template.title}</span>
       </div>
       <p className="mt-1.5 mb-2 text-[11px] leading-snug text-muted-foreground">
-        {template.benefit}
+        {withAssistantName(template.benefit)}
       </p>
       <div className="mt-auto flex flex-wrap gap-1">
         {chips.map((chip) => (

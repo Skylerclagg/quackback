@@ -10,6 +10,9 @@ const hoisted = vi.hoisted(() => ({
   permissions: new Set<string>(['assistant.manage', 'office_hours.manage', 'workflow.manage']),
 }))
 
+// The configured assistant name comes from a query; pin the default here.
+vi.mock('@/lib/client/hooks/use-assistant-name', () => ({ useAssistantName: () => 'Quinn' }))
+
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ to, children, ...props }: { to: string; children: ReactNode; className?: string }) => (
     <a href={to} {...props}>

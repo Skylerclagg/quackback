@@ -26,8 +26,11 @@ import {
   type WorkflowAbandonedAutoCloseSettings,
 } from '@/lib/shared/workflows/abandoned-auto-close'
 import { DEFAULT_WORKFLOW_CLOSE_SPAM } from '@/lib/shared/workflows/close-spam'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
+import { withAssistantName } from '@/lib/client/assistant-name'
 
 export function AbandonedJourneyAutoCloseCard() {
+  const assistantName = useAssistantName()
   const intl = useIntl()
   const queryClient = useQueryClient()
   const query = useQuery(settingsQueries.workflowAbandonedAutoClose())
@@ -139,7 +142,10 @@ export function AbandonedJourneyAutoCloseCard() {
             <p className="mt-0.5 text-xs text-muted-foreground">
               {intl.formatMessage({
                 id: 'automation.workflows.closeSpamHint',
-                defaultMessage: 'When Quinn classifies a conversation as spam',
+                defaultMessage: withAssistantName(
+                  'When Quinn classifies a conversation as spam',
+                  assistantName
+                ),
               })}
             </p>
           </div>
