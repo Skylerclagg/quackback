@@ -29,6 +29,7 @@ import type { PostDetails } from '@/lib/shared/types'
 import type { PostListItem, InboxPostListResult, PostTag } from '@/lib/shared/db-types'
 import type { PrincipalId, PostId, PostStatusId, PostTagId, BoardId } from '@quackback/ids'
 import type { CreatePostInput } from '@/lib/shared/types'
+import { patchInfinitePages } from '@/lib/client/infinite-list-cache'
 
 // ============================================================================
 // Types
@@ -123,16 +124,11 @@ function updatePostInLists(
 ): void {
   queryClient.setQueriesData<InfiniteData<InboxPostListResult>>(
     { queryKey: inboxKeys.lists() },
-    (old) => {
-      if (!old) return old
-      return {
-        ...old,
-        pages: old.pages.map((page) => ({
-          ...page,
-          items: page.items.map((post) => (post.id === postId ? updater(post) : post)),
-        })),
-      }
-    }
+    (old) =>
+      patchInfinitePages<InboxPostListResult>(old, (page) => ({
+        ...page,
+        items: page.items.map((post) => (post.id === postId ? updater(post) : post)),
+      })) as InfiniteData<InboxPostListResult> | undefined
   )
 }
 
@@ -645,16 +641,11 @@ export function useDeletePost() {
       // Remove from all list caches
       queryClient.setQueriesData<InfiniteData<InboxPostListResult>>(
         { queryKey: inboxKeys.lists() },
-        (old) => {
-          if (!old) return old
-          return {
-            ...old,
-            pages: old.pages.map((page) => ({
-              ...page,
-              items: page.items.filter((post) => post.id !== postId),
-            })),
-          }
-        }
+        (old) =>
+          patchInfinitePages<InboxPostListResult>(old, (page) => ({
+            ...page,
+            items: page.items.filter((post) => post.id !== postId),
+          })) as InfiniteData<InboxPostListResult> | undefined
       )
       // Remove detail cache
       queryClient.removeQueries({ queryKey: inboxKeys.detail(postId) })
@@ -679,16 +670,11 @@ export function useRestorePost() {
       // Remove from current (deleted) list cache
       queryClient.setQueriesData<InfiniteData<InboxPostListResult>>(
         { queryKey: inboxKeys.lists() },
-        (old) => {
-          if (!old) return old
-          return {
-            ...old,
-            pages: old.pages.map((page) => ({
-              ...page,
-              items: page.items.filter((post) => post.id !== postId),
-            })),
-          }
-        }
+        (old) =>
+          patchInfinitePages<InboxPostListResult>(old, (page) => ({
+            ...page,
+            items: page.items.filter((post) => post.id !== postId),
+          })) as InfiniteData<InboxPostListResult> | undefined
       )
       // Remove detail cache
       queryClient.removeQueries({ queryKey: inboxKeys.detail(postId) })

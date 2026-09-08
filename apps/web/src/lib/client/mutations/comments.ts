@@ -11,6 +11,7 @@ import type { PostDetails, PostCommentReaction, CommentWithReplies } from '@/lib
 import type { InboxPostListResult } from '@/lib/shared/db-types'
 import type { PostCommentId, PrincipalId, PostId } from '@quackback/ids'
 import { addReplyToTree, replaceOptimisticInTree } from '@/lib/client/utils/comment-tree-helpers'
+import { patchInfinitePages } from '@/lib/client/infinite-list-cache'
 
 // ============================================================================
 // Types
@@ -50,18 +51,13 @@ function updatePostInLists(
 ): void {
   queryClient.setQueriesData<InfiniteData<InboxPostListResult>>(
     { queryKey: inboxKeys.lists() },
-    (old) => {
-      if (!old) return old
-      return {
-        ...old,
-        pages: old.pages.map((page) => ({
-          ...page,
-          items: page.items.map((post) =>
-            post.id === postId ? { ...post, ...updater(post) } : post
-          ),
-        })),
-      }
-    }
+    (old) =>
+      patchInfinitePages<InboxPostListResult>(old, (page) => ({
+        ...page,
+        items: page.items.map((post) =>
+          post.id === postId ? { ...post, ...updater(post) } : post
+        ),
+      })) as InfiniteData<InboxPostListResult> | undefined
   )
 }
 
