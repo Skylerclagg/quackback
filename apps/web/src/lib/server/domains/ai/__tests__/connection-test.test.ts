@@ -28,6 +28,8 @@ vi.mock('../config', () => ({ getOpenAI: () => null }))
 import {
   describeAiConnection,
   explainProviderError,
+  hasAzureV1Path,
+  isAzureOpenAiHost,
   probeModels,
   runAiConnectionTest,
   type AiConnectionSnapshot,
@@ -41,15 +43,29 @@ function setConfig(values: Partial<typeof mockConfig>) {
   mockConfig.aiEmbeddingModel = values.aiEmbeddingModel
 }
 
-function fakeClient(behaviour: Record<string, unknown | Error>): ModelProbeClient {
+/**
+ * `behaviour` drives the model lookup; `requests` (optional) drives the
+ * real-request fallback, keyed by model. A model absent from `requests`
+ * succeeds. Both record calls so tests can assert what was — and was not —
+ * sent.
+ */
+function fakeClient(
+  behaviour: Record<string, unknown | Error>,
+  requests: Record<string, unknown | Error> = {}
+): ModelProbeClient {
+  const respond = async (table: Record<string, unknown | Error>, id: string) => {
+    const outcome = table[id]
+    if (outcome instanceof Error) throw outcome
+    return outcome ?? { id }
+  }
   return {
-    models: {
-      retrieve: vi.fn(async (id: string) => {
-        const outcome = behaviour[id]
-        if (outcome instanceof Error) throw outcome
-        return outcome ?? { id }
-      }),
+    models: { retrieve: vi.fn((id: string) => respond(behaviour, id)) },
+    chat: {
+      completions: {
+        create: vi.fn((p: { model: string }) => respond(requests, p.model)),
+      },
     },
+    embeddings: { create: vi.fn((p: { model: string }) => respond(requests, p.model)) },
   }
 }
 
@@ -76,11 +92,14 @@ describe('explainProviderError', () => {
     expect(out.hint).toMatch(/project or organisation/)
   })
 
-  it('points a 404 at the model id and the /v1 path, and allows for gateways', () => {
+  it('points a 404 at the model id and the /v1 path, as a conclusive "not offered"', () => {
+    // By the time a 404 reaches the classifier the probe has already tried a
+    // real request with the model (probeOne), so no gateway hedge is needed.
     const out = explainProviderError(apiError(404, 'The model does not exist'), CTX)
     expect(out.hint).toContain('"gpt-4o-mini"')
     expect(out.hint).toContain('/v1')
-    expect(out.hint).toMatch(/gateways/)
+    expect(out.hint).toMatch(/neither a lookup nor a real request/)
+    expect(out.hint).not.toMatch(/gateways/)
   })
 
   it('distinguishes no-quota from rate limiting on a 429', () => {
@@ -171,6 +190,74 @@ describe('explainProviderError', () => {
   it('survives a non-Error throw', () => {
     const out = explainProviderError('boom', CTX)
     expect(out.message).toBe('boom')
+  })
+})
+
+describe('Azure OpenAI detection', () => {
+  const AZURE_ROOT = 'https://example-resource.openai.azure.com/'
+  const AZURE_V1 = 'https://example-resource.openai.azure.com/openai/v1'
+
+  it('recognises both Azure host families and nothing else', () => {
+    expect(isAzureOpenAiHost(AZURE_ROOT)).toBe(true)
+    expect(isAzureOpenAiHost('https://example.services.ai.azure.com/openai/v1/')).toBe(true)
+    expect(isAzureOpenAiHost('https://api.openai.com/v1')).toBe(false)
+    expect(isAzureOpenAiHost('https://openrouter.ai/api/v1')).toBe(false)
+    expect(isAzureOpenAiHost('not a url')).toBe(false)
+    expect(isAzureOpenAiHost(null)).toBe(false)
+  })
+
+  it('knows whether the OpenAI-compatible path is present', () => {
+    expect(hasAzureV1Path(AZURE_V1)).toBe(true)
+    expect(hasAzureV1Path(`${AZURE_V1}/`)).toBe(true)
+    expect(hasAzureV1Path(AZURE_ROOT)).toBe(false)
+    expect(hasAzureV1Path('https://example-resource.openai.azure.com/openai/deployments/x')).toBe(
+      false
+    )
+  })
+
+  it('names the path fix, with the operator’s own host, for an Azure root URL', () => {
+    // The real-world shape: resource root as base URL, so every probe 404s
+    // whatever the model. Pointing at the model id here would be wrong.
+    const out = explainProviderError(apiError(404, '404 Resource not found'), {
+      baseUrl: AZURE_ROOT,
+      model: 'gpt-4.1-nano',
+    })
+    expect(out.hint).toContain('Azure OpenAI resource')
+    expect(out.hint).toContain('https://example-resource.openai.azure.com/openai/v1')
+    expect(out.hint).toContain('deployment')
+    expect(out.hint).not.toMatch(/does not recognise the model/)
+  })
+
+  it('gives the same path fix for any non-transport status on an Azure root URL', () => {
+    const out = explainProviderError(apiError(401, 'Unauthorized'), {
+      baseUrl: AZURE_ROOT,
+      model: 'gpt-4.1-nano',
+    })
+    expect(out.hint).toContain('/openai/v1')
+  })
+
+  it('still reports a transport failure as such on an Azure host', () => {
+    class APIConnectionError extends Error {}
+    const out = explainProviderError(new APIConnectionError('Connection error.'), {
+      baseUrl: AZURE_ROOT,
+      model: 'gpt-4.1-nano',
+    })
+    expect(out.hint).toMatch(/Could not reach/)
+    expect(out.hint).not.toContain('/openai/v1 —')
+  })
+
+  it('adds the deployment-name note to a 404 once the path is already correct', () => {
+    const out = explainProviderError(apiError(404, 'The model does not exist'), {
+      baseUrl: AZURE_V1,
+      model: 'my-deployment',
+    })
+    expect(out.hint).toContain('"my-deployment"')
+    expect(out.hint).toMatch(/deployment on this resource/)
+  })
+
+  it('does not mention Azure for non-Azure endpoints', () => {
+    const out = explainProviderError(apiError(404, 'The model does not exist'), CTX)
+    expect(out.hint).not.toMatch(/Azure|deployment/)
   })
 })
 
@@ -272,9 +359,12 @@ describe('probeModels', () => {
   })
 
   it('reports one model failing without hiding the other succeeding', async () => {
-    const client = fakeClient({
-      'text-embedding-3-small': apiError(404, 'The model does not exist'),
-    })
+    // A 404 lookup alone is inconclusive (see the fallback tests), so the
+    // real request must fail as well for the embedding probe to fail.
+    const client = fakeClient(
+      { 'text-embedding-3-small': apiError(404, 'The model does not exist') },
+      { 'text-embedding-3-small': apiError(404, 'The model does not exist') }
+    )
     const probes = await probeModels(client, CONFIGURED)
     const chat = probes.find((p) => p.role === 'chat')!
     const emb = probes.find((p) => p.role === 'embedding')!
@@ -282,6 +372,80 @@ describe('probeModels', () => {
     expect(emb.ok).toBe(false)
     expect(emb.error).toBe('The model does not exist')
     expect(emb.hint).toContain('"text-embedding-3-small"')
+  })
+})
+
+describe('probeOne fallback: a 404 from the model lookup is not conclusive', () => {
+  const NOT_FOUND = () => apiError(404, 'Resource not found')
+
+  it('passes, with a note, when the lookup 404s but a real chat request succeeds', async () => {
+    // The Azure shape: deployments are served but need not be listed.
+    const client = fakeClient({ 'my-deployment': NOT_FOUND() })
+    const [probe] = await probeModels(client, {
+      ...CONFIGURED,
+      chatModel: 'my-deployment',
+      embeddingModel: null,
+    })
+    expect(probe.ok).toBe(true)
+    expect(probe.note).toMatch(/does not list the model/)
+    expect(client.chat.completions.create).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'my-deployment' })
+    )
+    expect(client.embeddings.create).not.toHaveBeenCalled()
+  })
+
+  it('uses an embeddings request for the embedding role', async () => {
+    const client = fakeClient({ 'text-embedding-3-small': NOT_FOUND() })
+    const probes = await probeModels(client, CONFIGURED)
+    const emb = probes.find((p) => p.role === 'embedding')!
+    expect(emb.ok).toBe(true)
+    expect(client.embeddings.create).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'text-embedding-3-small', input: 'ping' })
+    )
+  })
+
+  it('reports the real request’s error when the fallback fails too', async () => {
+    const client = fakeClient(
+      { 'gpt-4o-mini': NOT_FOUND() },
+      {
+        'gpt-4o-mini': apiError(
+          404,
+          'The model `gpt-4o-mini` does not exist or you do not have access to it.'
+        ),
+      }
+    )
+    const [probe] = await probeModels(client, { ...CONFIGURED, embeddingModel: null })
+    expect(probe.ok).toBe(false)
+    expect(probe.error).toContain('does not exist')
+    expect(probe.note).toBeUndefined()
+  })
+
+  it('does not spend tokens on a conclusive lookup failure (401)', async () => {
+    const client = fakeClient({ 'gpt-4o-mini': apiError(401, 'Incorrect API key provided') })
+    const [probe] = await probeModels(client, { ...CONFIGURED, embeddingModel: null })
+    expect(probe.ok).toBe(false)
+    expect(probe.hint).toContain('OPENAI_API_KEY')
+    expect(client.chat.completions.create).not.toHaveBeenCalled()
+  })
+
+  it('makes no real request at all when the lookup succeeds', async () => {
+    const client = fakeClient({})
+    const probes = await probeModels(client, CONFIGURED)
+    expect(probes.every((p) => p.ok && p.note === undefined)).toBe(true)
+    expect(client.chat.completions.create).not.toHaveBeenCalled()
+    expect(client.embeddings.create).not.toHaveBeenCalled()
+  })
+
+  it('sends a bounded prompt and no output-cap parameter', async () => {
+    const client = fakeClient({ 'gpt-4o-mini': NOT_FOUND() })
+    await probeModels(client, { ...CONFIGURED, embeddingModel: null })
+    const params = vi.mocked(client.chat.completions.create).mock.calls[0][0] as Record<
+      string,
+      unknown
+    >
+    expect(params.messages).toEqual([{ role: 'user', content: 'Reply with the single word OK.' }])
+    expect(params).not.toHaveProperty('max_tokens')
+    expect(params).not.toHaveProperty('max_completion_tokens')
   })
 })
 

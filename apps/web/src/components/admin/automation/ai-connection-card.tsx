@@ -227,6 +227,9 @@ export function AiConnectionCard() {
                     )}
                   </span>
                 </div>
+                {probe.ok && probe.note && (
+                  <p className="mt-2 text-xs text-muted-foreground">{probe.note}</p>
+                )}
                 {!probe.ok && (
                   <>
                     {probe.hint && <p className="mt-2 text-muted-foreground">{probe.hint}</p>}

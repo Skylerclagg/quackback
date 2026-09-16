@@ -94,7 +94,14 @@ describe('AiConnectionCard', () => {
       snapshot: { ...CONFIGURED, embeddingModel: 'text-embedding-3-small' },
       probes: [
         { role: 'chat', model: 'gpt-4o-mini', ok: true, durationMs: 120 },
-        { role: 'embedding', model: 'text-embedding-3-small', ok: true, durationMs: 95 },
+        {
+          role: 'embedding',
+          model: 'text-embedding-3-small',
+          ok: true,
+          // The fallback path: the lookup 404'd but a real request succeeded.
+          note: 'This endpoint does not list the model under /models but served a request with it, which is what matters.',
+          durationMs: 95,
+        },
       ],
       testedAt: new Date().toISOString(),
     })
@@ -111,6 +118,9 @@ describe('AiConnectionCard', () => {
     expect(probes.getByText('gpt-4o-mini')).toBeTruthy()
     expect(probes.getByText('text-embedding-3-small')).toBeTruthy()
     expect(probes.getByText('120 ms')).toBeTruthy()
+    // A passing row that went through the fallback says so, so it is not
+    // mistaken for a fluke on an endpoint that never lists its models.
+    expect(probes.getByText(/does not list the model under \/models/)).toBeTruthy()
     expect(hoisted.test).toHaveBeenCalledTimes(1)
   })
 

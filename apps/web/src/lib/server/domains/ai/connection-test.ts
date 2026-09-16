@@ -62,6 +62,12 @@ export interface ProbeResult {
   error?: string
   /** What to check. Only on failure. */
   hint?: string
+  /**
+   * Set when the model lookup 404'd but a real request with the model
+   * succeeded — the endpoint serves the model without listing it. Shown
+   * so a passing result on such an endpoint is not mistaken for a fluke.
+   */
+  note?: string
   durationMs: number
 }
 
@@ -75,10 +81,25 @@ export interface AiConnectionTestResult {
   testedAt: string
 }
 
-/** The one method the probe needs. Kept minimal so tests inject a fake. */
+/**
+ * The three calls the probe may make. Kept minimal so tests inject a fake.
+ * `chat` and `embeddings` are only reached when the model lookup 404s.
+ */
 export interface ModelProbeClient {
   models: { retrieve(id: string): Promise<unknown> }
+  chat: {
+    completions: {
+      create(params: {
+        model: string
+        messages: Array<{ role: 'user'; content: string }>
+      }): Promise<unknown>
+    }
+  }
+  embeddings: { create(params: { model: string; input: string }): Promise<unknown> }
 }
+
+const FALLBACK_NOTE =
+  'This endpoint does not list the model under /models but served a request with it, which is what matters.'
 
 function keyHintFor(key: string | undefined): string | null {
   if (!key) return null
@@ -113,6 +134,45 @@ function truncate(message: string): string {
   return oneLine.length > MAX_PROVIDER_MESSAGE
     ? `${oneLine.slice(0, MAX_PROVIDER_MESSAGE - 1)}…`
     : oneLine
+}
+
+/**
+ * Azure OpenAI resource hosts.
+ *
+ * Azure serves the OpenAI protocol only under `/openai/v1`. Its resource
+ * root and its classic `/openai/deployments/…` surface answer every request
+ * the plain client makes — `/chat/completions`, `/models/{id}` — with 404,
+ * whatever the model id, and the classic surface additionally demands an
+ * `api-version` query the plain client never sends. Detected so the hint
+ * can name the one change that fixes it instead of pointing at the model.
+ */
+export function isAzureOpenAiHost(baseUrl: string | null): boolean {
+  if (!baseUrl) return false
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase()
+    return host.endsWith('.openai.azure.com') || host.endsWith('.services.ai.azure.com')
+  } catch {
+    return false
+  }
+}
+
+/** Whether the base URL already targets Azure's OpenAI-compatible surface. */
+export function hasAzureV1Path(baseUrl: string | null): boolean {
+  if (!baseUrl) return false
+  try {
+    return /\/openai\/v1\/?$/.test(new URL(baseUrl).pathname)
+  } catch {
+    return false
+  }
+}
+
+/** The corrected base URL for an Azure resource, keeping the operator's own host. */
+function azureV1Url(baseUrl: string | null): string {
+  try {
+    return `${new URL(baseUrl ?? '').origin}/openai/v1`
+  } catch {
+    return 'https://<resource>.openai.azure.com/openai/v1'
+  }
 }
 
 interface ProviderErrorShape {
@@ -158,6 +218,16 @@ export function explainProviderError(
   const isConnectionError =
     ctorName === 'APIConnectionError' || ctorName === 'APIConnectionTimeoutError'
 
+  // An Azure resource without the /openai/v1 path fails every request the
+  // same way regardless of model, so the path is the finding, not the id.
+  // A transport failure on such a host is still a transport failure.
+  if (!isConnectionError && isAzureOpenAiHost(ctx.baseUrl) && !hasAzureV1Path(ctx.baseUrl)) {
+    return {
+      message,
+      hint: `This is an Azure OpenAI resource, and OPENAI_BASE_URL points at it without the OpenAI-compatible path. Set OPENAI_BASE_URL to ${azureV1Url(ctx.baseUrl)} — Azure serves the OpenAI protocol only under /openai/v1 — and make sure each model id is the name of a deployment on that resource, not the base model name.`,
+    }
+  }
+
   if (status === 401) {
     return {
       message,
@@ -171,9 +241,14 @@ export function explainProviderError(
     }
   }
   if (status === 404) {
+    const azureNote = isAzureOpenAiHost(ctx.baseUrl)
+      ? ' On Azure the model id must be the name of a deployment on this resource, not the base model name.'
+      : ''
+    // Reached only after a real request with the model failed too (see
+    // probeOne), so this is "not offered here", not merely "not listed".
     return {
       message,
-      hint: `The endpoint does not recognise the model "${ctx.model}". Check the id matches one this provider offers, and that OPENAI_BASE_URL includes the API version path (for OpenAI, it ends in /v1). Some gateways do not support looking a model up by id.`,
+      hint: `The endpoint does not recognise the model "${ctx.model}" — neither a lookup nor a real request with it succeeded. Check the id matches one this provider offers, and that OPENAI_BASE_URL includes the API version path (for OpenAI, it ends in /v1).${azureNote}`,
     }
   }
   if (status === 429) {
@@ -218,6 +293,35 @@ export function explainProviderError(
   }
 }
 
+/**
+ * The smallest real request for a role — exactly the call the app itself
+ * makes, so success here is success for the feature. No output cap is
+ * sent: `max_tokens` is rejected by reasoning models and older servers
+ * reject `max_completion_tokens`, so the prompt bounds the reply instead.
+ */
+async function realRequest(client: ModelProbeClient, role: ProbeRole, model: string) {
+  if (role === 'embedding') return client.embeddings.create({ model, input: 'ping' })
+  return client.chat.completions.create({
+    model,
+    messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+  })
+}
+
+function statusOf(err: unknown): number | undefined {
+  const s = (err as { status?: unknown } | null | undefined)?.status
+  return typeof s === 'number' ? s : undefined
+}
+
+/**
+ * Probe one model. `GET /models/{id}` first — zero tokens, and precise on
+ * an endpoint that lists its models. If that lookup is a 404, fall back to
+ * a real request with the model: some endpoints serve a model they do not
+ * list (Azure deployments, gateways without a models API), and a 404 from
+ * the lookup alone cannot tell "not offered" from "not listed". The
+ * fallback settles it either way and its error, when it fails too, is the
+ * truthful one. Any other lookup failure (401, 403, 429, transport) is
+ * conclusive on its own and is reported without spending tokens.
+ */
 async function probeOne(
   client: ModelProbeClient,
   role: ProbeRole,
@@ -225,19 +329,29 @@ async function probeOne(
   baseUrl: string | null
 ): Promise<ProbeResult> {
   const startedAt = Date.now()
+  const fail = (err: unknown): ProbeResult => {
+    const { message, hint } = explainProviderError(err, { baseUrl, model })
+    return { role, model, ok: false, error: message, hint, durationMs: Date.now() - startedAt }
+  }
+
   try {
     await client.models.retrieve(model)
     return { role, model, ok: true, durationMs: Date.now() - startedAt }
-  } catch (err) {
-    const { message, hint } = explainProviderError(err, { baseUrl, model })
-    return { role, model, ok: false, error: message, hint, durationMs: Date.now() - startedAt }
+  } catch (lookupErr) {
+    if (statusOf(lookupErr) !== 404) return fail(lookupErr)
+    try {
+      await realRequest(client, role, model)
+      return { role, model, ok: true, note: FALLBACK_NOTE, durationMs: Date.now() - startedAt }
+    } catch (requestErr) {
+      return fail(requestErr)
+    }
   }
 }
 
 /**
- * One `GET /models/{id}` per configured model, in parallel. Embeddings are
- * probed only when a model is set for them; a missing embedding model is a
- * choice, not a failure.
+ * One probe per configured model, in parallel (see probeOne). Embeddings
+ * are probed only when a model is set for them; a missing embedding model
+ * is a choice, not a failure.
  */
 export async function probeModels(
   client: ModelProbeClient,
