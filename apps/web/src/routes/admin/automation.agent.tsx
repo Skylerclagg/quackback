@@ -6,6 +6,7 @@ import { SparklesIcon } from '@heroicons/react/24/solid'
 import { z } from 'zod'
 import { AdditionalInstructionsCard } from '@/components/admin/automation/additional-instructions-card'
 import { AiConnectionCard } from '@/components/admin/automation/ai-connection-card'
+import { AiFailuresCard } from '@/components/admin/automation/ai-failures-card'
 import {
   AssistantDeploymentCard,
   type WidgetAssistantDeployment,
@@ -159,6 +160,7 @@ function AssistantAgentSettings() {
         ) : (
           <>
             <AiConnectionCard />
+            <AiFailuresCard />
             <AssistantDeploymentCard
               deployment={deployment}
               available={Boolean(flags?.supportInbox)}

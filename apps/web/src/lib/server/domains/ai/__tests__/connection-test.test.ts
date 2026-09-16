@@ -44,28 +44,19 @@ function setConfig(values: Partial<typeof mockConfig>) {
 }
 
 /**
- * `behaviour` drives the model lookup; `requests` (optional) drives the
- * real-request fallback, keyed by model. A model absent from `requests`
- * succeeds. Both record calls so tests can assert what was — and was not —
- * sent.
+ * `behaviour` maps a model id to what a real request with it does: an Error
+ * to throw, anything else to resolve. A model absent from the table succeeds.
+ * Calls are recorded so tests can assert what was — and was not — sent.
  */
-function fakeClient(
-  behaviour: Record<string, unknown | Error>,
-  requests: Record<string, unknown | Error> = {}
-): ModelProbeClient {
-  const respond = async (table: Record<string, unknown | Error>, id: string) => {
-    const outcome = table[id]
+function fakeClient(behaviour: Record<string, unknown | Error>): ModelProbeClient {
+  const respond = async (id: string) => {
+    const outcome = behaviour[id]
     if (outcome instanceof Error) throw outcome
     return outcome ?? { id }
   }
   return {
-    models: { retrieve: vi.fn((id: string) => respond(behaviour, id)) },
-    chat: {
-      completions: {
-        create: vi.fn((p: { model: string }) => respond(requests, p.model)),
-      },
-    },
-    embeddings: { create: vi.fn((p: { model: string }) => respond(requests, p.model)) },
+    chat: { completions: { create: vi.fn((p: { model: string }) => respond(p.model)) } },
+    embeddings: { create: vi.fn((p: { model: string }) => respond(p.model)) },
   }
 }
 
@@ -92,14 +83,14 @@ describe('explainProviderError', () => {
     expect(out.hint).toMatch(/project or organisation/)
   })
 
-  it('points a 404 at the model id and the /v1 path, as a conclusive "not offered"', () => {
-    // By the time a 404 reaches the classifier the probe has already tried a
-    // real request with the model (probeOne), so no gateway hedge is needed.
+  it('points a 404 at the model id and the /v1 path, as a conclusive "not served"', () => {
+    // Every 404 reaching the classifier came from a real request (probeOne),
+    // so the hint states that rather than hedging about model listings.
     const out = explainProviderError(apiError(404, 'The model does not exist'), CTX)
     expect(out.hint).toContain('"gpt-4o-mini"')
     expect(out.hint).toContain('/v1')
-    expect(out.hint).toMatch(/neither a lookup nor a real request/)
-    expect(out.hint).not.toMatch(/gateways/)
+    expect(out.hint).toMatch(/rejected a real request/)
+    expect(out.hint).not.toMatch(/gateways|lookup/)
   })
 
   it('distinguishes no-quota from rate limiting on a 429', () => {
@@ -347,7 +338,6 @@ describe('probeModels', () => {
       ['chat', 'gpt-4o-mini', true],
       ['embedding', 'text-embedding-3-small', true],
     ])
-    expect(client.models.retrieve).toHaveBeenCalledTimes(2)
     for (const p of probes) expect(p.durationMs).toBeGreaterThanOrEqual(0)
   })
 
@@ -359,12 +349,9 @@ describe('probeModels', () => {
   })
 
   it('reports one model failing without hiding the other succeeding', async () => {
-    // A 404 lookup alone is inconclusive (see the fallback tests), so the
-    // real request must fail as well for the embedding probe to fail.
-    const client = fakeClient(
-      { 'text-embedding-3-small': apiError(404, 'The model does not exist') },
-      { 'text-embedding-3-small': apiError(404, 'The model does not exist') }
-    )
+    const client = fakeClient({
+      'text-embedding-3-small': apiError(404, 'The model does not exist'),
+    })
     const probes = await probeModels(client, CONFIGURED)
     const chat = probes.find((p) => p.role === 'chat')!
     const emb = probes.find((p) => p.role === 'embedding')!
@@ -375,69 +362,43 @@ describe('probeModels', () => {
   })
 })
 
-describe('probeOne fallback: a 404 from the model lookup is not conclusive', () => {
-  const NOT_FOUND = () => apiError(404, 'Resource not found')
-
-  it('passes, with a note, when the lookup 404s but a real chat request succeeds', async () => {
-    // The Azure shape: deployments are served but need not be listed.
-    const client = fakeClient({ 'my-deployment': NOT_FOUND() })
-    const [probe] = await probeModels(client, {
-      ...CONFIGURED,
-      chatModel: 'my-deployment',
-      embeddingModel: null,
-    })
-    expect(probe.ok).toBe(true)
-    expect(probe.note).toMatch(/does not list the model/)
+describe('the probe makes a REAL request, never a model lookup', () => {
+  // The reason this matters, and why a cheaper lookup was removed: on Azure,
+  // `/models` describes the resource's base-model catalogue while requests
+  // address deployments. A lookup for a catalogue model succeeds where a chat
+  // request naming it 404s — so a lookup-based test reports "Connected" to an
+  // operator whose every feature is failing.
+  it('sends a chat completion for the chat role', async () => {
+    const client = fakeClient({})
+    await probeModels(client, { ...CONFIGURED, embeddingModel: null })
     expect(client.chat.completions.create).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'my-deployment' })
+      expect.objectContaining({ model: 'gpt-4o-mini' })
     )
     expect(client.embeddings.create).not.toHaveBeenCalled()
   })
 
-  it('uses an embeddings request for the embedding role', async () => {
-    const client = fakeClient({ 'text-embedding-3-small': NOT_FOUND() })
-    const probes = await probeModels(client, CONFIGURED)
-    const emb = probes.find((p) => p.role === 'embedding')!
-    expect(emb.ok).toBe(true)
+  it('sends an embeddings request for the embedding role', async () => {
+    const client = fakeClient({})
+    await probeModels(client, CONFIGURED)
     expect(client.embeddings.create).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'text-embedding-3-small', input: 'ping' })
     )
   })
 
-  it('reports the real request’s error when the fallback fails too', async () => {
-    const client = fakeClient(
-      { 'gpt-4o-mini': NOT_FOUND() },
-      {
-        'gpt-4o-mini': apiError(
-          404,
-          'The model `gpt-4o-mini` does not exist or you do not have access to it.'
-        ),
-      }
-    )
-    const [probe] = await probeModels(client, { ...CONFIGURED, embeddingModel: null })
+  it('fails when a catalogue model has no deployment behind it — the Azure trap', async () => {
+    const client = fakeClient({ 'gpt-4.1-nano': apiError(404, 'Resource not found') })
+    const [probe] = await probeModels(client, {
+      ...CONFIGURED,
+      chatModel: 'gpt-4.1-nano',
+      embeddingModel: null,
+      baseUrl: 'https://example-resource.openai.azure.com/openai/v1',
+    })
     expect(probe.ok).toBe(false)
-    expect(probe.error).toContain('does not exist')
-    expect(probe.note).toBeUndefined()
-  })
-
-  it('does not spend tokens on a conclusive lookup failure (401)', async () => {
-    const client = fakeClient({ 'gpt-4o-mini': apiError(401, 'Incorrect API key provided') })
-    const [probe] = await probeModels(client, { ...CONFIGURED, embeddingModel: null })
-    expect(probe.ok).toBe(false)
-    expect(probe.hint).toContain('OPENAI_API_KEY')
-    expect(client.chat.completions.create).not.toHaveBeenCalled()
-  })
-
-  it('makes no real request at all when the lookup succeeds', async () => {
-    const client = fakeClient({})
-    const probes = await probeModels(client, CONFIGURED)
-    expect(probes.every((p) => p.ok && p.note === undefined)).toBe(true)
-    expect(client.chat.completions.create).not.toHaveBeenCalled()
-    expect(client.embeddings.create).not.toHaveBeenCalled()
+    expect(probe.hint).toMatch(/deployment on this resource/)
   })
 
   it('sends a bounded prompt and no output-cap parameter', async () => {
-    const client = fakeClient({ 'gpt-4o-mini': NOT_FOUND() })
+    const client = fakeClient({})
     await probeModels(client, { ...CONFIGURED, embeddingModel: null })
     const params = vi.mocked(client.chat.completions.create).mock.calls[0][0] as Record<
       string,
@@ -460,7 +421,9 @@ describe('runAiConnectionTest', () => {
     expect(result.probes).toEqual([])
     expect(result.error).toContain('OPENAI_BASE_URL')
     expect(result.error).toContain('AI_CHAT_MODEL')
-    expect(client.models.retrieve).not.toHaveBeenCalled()
+    // Nothing is sent to the provider when the config cannot support a call.
+    expect(client.chat.completions.create).not.toHaveBeenCalled()
+    expect(client.embeddings.create).not.toHaveBeenCalled()
   })
 
   it('refuses when configured but no client is available', async () => {

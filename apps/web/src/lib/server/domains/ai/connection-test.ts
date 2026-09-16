@@ -15,11 +15,19 @@
  * so it also proves the environment actually reached the container:
  *
  *   - describeAiConnection() reports what is configured, without any network.
- *   - runAiConnectionTest() makes one `GET /models/{id}` per configured model.
- *     That exercises key, base URL and model id together, costs no tokens, and
- *     is supported by every OpenAI-compatible endpoint that supports the models
- *     API at all. Failures are translated into a plain-language hint naming the
- *     variable to check, with the provider's own message kept alongside.
+ *   - runAiConnectionTest() makes one real, minimal request per configured
+ *     model — the same call the features make. Failures are translated into a
+ *     plain-language hint naming the variable to check, with the provider's
+ *     own message kept alongside.
+ *
+ * The probe deliberately does NOT use `GET /models/{id}`, though it is cheaper.
+ * A model lookup answers "does this provider know this model", which is not
+ * the question. On Azure the two come apart completely: `/models` describes
+ * the resource's base-model catalogue, so a lookup for a catalogue model
+ * succeeds while a chat request naming it 404s, because requests address
+ * DEPLOYMENTS. A test that passed on the lookup would report a working
+ * connection to an operator whose features all fail — worse than no test. The
+ * real request is the only answer that means what the card says it means.
  *
  * The key is never returned. The snapshot carries its last four characters
  * only, enough to tell a rotated key from a stale one.
@@ -62,12 +70,6 @@ export interface ProbeResult {
   error?: string
   /** What to check. Only on failure. */
   hint?: string
-  /**
-   * Set when the model lookup 404'd but a real request with the model
-   * succeeded — the endpoint serves the model without listing it. Shown
-   * so a passing result on such an endpoint is not mistaken for a fluke.
-   */
-  note?: string
   durationMs: number
 }
 
@@ -81,12 +83,8 @@ export interface AiConnectionTestResult {
   testedAt: string
 }
 
-/**
- * The three calls the probe may make. Kept minimal so tests inject a fake.
- * `chat` and `embeddings` are only reached when the model lookup 404s.
- */
+/** The two calls the probe makes. Kept minimal so tests inject a fake. */
 export interface ModelProbeClient {
-  models: { retrieve(id: string): Promise<unknown> }
   chat: {
     completions: {
       create(params: {
@@ -97,9 +95,6 @@ export interface ModelProbeClient {
   }
   embeddings: { create(params: { model: string; input: string }): Promise<unknown> }
 }
-
-const FALLBACK_NOTE =
-  'This endpoint does not list the model under /models but served a request with it, which is what matters.'
 
 function keyHintFor(key: string | undefined): string | null {
   if (!key) return null
@@ -244,11 +239,11 @@ export function explainProviderError(
     const azureNote = isAzureOpenAiHost(ctx.baseUrl)
       ? ' On Azure the model id must be the name of a deployment on this resource, not the base model name.'
       : ''
-    // Reached only after a real request with the model failed too (see
-    // probeOne), so this is "not offered here", not merely "not listed".
+    // A real request with the model was rejected, so this is conclusively
+    // "not served here" rather than "not listed" (see probeOne).
     return {
       message,
-      hint: `The endpoint does not recognise the model "${ctx.model}" — neither a lookup nor a real request with it succeeded. Check the id matches one this provider offers, and that OPENAI_BASE_URL includes the API version path (for OpenAI, it ends in /v1).${azureNote}`,
+      hint: `The endpoint rejected a real request naming the model "${ctx.model}". Check the id matches one this provider serves, and that OPENAI_BASE_URL includes the API version path (for OpenAI, it ends in /v1).${azureNote}`,
     }
   }
   if (status === 429) {
@@ -294,10 +289,11 @@ export function explainProviderError(
 }
 
 /**
- * The smallest real request for a role — exactly the call the app itself
- * makes, so success here is success for the feature. No output cap is
- * sent: `max_tokens` is rejected by reasoning models and older servers
- * reject `max_completion_tokens`, so the prompt bounds the reply instead.
+ * The smallest real request for a role — the same call the features make,
+ * so success here is success for the feature. No output cap is sent:
+ * `max_tokens` is rejected by reasoning models and older servers reject
+ * `max_completion_tokens`, so the prompt bounds the reply instead. A few
+ * tokens per model per click.
  */
 async function realRequest(client: ModelProbeClient, role: ProbeRole, model: string) {
   if (role === 'embedding') return client.embeddings.create({ model, input: 'ping' })
@@ -307,21 +303,7 @@ async function realRequest(client: ModelProbeClient, role: ProbeRole, model: str
   })
 }
 
-function statusOf(err: unknown): number | undefined {
-  const s = (err as { status?: unknown } | null | undefined)?.status
-  return typeof s === 'number' ? s : undefined
-}
-
-/**
- * Probe one model. `GET /models/{id}` first — zero tokens, and precise on
- * an endpoint that lists its models. If that lookup is a 404, fall back to
- * a real request with the model: some endpoints serve a model they do not
- * list (Azure deployments, gateways without a models API), and a 404 from
- * the lookup alone cannot tell "not offered" from "not listed". The
- * fallback settles it either way and its error, when it fails too, is the
- * truthful one. Any other lookup failure (401, 403, 429, transport) is
- * conclusive on its own and is reported without spending tokens.
- */
+/** Probe one model with a real request. See the module doc for why not a lookup. */
 async function probeOne(
   client: ModelProbeClient,
   role: ProbeRole,
@@ -329,22 +311,12 @@ async function probeOne(
   baseUrl: string | null
 ): Promise<ProbeResult> {
   const startedAt = Date.now()
-  const fail = (err: unknown): ProbeResult => {
+  try {
+    await realRequest(client, role, model)
+    return { role, model, ok: true, durationMs: Date.now() - startedAt }
+  } catch (err) {
     const { message, hint } = explainProviderError(err, { baseUrl, model })
     return { role, model, ok: false, error: message, hint, durationMs: Date.now() - startedAt }
-  }
-
-  try {
-    await client.models.retrieve(model)
-    return { role, model, ok: true, durationMs: Date.now() - startedAt }
-  } catch (lookupErr) {
-    if (statusOf(lookupErr) !== 404) return fail(lookupErr)
-    try {
-      await realRequest(client, role, model)
-      return { role, model, ok: true, note: FALLBACK_NOTE, durationMs: Date.now() - startedAt }
-    } catch (requestErr) {
-      return fail(requestErr)
-    }
   }
 }
 

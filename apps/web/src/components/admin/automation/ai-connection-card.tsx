@@ -88,7 +88,7 @@ export function AiConnectionCard() {
             {intl.formatMessage({
               id: 'automation.aiConnection.description',
               defaultMessage:
-                'The endpoint and models this deployment is using. Testing looks each model up on the provider — it validates the key, the base URL and the model id together and uses no tokens.',
+                'The endpoint and models this deployment is using. Testing sends one tiny real request per model — the same call the features make — so a pass means the features can run. Costs a few tokens.',
             })}
           </p>
         </div>
@@ -227,9 +227,6 @@ export function AiConnectionCard() {
                     )}
                   </span>
                 </div>
-                {probe.ok && probe.note && (
-                  <p className="mt-2 text-xs text-muted-foreground">{probe.note}</p>
-                )}
                 {!probe.ok && (
                   <>
                     {probe.hint && <p className="mt-2 text-muted-foreground">{probe.hint}</p>}
