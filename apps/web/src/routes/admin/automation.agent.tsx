@@ -5,6 +5,7 @@ import { useIntl } from 'react-intl'
 import { SparklesIcon } from '@heroicons/react/24/solid'
 import { z } from 'zod'
 import { AdditionalInstructionsCard } from '@/components/admin/automation/additional-instructions-card'
+import { AiConnectionCard } from '@/components/admin/automation/ai-connection-card'
 import {
   AssistantDeploymentCard,
   type WidgetAssistantDeployment,
@@ -157,6 +158,7 @@ function AssistantAgentSettings() {
           </div>
         ) : (
           <>
+            <AiConnectionCard />
             <AssistantDeploymentCard
               deployment={deployment}
               available={Boolean(flags?.supportInbox)}
