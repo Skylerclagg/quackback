@@ -36,7 +36,7 @@
 import { config } from '@/lib/server/config'
 import { logger } from '@/lib/server/logger'
 import { getOpenAI } from './config'
-import { getEmbeddingModel, resolveModel } from './models'
+import { CHAT_FEATURES, getChatModel, getEmbeddingModel, resolveModel } from './models'
 
 const log = logger.child({ component: 'ai-connection-test' })
 
@@ -58,13 +58,32 @@ export interface AiConnectionSnapshot {
   embeddingModel: string | null
   /** Which of the three required settings are absent, in a stable order. */
   missing: MissingSetting[]
+  /** Every distinct model the features actually use. See {@link ProbeTarget}. */
+  targets: ProbeTarget[]
 }
 
 export type ProbeRole = 'chat' | 'embedding'
 
+/**
+ * One model to probe, and the features that resolve to it.
+ *
+ * Probing only the role defaults was not enough: each feature may carry its
+ * own override (AI_ASSISTANT_MODEL for the agent and Copilot,
+ * AI_HELP_CENTER_MODEL for Ask AI, and nine more), so a single wrong override
+ * breaks exactly those surfaces while a default-only test reports success.
+ * Distinct models are probed once and labelled with everything riding them.
+ */
+export interface ProbeTarget {
+  role: ProbeRole
+  model: string
+  features: string[]
+}
+
 export interface ProbeResult {
   role: ProbeRole
   model: string
+  /** Features that use this model — what breaks when it fails. */
+  features: string[]
   ok: boolean
   /** Provider message, trimmed. Only on failure. */
   error?: string
@@ -114,6 +133,24 @@ export function describeAiConnection(): AiConnectionSnapshot {
   if (!baseUrl) missing.push('OPENAI_BASE_URL')
   if (!chatModel) missing.push('AI_CHAT_MODEL')
 
+  // One entry per distinct model, carrying every feature that resolves to it,
+  // so an override pointing somewhere wrong is probed and named.
+  const byModel = new Map<string, ProbeTarget>()
+  for (const feature of CHAT_FEATURES) {
+    const model = getChatModel(feature)
+    if (!model) continue
+    const existing = byModel.get(`chat:${model}`)
+    if (existing) existing.features.push(feature)
+    else byModel.set(`chat:${model}`, { role: 'chat', model, features: [feature] })
+  }
+  if (embeddingModel) {
+    byModel.set(`embedding:${embeddingModel}`, {
+      role: 'embedding',
+      model: embeddingModel,
+      features: ['embeddings'],
+    })
+  }
+
   return {
     configured: missing.length === 0,
     baseUrl,
@@ -121,6 +158,7 @@ export function describeAiConnection(): AiConnectionSnapshot {
     chatModel,
     embeddingModel,
     missing,
+    targets: [...byModel.values()],
   }
 }
 
@@ -306,35 +344,38 @@ async function realRequest(client: ModelProbeClient, role: ProbeRole, model: str
 /** Probe one model with a real request. See the module doc for why not a lookup. */
 async function probeOne(
   client: ModelProbeClient,
-  role: ProbeRole,
-  model: string,
+  target: ProbeTarget,
   baseUrl: string | null
 ): Promise<ProbeResult> {
+  const { role, model, features } = target
   const startedAt = Date.now()
   try {
     await realRequest(client, role, model)
-    return { role, model, ok: true, durationMs: Date.now() - startedAt }
+    return { role, model, features, ok: true, durationMs: Date.now() - startedAt }
   } catch (err) {
     const { message, hint } = explainProviderError(err, { baseUrl, model })
-    return { role, model, ok: false, error: message, hint, durationMs: Date.now() - startedAt }
+    return {
+      role,
+      model,
+      features,
+      ok: false,
+      error: message,
+      hint,
+      durationMs: Date.now() - startedAt,
+    }
   }
 }
 
 /**
- * One probe per configured model, in parallel (see probeOne). Embeddings
- * are probed only when a model is set for them; a missing embedding model
- * is a choice, not a failure.
+ * One probe per distinct model the features use, in parallel (see probeOne
+ * and {@link ProbeTarget}). Embeddings are probed only when a model is set
+ * for them; a missing embedding model is a choice, not a failure.
  */
 export async function probeModels(
   client: ModelProbeClient,
   snapshot: AiConnectionSnapshot
 ): Promise<ProbeResult[]> {
-  const targets: Array<[ProbeRole, string]> = []
-  if (snapshot.chatModel) targets.push(['chat', snapshot.chatModel])
-  if (snapshot.embeddingModel) targets.push(['embedding', snapshot.embeddingModel])
-  return Promise.all(
-    targets.map(([role, model]) => probeOne(client, role, model, snapshot.baseUrl))
-  )
+  return Promise.all(snapshot.targets.map((t) => probeOne(client, t, snapshot.baseUrl)))
 }
 
 /**

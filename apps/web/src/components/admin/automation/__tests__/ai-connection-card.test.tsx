@@ -93,8 +93,20 @@ describe('AiConnectionCard', () => {
       ok: true,
       snapshot: { ...CONFIGURED, embeddingModel: 'text-embedding-3-small' },
       probes: [
-        { role: 'chat', model: 'gpt-4o-mini', ok: true, durationMs: 120 },
-        { role: 'embedding', model: 'text-embedding-3-small', ok: true, durationMs: 95 },
+        {
+          role: 'chat',
+          model: 'gpt-4o-mini',
+          features: ['assistant', 'summary'],
+          ok: true,
+          durationMs: 120,
+        },
+        {
+          role: 'embedding',
+          model: 'text-embedding-3-small',
+          features: ['embeddings'],
+          ok: true,
+          durationMs: 95,
+        },
       ],
       testedAt: new Date().toISOString(),
     })
@@ -111,6 +123,9 @@ describe('AiConnectionCard', () => {
     expect(probes.getByText('gpt-4o-mini')).toBeTruthy()
     expect(probes.getByText('text-embedding-3-small')).toBeTruthy()
     expect(probes.getByText('120 ms')).toBeTruthy()
+    // Each row names the features riding that model, so a failing row says
+    // what is broken — the point of probing per-feature overrides.
+    expect(probes.getByText('assistant, summary')).toBeTruthy()
     expect(hoisted.test).toHaveBeenCalledTimes(1)
   })
 
@@ -123,6 +138,7 @@ describe('AiConnectionCard', () => {
         {
           role: 'chat',
           model: 'gpt-4o-mini',
+          features: ['assistant'],
           ok: false,
           error: 'Incorrect API key provided',
           hint: 'The endpoint rejected the API key. Check OPENAI_API_KEY.',

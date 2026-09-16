@@ -33,6 +33,35 @@ export type ChatFeature =
   | 'classification'
 
 /**
+ * Every chat feature, so callers can enumerate what is actually configured
+ * rather than assuming the role default covers everything — the connection
+ * test probes each distinct effective model this way.
+ *
+ * `satisfies` plus the exhaustiveness alias below make this list impossible
+ * to leave behind: adding a member to ChatFeature without adding it here is
+ * a compile error, not a silently unprobed feature.
+ */
+export const CHAT_FEATURES = [
+  'summary',
+  'sentiment',
+  'extraction',
+  'qualityGate',
+  'interpretation',
+  'merge',
+  'helpCenterAnswers',
+  'helpCenterTranslate',
+  'assistant',
+  'inboxTranslation',
+  'classification',
+] as const satisfies readonly ChatFeature[]
+
+/** Compile-time guard: resolves to `never` only when CHAT_FEATURES is complete. */
+type AssertExhaustive<T extends never> = T
+export type _ChatFeaturesAreExhaustive = AssertExhaustive<
+  Exclude<ChatFeature, (typeof CHAT_FEATURES)[number]>
+>
+
+/**
  * Resolve an effective model: per-feature override wins over the role default;
  * a disable sentinel or a fully-unset config yields null (feature disabled).
  */

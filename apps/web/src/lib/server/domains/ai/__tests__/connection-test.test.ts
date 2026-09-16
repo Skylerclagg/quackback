@@ -10,11 +10,24 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Every AI_*_MODEL key models.ts reads, so a per-feature override can be
+// exercised the same way the deployment sets one.
 const mockConfig = vi.hoisted(() => ({
   openaiApiKey: undefined as string | undefined,
   openaiBaseUrl: undefined as string | undefined,
   aiChatModel: undefined as string | undefined,
   aiEmbeddingModel: undefined as string | undefined,
+  aiSummaryModel: undefined as string | undefined,
+  aiSentimentModel: undefined as string | undefined,
+  aiExtractionModel: undefined as string | undefined,
+  aiQualityGateModel: undefined as string | undefined,
+  aiInterpretationModel: undefined as string | undefined,
+  aiMergeModel: undefined as string | undefined,
+  aiHelpCenterModel: undefined as string | undefined,
+  aiHelpCenterTranslateModel: undefined as string | undefined,
+  aiAssistantModel: undefined as string | undefined,
+  aiInboxTranslationModel: undefined as string | undefined,
+  aiClassificationModel: undefined as string | undefined,
 }))
 
 vi.mock('@/lib/server/config', () => ({ config: mockConfig }))
@@ -36,11 +49,11 @@ import {
   type ModelProbeClient,
 } from '../connection-test'
 
+/** Resets every key, so an override set by one test cannot leak into another. */
 function setConfig(values: Partial<typeof mockConfig>) {
-  mockConfig.openaiApiKey = values.openaiApiKey
-  mockConfig.openaiBaseUrl = values.openaiBaseUrl
-  mockConfig.aiChatModel = values.aiChatModel
-  mockConfig.aiEmbeddingModel = values.aiEmbeddingModel
+  for (const key of Object.keys(mockConfig) as Array<keyof typeof mockConfig>) {
+    mockConfig[key] = values[key]
+  }
 }
 
 /**
@@ -252,6 +265,58 @@ describe('Azure OpenAI detection', () => {
   })
 })
 
+describe('describeAiConnection builds a probe target per distinct model', () => {
+  // The gap this closes: Copilot and the agent ride AI_ASSISTANT_MODEL and
+  // Ask AI rides AI_HELP_CENTER_MODEL, so probing only AI_CHAT_MODEL reported
+  // a working connection while exactly those surfaces were failing.
+  beforeEach(() => setConfig({}))
+
+  const BASE = {
+    openaiApiKey: 'sk-test-abcdefghijklmnop1234',
+    openaiBaseUrl: 'https://api.openai.com/v1',
+    aiChatModel: 'gpt-4o-mini',
+  }
+
+  it('collapses every feature onto one target when nothing is overridden', () => {
+    setConfig(BASE)
+    const { targets } = describeAiConnection()
+    expect(targets).toHaveLength(1)
+    expect(targets[0]).toMatchObject({ role: 'chat', model: 'gpt-4o-mini' })
+    // One entry per feature, so a failure names all of them.
+    expect(targets[0].features).toContain('assistant')
+    expect(targets[0].features).toContain('helpCenterAnswers')
+    expect(targets[0].features.length).toBeGreaterThan(5)
+  })
+
+  it('adds a separate target for a per-feature override, labelled with its feature', () => {
+    setConfig({ ...BASE })
+    mockConfig.aiAssistantModel = 'my-assistant-deployment'
+    const { targets } = describeAiConnection()
+
+    const assistant = targets.find((t) => t.model === 'my-assistant-deployment')!
+    expect(assistant.features).toEqual(['assistant'])
+    const dflt = targets.find((t) => t.model === 'gpt-4o-mini')!
+    expect(dflt.features).not.toContain('assistant')
+    expect(dflt.features).toContain('helpCenterAnswers')
+  })
+
+  it('includes the embedding model as its own target', () => {
+    setConfig({ ...BASE, aiEmbeddingModel: 'text-embedding-3-small' })
+    const { targets } = describeAiConnection()
+    expect(targets.find((t) => t.role === 'embedding')).toMatchObject({
+      model: 'text-embedding-3-small',
+      features: ['embeddings'],
+    })
+  })
+
+  it('omits a feature disabled with the "off" sentinel', () => {
+    setConfig({ ...BASE })
+    mockConfig.aiSummaryModel = 'off'
+    const { targets } = describeAiConnection()
+    expect(targets.flatMap((t) => t.features)).not.toContain('summary')
+  })
+})
+
 describe('describeAiConnection', () => {
   beforeEach(() => setConfig({}))
 
@@ -328,6 +393,21 @@ const CONFIGURED: AiConnectionSnapshot = {
   chatModel: 'gpt-4o-mini',
   embeddingModel: 'text-embedding-3-small',
   missing: [],
+  targets: [
+    { role: 'chat', model: 'gpt-4o-mini', features: ['summary'] },
+    { role: 'embedding', model: 'text-embedding-3-small', features: ['embeddings'] },
+  ],
+}
+
+/** A snapshot probing one chat model only, for single-target assertions. */
+function chatOnly(model: string, baseUrl = CONFIGURED.baseUrl): AiConnectionSnapshot {
+  return {
+    ...CONFIGURED,
+    baseUrl,
+    chatModel: model,
+    embeddingModel: null,
+    targets: [{ role: 'chat', model, features: ['summary'] }],
+  }
 }
 
 describe('probeModels', () => {
@@ -343,7 +423,7 @@ describe('probeModels', () => {
 
   it('skips the embedding probe when no embedding model is set', async () => {
     const client = fakeClient({})
-    const probes = await probeModels(client, { ...CONFIGURED, embeddingModel: null })
+    const probes = await probeModels(client, chatOnly('gpt-4o-mini'))
     expect(probes).toHaveLength(1)
     expect(probes[0].role).toBe('chat')
   })
@@ -370,7 +450,7 @@ describe('the probe makes a REAL request, never a model lookup', () => {
   // operator whose every feature is failing.
   it('sends a chat completion for the chat role', async () => {
     const client = fakeClient({})
-    await probeModels(client, { ...CONFIGURED, embeddingModel: null })
+    await probeModels(client, chatOnly('gpt-4o-mini'))
     expect(client.chat.completions.create).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'gpt-4o-mini' })
     )
@@ -387,19 +467,17 @@ describe('the probe makes a REAL request, never a model lookup', () => {
 
   it('fails when a catalogue model has no deployment behind it — the Azure trap', async () => {
     const client = fakeClient({ 'gpt-4.1-nano': apiError(404, 'Resource not found') })
-    const [probe] = await probeModels(client, {
-      ...CONFIGURED,
-      chatModel: 'gpt-4.1-nano',
-      embeddingModel: null,
-      baseUrl: 'https://example-resource.openai.azure.com/openai/v1',
-    })
+    const [probe] = await probeModels(
+      client,
+      chatOnly('gpt-4.1-nano', 'https://example-resource.openai.azure.com/openai/v1')
+    )
     expect(probe.ok).toBe(false)
     expect(probe.hint).toMatch(/deployment on this resource/)
   })
 
   it('sends a bounded prompt and no output-cap parameter', async () => {
     const client = fakeClient({})
-    await probeModels(client, { ...CONFIGURED, embeddingModel: null })
+    await probeModels(client, chatOnly('gpt-4o-mini'))
     const params = vi.mocked(client.chat.completions.create).mock.calls[0][0] as Record<
       string,
       unknown

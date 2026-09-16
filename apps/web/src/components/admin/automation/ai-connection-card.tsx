@@ -217,6 +217,13 @@ export function AiConnectionCard() {
                     </span>
                     <code className="text-xs text-muted-foreground">{probe.model}</code>
                   </span>
+                  {/* Which features ride this model: the row that fails names
+                      exactly what is broken, including a per-feature override. */}
+                  {probe.features.length > 0 && (
+                    <span className="basis-full text-xs text-muted-foreground/80">
+                      {probe.features.join(', ')}
+                    </span>
+                  )}
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {intl.formatMessage(
                       {
