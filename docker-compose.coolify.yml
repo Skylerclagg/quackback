@@ -78,7 +78,11 @@ services:
       start_period: 40s
 
   minio:
-    image: minio/minio:${MINIO_IMAGE_TAG:-RELEASE.2025-04-22T22-12-26Z}
+    # Pulled from quay.io: MinIO no longer publishes the server or `mc`
+    # images to Docker Hub — the `minio/minio` and `minio/mc` repositories
+    # there now return "repository does not exist", which fails every
+    # pull. quay.io carries the same release tags.
+    image: quay.io/minio/minio:${MINIO_IMAGE_TAG:-RELEASE.2025-04-22T22-12-26Z}
     container_name: quackback-minio
     restart: unless-stopped
     environment:
@@ -95,7 +99,7 @@ services:
 
   # Creates the upload bucket once MinIO is healthy, then exits.
   minio-init:
-    image: minio/mc:${MC_IMAGE_TAG:-RELEASE.2025-04-16T18-13-26Z}
+    image: quay.io/minio/mc:${MC_IMAGE_TAG:-RELEASE.2025-04-16T18-13-26Z}
     container_name: quackback-minio-init
     depends_on:
       minio:
