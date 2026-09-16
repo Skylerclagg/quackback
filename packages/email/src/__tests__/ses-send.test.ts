@@ -250,12 +250,37 @@ describe('provider ladder', () => {
     expect(isSesEmailConfigured()).toBe(false)
   })
 
-  it('does not select a sending provider from an inbound-only key', () => {
-    // The inbound body fetch keeps its own credential. It carries no mail out,
-    // so holding it must not make an install look like it can send.
+  it('selects resend from the Resend key when no other transport is set', () => {
+    // DELIBERATE DIVERGENCE FROM UPSTREAM. This assertion was the inverse:
+    // upstream treats EMAIL_RESEND_API_KEY as inbound-only ("it carries no
+    // mail out, so holding it must not make an install look like it can
+    // send") after replacing the Resend transport with SES. This fork
+    // restores Resend as a sending transport, so the same key now means two
+    // things: the inbound body fetch AND, when nothing else is configured,
+    // the outbound sender.
+    //
+    // The cost is real and is why upstream's version existed: an install
+    // holding this key purely for inbound replies begins sending through
+    // Resend rather than falling through to console. That is only reachable
+    // with no SES credential and no EMAIL_SMTP_HOST — see the two tests
+    // below, which pin that this never displaces a configured transport.
     process.env.EMAIL_RESEND_API_KEY = 're_test'
     process.env.RESEND_API_KEY = 're_test'
-    expect(getEmailProvider()).toBe('console')
+    expect(getEmailProvider()).toBe('resend')
+  })
+
+  it('keeps SES ahead of an inbound-only Resend key', () => {
+    process.env.EMAIL_RESEND_API_KEY = 're_test'
+    process.env.EMAIL_SES_ACCESS_KEY_ID = 'AKIAEXAMPLE'
+    process.env.EMAIL_SES_SECRET_ACCESS_KEY = 'secret'
+    expect(getEmailProvider()).toBe('ses')
+  })
+
+  it('keeps SMTP ahead of an inbound-only Resend key', () => {
+    // Restoring Resend must not move an install that is already sending.
+    process.env.EMAIL_RESEND_API_KEY = 're_test'
+    process.env.EMAIL_SMTP_HOST = 'smtp.acme.test'
+    expect(getEmailProvider()).toBe('smtp')
   })
 })
 

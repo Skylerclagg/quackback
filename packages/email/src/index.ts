@@ -6,13 +6,16 @@
  * runtime.
  *
  * Priority: SES (if EMAIL_SES_ACCESS_KEY_ID + EMAIL_SES_SECRET_ACCESS_KEY set)
- * → SMTP (if EMAIL_SMTP_HOST set) → Console logging (dev mode).
+ * → SMTP (if EMAIL_SMTP_HOST set) → Resend (if EMAIL_RESEND_API_KEY set)
+ * → Console logging (dev mode).
  *
  * The order is deliberate rather than incidental. An install that has set
  * `EMAIL_SMTP_HOST` has named the mail server it wants used and keeps it,
  * because a self-hoster with a mail server of their own has no SES credentials
  * to be overtaken by; only an install that has been given both halves of an SES
- * credential gets that path, which is a pair nobody sets by accident.
+ * credential gets that path, which is a pair nobody sets by accident. Resend
+ * sits below SMTP for the same reason it did before SES arrived — see
+ * getProvider() for why restoring it there is purely additive.
  */
 
 import { render } from '@react-email/components'
@@ -111,6 +114,7 @@ function getResendApiKey(): string | undefined {
 // Lazy-initialized transports
 let smtpTransporter: Transporter | null = null
 let inboundFetchClient: Resend | null = null
+let resendSendClient: Resend | null = null
 
 /**
  * Why a send did not happen. Present only when `sent` is false. Both cases are
@@ -148,7 +152,7 @@ export type EmailResult = {
   messageId?: string | null
 }
 
-type EmailProvider = 'ses' | 'smtp' | 'console'
+type EmailProvider = 'ses' | 'smtp' | 'resend' | 'console'
 
 export function isEmailConfigured(): boolean {
   return getProvider() !== 'console'
@@ -167,9 +171,21 @@ export function getEmailProvider(): EmailProvider {
  * sending as its own branded domain is on the same rung as everything else and
  * there is no identity this ladder has to route around.
  */
+/**
+ * Transport selection, highest priority first.
+ *
+ * Resend sits BELOW SMTP deliberately. It used to sit there too (the order was
+ * SMTP → Resend → console before SES replaced it), so an install that has both
+ * set keeps the transport it has been using. Placing it last among the real
+ * providers also makes re-adding it purely additive: no existing configuration
+ * changes behaviour, and the only installs that move are the ones currently
+ * falling through to `console` with nothing but a Resend key — which is the
+ * case this exists to fix.
+ */
 function getProvider(): EmailProvider {
   if (isSesEmailConfigured()) return 'ses'
   if (getEnv('EMAIL_SMTP_HOST')) return 'smtp'
+  if (getResendApiKey()) return 'resend'
   return 'console'
 }
 
@@ -210,6 +226,20 @@ function getInboundFetchClient(): Resend {
     inboundFetchClient = new Resend(getResendApiKey())
   }
   return inboundFetchClient
+}
+
+/**
+ * Client for outbound sends. Kept separate from the inbound fetch client
+ * above rather than shared: that one is documented as never-for-sending, and
+ * one of the two may later need its own key or options without the change
+ * silently altering the other.
+ */
+function getResendSendClient(): Resend {
+  if (!resendSendClient) {
+    log.info('initializing resend send client')
+    resendSendClient = new Resend(getResendApiKey())
+  }
+  return resendSendClient
 }
 
 /** Wrap a bare Message-ID in angle brackets for a header value (idempotent). */
@@ -435,7 +465,72 @@ async function dispatch(
     return { sent: true, messageId: result.messageId }
   }
 
-  // SMTP is the last rung: console and SES both returned above.
+  if (provider === 'resend') {
+    // Message-ID is the provider's, and it does not tell us which one it used.
+    // Resend's response `id` is its OWN email identifier (a UUID for its
+    // dashboard and webhooks), not the RFC 5322 Message-ID, and its API makes
+    // no promise about honouring one we supply. So the minted id cannot be
+    // claimed as sent: EmailResult.messageId is null, the documented "the
+    // transport generated it and did not say which" state, and a caller storing
+    // the minted id anyway would record one that exists nowhere.
+    //
+    // Replies still route: the plus-addressed Reply-To carries the conversation
+    // (conversation.email-channel.ts), and In-Reply-To / References still
+    // thread the message in the recipient's client. Those are passed through.
+    const result = await getResendSendClient().emails.send({
+      from,
+      to: options.to,
+      subject: options.subject,
+      // `html` is always derived above (from `react` when a template was
+      // passed), so the raw and template paths send the same shape.
+      html: html ?? '',
+      ...(text !== undefined ? { text } : {}),
+      ...(options.replyTo !== undefined ? { replyTo: options.replyTo } : {}),
+      ...(Object.keys(threadingHeaders).length > 0 || options.extraHeaders
+        ? { headers: { ...threadingHeaders, ...options.extraHeaders } }
+        : {}),
+    })
+
+    // The SDK reports failure in `error` rather than by throwing, so this is
+    // the arm's real error path — without it a rejected send logs as sent.
+    if (result.error) {
+      log.error(
+        { provider: 'resend', error_name: result.error.name, error_message: result.error.message },
+        'email send failed'
+      )
+      recordOutboundLog({
+        direction: 'outbound',
+        emailType,
+        provider: 'resend',
+        to: options.to,
+        subject: options.subject,
+        status: 'failed',
+        error: `${result.error.message} (${result.error.name})`,
+        billable,
+        ...entityIds(options),
+      })
+      throw new Error(`Resend API error: ${result.error.message} (${result.error.name})`)
+    }
+
+    log.info({ provider: 'resend', message_id: result.data?.id }, 'email sent')
+    recordOutboundLog({
+      direction: 'outbound',
+      emailType,
+      provider: 'resend',
+      to: options.to,
+      subject: options.subject,
+      status: 'sent',
+      // Null for the RFC id we cannot know; the provider's own id is kept
+      // separately so a row can still be found in Resend's dashboard.
+      messageId: null,
+      providerMessageId: result.data?.id ?? null,
+      billable,
+      ...entityIds(options),
+    })
+    return { sent: true, messageId: null }
+  }
+
+  // SMTP is the last rung: console, SES and Resend all returned above.
   try {
     const result = await getSmtpTransporter().sendMail({
       from,

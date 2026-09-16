@@ -29,8 +29,14 @@ export function EmailTransportCard() {
 
   if (!data) return null
 
-  const outboundLabel =
-    data.provider === 'smtp' ? 'SMTP' : data.provider === 'ses' ? 'Amazon SES' : 'Not configured'
+  // Every provider the transport can resolve to needs a label here: an
+  // unmapped one would read "Not configured" while mail was being delivered.
+  const PROVIDER_LABELS: Record<string, string> = {
+    smtp: 'SMTP',
+    ses: 'Amazon SES',
+    resend: 'Resend',
+  }
+  const outboundLabel = PROVIDER_LABELS[data.provider] ?? 'Not configured'
 
   return (
     <SettingsCard

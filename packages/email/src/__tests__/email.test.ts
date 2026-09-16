@@ -69,10 +69,16 @@ describe('isEmailConfigured', () => {
     expect(isEmailConfigured()).toBe(false)
   })
 
-  it('returns false for the inbound-only key, which carries no mail out', () => {
+  it('returns true for a Resend key, which this fork can send with', () => {
+    // DELIBERATE DIVERGENCE FROM UPSTREAM, where this asserted false: the
+    // Resend key was inbound-only once SES replaced the Resend transport.
+    // This fork restores Resend as a sender, so the key does configure
+    // outbound mail. See the provider-ladder tests in ses-send.test.ts for
+    // the full rationale and for the guarantee that it never displaces an
+    // install already sending over SES or SMTP.
     process.env.EMAIL_RESEND_API_KEY = 're_test_123'
     process.env.RESEND_API_KEY = 're_test_123'
-    expect(isEmailConfigured()).toBe(false)
+    expect(isEmailConfigured()).toBe(true)
   })
 })
 
