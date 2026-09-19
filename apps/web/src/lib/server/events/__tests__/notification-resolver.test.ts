@@ -23,6 +23,7 @@ const h = vi.hoisted(() => ({
   getTicketRepliedEmailTargets: vi.fn(),
   getTicketResolvedEmailTargets: vi.fn(),
   getTicketAssignedEmailTargets: vi.fn(),
+  getConversationAssignedEmailTargets: vi.fn(),
   getSlaEmailTargets: vi.fn(),
   getConversationNoteMentionedEmailTargets: vi.fn(),
 }))
@@ -48,6 +49,7 @@ vi.mock('../targets', () => ({
   getTicketRepliedEmailTargets: h.getTicketRepliedEmailTargets,
   getTicketResolvedEmailTargets: h.getTicketResolvedEmailTargets,
   getTicketAssignedEmailTargets: h.getTicketAssignedEmailTargets,
+  getConversationAssignedEmailTargets: h.getConversationAssignedEmailTargets,
   getSlaEmailTargets: h.getSlaEmailTargets,
   getConversationNoteMentionedEmailTargets: h.getConversationNoteMentionedEmailTargets,
 }))
@@ -89,6 +91,7 @@ describe('notification resolver routing (WO-8c)', () => {
     h.getTicketRepliedEmailTargets.mockResolvedValue([])
     h.getTicketResolvedEmailTargets.mockResolvedValue([])
     h.getTicketAssignedEmailTargets.mockResolvedValue([])
+    h.getConversationAssignedEmailTargets.mockResolvedValue([])
     h.getSlaEmailTargets.mockResolvedValue([])
     h.getConversationNoteMentionedEmailTargets.mockResolvedValue([])
   })
@@ -191,6 +194,17 @@ describe('notification resolver routing (WO-8c)', () => {
     h.getTicketAssignedEmailTargets.mockResolvedValue(T('assigned_email'))
     const out = await notificationResolver.resolve(evt('ticket.assigned'))
     expect(out.map((t) => t.type)).toEqual(['assigned_email', 'assigned_bell'])
+  })
+
+  it('concats bell + email targets for conversation.assigned', async () => {
+    h.getConversationAssignedTargets.mockResolvedValue(T('conversation_assigned_bell')[0])
+    h.getConversationAssignedEmailTargets.mockResolvedValue(T('conversation_assigned_email'))
+    const out = await notificationResolver.resolve(evt('conversation.assigned'))
+    expect(out.map((t) => t.type)).toEqual([
+      'conversation_assigned_email',
+      'conversation_assigned_bell',
+    ])
+    expect(h.getConversationAssignedEmailTargets).toHaveBeenCalledTimes(1)
   })
 
   it('concats bell + email targets for conversation.note_mentioned', async () => {

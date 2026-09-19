@@ -1177,6 +1177,12 @@ export type TicketEmailKind =
   | 'status_resolved'
   | 'assigned'
   | 'assigned_team'
+  // Conversation-scoped assignment. Distinct kinds rather than reusing the
+  // ticket ones: those copy lines name a ticket reference ("Ticket #142"), and
+  // a conversation has none — it is identified by who it is with. Same shape
+  // as the SLA kinds, which are conversation-scoped for the same reason.
+  | 'conversation_assigned'
+  | 'conversation_assigned_team'
   | 'sla_warning'
   | 'sla_breach'
 
@@ -1284,6 +1290,22 @@ function ticketEventCopy(p: SendTicketEventEmailParams): TicketEmailCopy {
         intro: `${p.ticketLabel} "${p.title}" was assigned to your team.`,
         ctaLabel: 'Open in inbox',
         reason: "You're receiving this because the ticket was assigned to your team.",
+      }
+    case 'conversation_assigned':
+      return {
+        subject: `Conversation with ${p.title} assigned to you`,
+        heading: 'You were assigned a conversation',
+        intro: `The conversation with ${p.title} was assigned to you.`,
+        ctaLabel: 'Open in inbox',
+        reason: "You're receiving this because the conversation was assigned to you.",
+      }
+    case 'conversation_assigned_team':
+      return {
+        subject: `Conversation with ${p.title} assigned to your team`,
+        heading: 'A conversation was assigned to your team',
+        intro: `The conversation with ${p.title} was assigned to your team.`,
+        ctaLabel: 'Open in inbox',
+        reason: "You're receiving this because the conversation was assigned to your team.",
       }
     case 'sla_warning':
       return {

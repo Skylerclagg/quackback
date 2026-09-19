@@ -655,6 +655,38 @@ export async function getMentionTargets(
  * (like `webhookSubscriptionMatches`) so it's unit-testable without driving
  * the whole getHookTargets pipeline.
  */
+/**
+ * The two recipient kinds of a `conversation.assigned` event: the direct
+ * assignee (only when the agent actually changed and isn't the actor) and the
+ * members of a newly-assigned team (actor-excluded). Shared by the bell
+ * builder below and the email builder, so the recipient rule lives in ONE
+ * place — exactly as computeTicketAssignmentRecipients does for tickets.
+ */
+async function computeConversationAssignmentRecipients(
+  data: {
+    assignedAgentPrincipalId: string | null
+    previousAgentPrincipalId: string | null
+    assignedTeamId: string | null
+    previousTeamId: string | null
+  },
+  actorPrincipalId: string | undefined
+): Promise<{ directAssignee: PrincipalId | null; teamMemberIds: PrincipalId[] }> {
+  const directAssignee: PrincipalId | null =
+    data.assignedAgentPrincipalId &&
+    data.assignedAgentPrincipalId !== data.previousAgentPrincipalId &&
+    data.assignedAgentPrincipalId !== actorPrincipalId
+      ? (data.assignedAgentPrincipalId as PrincipalId)
+      : null
+
+  let teamMemberIds: PrincipalId[] = []
+  if (data.assignedTeamId && data.assignedTeamId !== data.previousTeamId) {
+    const { listTeamMemberPrincipalIds } = await import('@/lib/server/domains/teams')
+    const memberIds = await listTeamMemberPrincipalIds(data.assignedTeamId as TeamId)
+    teamMemberIds = memberIds.filter((id) => id !== actorPrincipalId)
+  }
+  return { directAssignee, teamMemberIds }
+}
+
 export async function getConversationAssignedTargets(event: EventData): Promise<HookTarget | null> {
   if (event.type !== 'conversation.assigned') return null
   const {
@@ -665,23 +697,14 @@ export async function getConversationAssignedTargets(event: EventData): Promise<
     previousTeamId,
   } = event.data
 
-  const directAssignee: PrincipalId | null =
-    assignedAgentPrincipalId &&
-    assignedAgentPrincipalId !== previousAgentPrincipalId &&
-    assignedAgentPrincipalId !== event.actor.principalId
-      ? (assignedAgentPrincipalId as PrincipalId)
-      : null
+  const { directAssignee, teamMemberIds } = await computeConversationAssignmentRecipients(
+    { assignedAgentPrincipalId, previousAgentPrincipalId, assignedTeamId, previousTeamId },
+    event.actor.principalId
+  )
 
   const recipients = new Set<PrincipalId>()
   if (directAssignee) recipients.add(directAssignee)
-
-  if (assignedTeamId && assignedTeamId !== previousTeamId) {
-    const { listTeamMemberPrincipalIds } = await import('@/lib/server/domains/teams')
-    const memberIds = await listTeamMemberPrincipalIds(assignedTeamId as TeamId)
-    for (const id of memberIds) {
-      if (id !== event.actor.principalId) recipients.add(id)
-    }
-  }
+  for (const id of teamMemberIds) recipients.add(id)
 
   if (recipients.size === 0) return null
   return {
@@ -689,6 +712,66 @@ export async function getConversationAssignedTargets(event: EventData): Promise<
     target: { principalIds: [...recipients] },
     config: { conversationId: conversation.id, assignedAgentPrincipalId: directAssignee },
   }
+}
+
+/**
+ * `conversation.assigned` → agent emails: the newly-assigned agent (kind
+ * `conversation_assigned`) and a newly-assigned team's members (kind
+ * `conversation_assigned_team`), actor-excluded — the same recipient set as
+ * the bell, filtered by the `conversation_assigned` matrix key.
+ *
+ * Conversation-scoped like the SLA builder, not ticket-scoped: there is no
+ * ticket reference to put in the subject, so the copy identifies the thread by
+ * who it is with and the CTA is the conversation in the inbox.
+ */
+export async function getConversationAssignedEmailTargets(
+  event: EventData,
+  context: HookContext
+): Promise<HookTarget[]> {
+  if (event.type !== 'conversation.assigned') return []
+  const {
+    conversation,
+    assignedAgentPrincipalId,
+    previousAgentPrincipalId,
+    assignedTeamId,
+    previousTeamId,
+  } = event.data
+
+  const { directAssignee, teamMemberIds } = await computeConversationAssignmentRecipients(
+    { assignedAgentPrincipalId, previousAgentPrincipalId, assignedTeamId, previousTeamId },
+    event.actor.principalId
+  )
+
+  const kindById = new Map<PrincipalId, 'conversation_assigned' | 'conversation_assigned_team'>()
+  if (directAssignee) kindById.set(directAssignee, 'conversation_assigned')
+  for (const id of teamMemberIds) {
+    if (!kindById.has(id)) kindById.set(id, 'conversation_assigned_team')
+  }
+  if (kindById.size === 0) return []
+
+  const ids = [...kindById.keys()]
+  // One matrix key for both kinds: muting "conversation assigned" means all of
+  // it, the same way the bell treats them as one notification type.
+  const { recipients, emailMap } = await resolveEligibleRecipients(ids, 'conversation_assigned')
+  if (recipients.length === 0) return []
+
+  const conversationId = conversation.id as ConversationId
+  // Who the conversation is with — the only stable way to name it in a subject.
+  const [row] = await db
+    .select({ visitorName: principal.displayName })
+    .from(conversations)
+    .leftJoin(principal, eq(conversations.visitorPrincipalId, principal.id))
+    .where(eq(conversations.id, conversationId))
+    .limit(1)
+  const title = row?.visitorName ?? 'a customer'
+  const ctaUrl = inboxUrl(context.portalBaseUrl, conversationId)
+
+  return recipients.map((id) =>
+    ticketEmailTarget(
+      emailMap.get(id)!,
+      agentFacingConfig({ kind: kindById.get(id)!, ticketLabel: '', title, ctaUrl, context })
+    )
+  )
 }
 
 /**
@@ -1249,14 +1332,10 @@ function ticketEmailTarget(email: ContactEmail, config: Record<string, unknown>)
   return emailTarget(email, '', config)
 }
 
-type TicketEmailKind =
-  | 'created'
-  | 'reply'
-  | 'status_resolved'
-  | 'assigned'
-  | 'assigned_team'
-  | 'sla_warning'
-  | 'sla_breach'
+// Imported, not re-declared. This was a hand-kept copy of the package's union,
+// which silently went stale the moment a kind was added there: the copy still
+// type-checked, so the only symptom was a new kind being unusable here.
+import type { TicketEmailKind } from '@quackback/email'
 
 interface BaseTicketConfigParams {
   kind: TicketEmailKind

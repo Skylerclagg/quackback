@@ -33,6 +33,7 @@ import {
   getTicketRepliedEmailTargets,
   getTicketResolvedEmailTargets,
   getTicketAssignedEmailTargets,
+  getConversationAssignedEmailTargets,
   getSlaEmailTargets,
   getConversationNoteMentionedEmailTargets,
 } from '../targets'
@@ -85,6 +86,7 @@ const EMAIL_BUILDERS: Record<string, EmailBuilder> = {
   'ticket.replied': getTicketRepliedEmailTargets,
   'ticket.status_changed': getTicketResolvedEmailTargets,
   'ticket.assigned': getTicketAssignedEmailTargets,
+  'conversation.assigned': getConversationAssignedEmailTargets,
   'sla.approaching_breach': getSlaEmailTargets,
   'sla.breached': getSlaEmailTargets,
   'conversation.note_mentioned': getConversationNoteMentionedEmailTargets,

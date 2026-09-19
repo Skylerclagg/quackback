@@ -41,6 +41,9 @@ const TICKET_EMAIL_EVENT_TYPES = new Set<string>([
   'ticket.replied',
   'ticket.status_changed',
   'ticket.assigned',
+  // Conversation-scoped, but rides the same sendTicketEventEmail envelope as
+  // the SLA kinds do — see getConversationAssignedEmailTargets.
+  'conversation.assigned',
   'sla.approaching_breach',
   'sla.breached',
 ])

@@ -2,7 +2,7 @@
  * Target resolution for the ticket + SLA lifecycle EMAIL builders
  * (getTicketCreatedEmailTargets, getTicketRepliedEmailTargets,
  * getTicketResolvedEmailTargets, getTicketAssignedEmailTargets,
- * getSlaEmailTargets). Mocks the pure seams — support flag, watcher service,
+ * getConversationAssignedEmailTargets, getSlaEmailTargets). Mocks the pure seams — support flag, watcher service,
  * team roster, channel-account From resolution, reply-to minting, stage labels,
  * preference matrix — and drives a flexible db.select() chain that yields one
  * queued result per select() call (FIFO), so email/ticket-fact/conversation
@@ -86,6 +86,7 @@ const {
   getTicketRepliedEmailTargets,
   getTicketResolvedEmailTargets,
   getTicketAssignedEmailTargets,
+  getConversationAssignedEmailTargets,
   getSlaEmailTargets,
 } = await import('../targets')
 
@@ -444,6 +445,115 @@ describe('getTicketAssignedEmailTargets', () => {
 
   it('returns [] when nothing changed', async () => {
     expect(await getTicketAssignedEmailTargets(assignedEvent(), context)).toEqual([])
+  })
+})
+
+// ============================================================================
+// conversation assigned
+// ============================================================================
+
+function conversationAssignedEvent(overrides: Record<string, unknown> = {}): EventData {
+  return {
+    id: 'evt-ca',
+    type: 'conversation.assigned',
+    timestamp: '2026-01-01T00:00:00Z',
+    actor: { type: 'user', principalId: 'principal_actor' },
+    data: {
+      conversation: {
+        id: 'conversation_1',
+        status: 'open',
+        channel: 'messenger',
+        priority: 'none',
+      },
+      assignedAgentPrincipalId: null,
+      previousAgentPrincipalId: null,
+      assignedTeamId: null,
+      previousTeamId: null,
+      ...overrides,
+    },
+  } as EventData
+}
+
+describe('getConversationAssignedEmailTargets', () => {
+  it('emails the direct assignee with kind "conversation_assigned", titled by the visitor', async () => {
+    queueSelect([{ id: 'principal_agent', email: 'agent@example.com', contactEmail: null }])
+    queueSelect([{ visitorName: 'Jane Doe' }])
+    const targets = await getConversationAssignedEmailTargets(
+      conversationAssignedEvent({ assignedAgentPrincipalId: 'principal_agent' }),
+      context
+    )
+    expect(targets).toHaveLength(1)
+    expect(targets[0].target).toMatchObject({ email: 'agent@example.com' })
+    expect(targets[0].config).toMatchObject({
+      kind: 'conversation_assigned',
+      title: 'Jane Doe',
+      ctaUrl: 'https://p/admin/inbox?i=conversation_1',
+    })
+  })
+
+  it('names an unidentified visitor generically rather than leaving the subject blank', async () => {
+    queueSelect([{ id: 'principal_agent', email: 'agent@example.com', contactEmail: null }])
+    queueSelect([{ visitorName: null }])
+    const targets = await getConversationAssignedEmailTargets(
+      conversationAssignedEvent({ assignedAgentPrincipalId: 'principal_agent' }),
+      context
+    )
+    expect(targets[0].config).toMatchObject({ title: 'a customer' })
+  })
+
+  it('emails newly-assigned team members with kind "conversation_assigned_team", actor excluded', async () => {
+    listTeamMemberPrincipalIds.mockResolvedValue(['principal_member_1', 'principal_actor'])
+    queueSelect([{ id: 'principal_member_1', email: 'member1@example.com', contactEmail: null }])
+    queueSelect([{ visitorName: 'Jane Doe' }])
+    const targets = await getConversationAssignedEmailTargets(
+      conversationAssignedEvent({ assignedTeamId: 'team_1' }),
+      context
+    )
+    expect(targets).toHaveLength(1)
+    expect(targets[0].target).toMatchObject({ email: 'member1@example.com' })
+    expect(targets[0].config).toMatchObject({ kind: 'conversation_assigned_team' })
+  })
+
+  // The agent-facing envelope: no portal CTA and no reply-by-email address, so
+  // a customer reply can never land on an internal assignment alert.
+  it('is agent-facing — inbox CTA, no reply-to', async () => {
+    queueSelect([{ id: 'principal_agent', email: 'agent@example.com', contactEmail: null }])
+    queueSelect([{ visitorName: 'Jane Doe' }])
+    const targets = await getConversationAssignedEmailTargets(
+      conversationAssignedEvent({ assignedAgentPrincipalId: 'principal_agent' }),
+      context
+    )
+    const cfg = targets[0].config as { ctaUrl: string; replyTo?: string }
+    expect(cfg.ctaUrl).toContain('/admin/inbox')
+    expect(cfg.replyTo).toBeUndefined()
+  })
+
+  it('is muted by the "conversation_assigned" matrix key', async () => {
+    queueSelect([{ id: 'principal_agent', email: 'agent@example.com', contactEmail: null }])
+    batchGetNotificationPreferences.mockResolvedValue(
+      denyEmail('principal_agent', 'conversation_assigned')
+    )
+    expect(
+      await getConversationAssignedEmailTargets(
+        conversationAssignedEvent({ assignedAgentPrincipalId: 'principal_agent' }),
+        context
+      )
+    ).toEqual([])
+  })
+
+  it('does not self-notify the actor', async () => {
+    expect(
+      await getConversationAssignedEmailTargets(
+        conversationAssignedEvent({ assignedAgentPrincipalId: 'principal_actor' }),
+        context
+      )
+    ).toEqual([])
+  })
+
+  it('returns [] when nothing changed', async () => {
+    expect(await getConversationAssignedEmailTargets(conversationAssignedEvent(), context)).toEqual(
+      []
+    )
   })
 })
 
