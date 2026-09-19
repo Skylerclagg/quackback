@@ -69,13 +69,14 @@ function ConnectorsPage() {
               })}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {intl.formatMessage({
-                id: 'automation.connectors.description',
-                defaultMessage: withAssistantName(
-                  'Give Quinn tools from external MCP servers. One catalog, mapped onto each agent.',
-                  assistantName
-                ),
-              })}
+              {withAssistantName(
+                intl.formatMessage({
+                  id: 'automation.connectors.description',
+                  defaultMessage:
+                    'Give Quinn tools from external MCP servers. One catalog, mapped onto each agent.',
+                }),
+                assistantName
+              )}
             </p>
           </div>
         </div>

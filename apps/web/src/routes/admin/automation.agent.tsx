@@ -114,19 +114,23 @@ function AssistantAgentSettings() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-foreground">
-              {intl.formatMessage({
-                id: 'automation.agent.title',
-                defaultMessage: withAssistantName('Quinn Agent', assistantName),
-              })}
+              {withAssistantName(
+                intl.formatMessage({
+                  id: 'automation.agent.title',
+                  defaultMessage: 'Quinn Agent',
+                }),
+                assistantName
+              )}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {intl.formatMessage({
-                id: 'automation.agent.pageDescription',
-                defaultMessage: withAssistantName(
-                  'The customer-facing agent. Replies in Messenger and anywhere else Quinn speaks for you.',
-                  assistantName
-                ),
-              })}
+              {withAssistantName(
+                intl.formatMessage({
+                  id: 'automation.agent.pageDescription',
+                  defaultMessage:
+                    'The customer-facing agent. Replies in Messenger and anywhere else Quinn speaks for you.',
+                }),
+                assistantName
+              )}
             </p>
           </div>
         </header>

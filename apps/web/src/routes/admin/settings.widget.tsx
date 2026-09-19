@@ -82,6 +82,7 @@ import { DEFAULT_WIDGET_HOME_CARDS } from '@/lib/shared/types/settings'
 import { WIDGET_HERO_PATTERNS, heroBackdropStyle } from '@/lib/shared/widget/hero-style'
 import { ColorPickerGrid, ColorHexInput } from '@/components/shared/color-picker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { DEFAULT_ASSISTANT_NAME } from '@/lib/client/assistant-name'
 
 export const Route = createFileRoute('/admin/settings/widget')({
   loader: async ({ context }) => {
@@ -1349,7 +1350,9 @@ function AssistantLinkCard({
           </span>
           <span>
             <span className="block text-sm font-medium text-foreground">
-              {assistant?.enabled === false ? 'Assistant off' : assistant?.name?.trim() || 'Quinn'}
+              {assistant?.enabled === false
+                ? 'Assistant off'
+                : assistant?.name?.trim() || DEFAULT_ASSISTANT_NAME}
             </span>
             <span className="block text-xs text-muted-foreground">
               Configure identity in AI &amp; Automation

@@ -166,6 +166,7 @@ function AttributeFormDialog({
   isPending?: boolean
 }) {
   const isEditing = !!initialValues?.id
+  const assistantName = useAssistantName()
 
   const [key, setKey] = useState(initialValues?.key ?? '')
   const [label, setLabel] = useState(initialValues?.label ?? '')
@@ -382,11 +383,11 @@ function AttributeFormDialog({
             />
             {aiDetect && supportsAiDetect(fieldType) && (
               <p className="text-[11px] text-muted-foreground">
-                This is the whole prompt Quinn sees, so be explicit: when the value applies, when it
-                does not, and typical customer phrasing. Example: &quot;Applies when the customer
-                reports being charged the wrong amount. Does not apply to general billing questions.
-                Customers usually say things like &apos;double charged&apos; or &apos;wrong
-                price&apos;.&quot;
+                This is the whole prompt {assistantName} sees, so be explicit: when the value
+                applies, when it does not, and typical customer phrasing. Example: &quot;Applies
+                when the customer reports being charged the wrong amount. Does not apply to general
+                billing questions. Customers usually say things like &apos;double charged&apos; or
+                &apos;wrong price&apos;.&quot;
               </p>
             )}
           </div>
@@ -513,7 +514,7 @@ function AttributeFormDialog({
                 <div>
                   <p className="text-sm font-medium">Let AI detect this attribute</p>
                   <p className="text-[11px] text-muted-foreground">
-                    Quinn classifies conversations it participates in.
+                    {assistantName} classifies conversations it participates in.
                   </p>
                 </div>
                 <Switch checked={aiDetect} onCheckedChange={setAiDetect} />
@@ -537,7 +538,7 @@ function AttributeFormDialog({
               <div>
                 <p className="text-sm font-medium">Test detection</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Paste a sample customer message to preview what Quinn would detect.
+                  Paste a sample customer message to preview what {assistantName} would detect.
                 </p>
               </div>
               <Textarea

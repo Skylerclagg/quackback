@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/shared/permissions'
 import { WHO_REPLIES_FIRST } from '@/lib/shared/assistant/who-replies-first'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
 import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
-import { withAssistantName } from '@/lib/client/assistant-name'
+import { formattedWithAssistantName, withAssistantName } from '@/lib/client/assistant-name'
 
 /**
  * The rule the server now enforces: the agent answers first, and a live
@@ -40,8 +40,15 @@ export function WhoRepliesFirstCard() {
         }
   )
 
+  // The name can land either side of a <b>: step 1 has it inside the bold run,
+  // step 3 outside it. Swapping the formatted array only reaches the top-level
+  // string chunks, so the bold renderer swaps its own chunks as well.
   const rich = {
-    b: (chunks: ReactNode) => <span className="font-semibold text-foreground">{chunks}</span>,
+    b: (chunks: ReactNode) => (
+      <span className="font-semibold text-foreground">
+        {formattedWithAssistantName(chunks, assistantName)}
+      </span>
+    ),
     order,
   }
 
@@ -57,7 +64,10 @@ export function WhoRepliesFirstCard() {
       <ol className="list-decimal space-y-0.5 pl-[18px] text-xs leading-[1.7] text-muted-foreground">
         {WHO_REPLIES_FIRST.steps.map((step) => (
           <li key={step.id}>
-            {intl.formatMessage({ id: step.id, defaultMessage: step.defaultMessage }, rich)}
+            {formattedWithAssistantName(
+              intl.formatMessage({ id: step.id, defaultMessage: step.defaultMessage }, rich),
+              assistantName
+            )}
           </li>
         ))}
       </ol>
@@ -68,10 +78,13 @@ export function WhoRepliesFirstCard() {
               to="/admin/automation/agent"
               className="font-semibold text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              {intl.formatMessage({
-                id: 'automation.whoRepliesFirst.manageQuinn',
-                defaultMessage: withAssistantName('Manage Quinn', assistantName),
-              })}
+              {withAssistantName(
+                intl.formatMessage({
+                  id: 'automation.whoRepliesFirst.manageQuinn',
+                  defaultMessage: 'Manage Quinn',
+                }),
+                assistantName
+              )}
             </Link>
           )}
           {showManageWorkflows && (

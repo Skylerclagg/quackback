@@ -140,13 +140,13 @@ export function AbandonedJourneyAutoCloseCard() {
               })}
             </Label>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {intl.formatMessage({
-                id: 'automation.workflows.closeSpamHint',
-                defaultMessage: withAssistantName(
-                  'When Quinn classifies a conversation as spam',
-                  assistantName
-                ),
-              })}
+              {withAssistantName(
+                intl.formatMessage({
+                  id: 'automation.workflows.closeSpamHint',
+                  defaultMessage: 'When Quinn classifies a conversation as spam',
+                }),
+                assistantName
+              )}
             </p>
           </div>
           <Switch

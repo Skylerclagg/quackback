@@ -146,13 +146,13 @@ function KnowledgeCard({
         id: 'automation.knowledge.title',
         defaultMessage: 'Knowledge sources',
       })}
-      description={intl.formatMessage({
-        id: 'automation.knowledge.description',
-        defaultMessage: withAssistantName(
-          'Choose what Quinn is allowed to draw on when it answers.',
-          assistantName
-        ),
-      })}
+      description={withAssistantName(
+        intl.formatMessage({
+          id: 'automation.knowledge.description',
+          defaultMessage: 'Choose what Quinn is allowed to draw on when it answers.',
+        }),
+        assistantName
+      )}
     >
       <div className="space-y-4">
         <div className="divide-y divide-border/60">

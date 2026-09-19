@@ -43,6 +43,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { Spinner } from '@/components/shared/spinner'
 import { conversationSummaryKey } from '@/components/widget/use-messenger-summary'
 import { useTicketStageBadge } from '@/components/widget/use-ticket-stage-badge'
+import { DEFAULT_ASSISTANT_NAME } from '@/lib/client/assistant-name'
 
 // Secondary views load behind lazy() boundaries so the iframe's first paint
 // only needs the shell + Home/feedback — the detail views carry the
@@ -263,7 +264,9 @@ export const Route = createFileRoute('/widget/')({
       assistant:
         messengerTabEnabled && settings?.publicWidgetConfig?.messenger?.assistant?.enabled
           ? {
-              name: settings.publicWidgetConfig.messenger.assistant.name?.trim() || 'Quinn',
+              name:
+                settings.publicWidgetConfig.messenger.assistant.name?.trim() ||
+                DEFAULT_ASSISTANT_NAME,
               avatarUrl: settings.publicWidgetConfig.messenger.assistant.avatarUrl || null,
             }
           : null,

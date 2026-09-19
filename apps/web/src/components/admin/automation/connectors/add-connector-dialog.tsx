@@ -104,13 +104,14 @@ export function AddConnectorDialog({
             })}
           </DialogTitle>
           <DialogDescription>
-            {intl.formatMessage({
-              id: 'automation.connectors.add.description',
-              defaultMessage: withAssistantName(
-                'Connect Quinn to an external MCP server. Tools are discovered automatically.',
-                assistantName
-              ),
-            })}
+            {withAssistantName(
+              intl.formatMessage({
+                id: 'automation.connectors.add.description',
+                defaultMessage:
+                  'Connect Quinn to an external MCP server. Tools are discovered automatically.',
+              }),
+              assistantName
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

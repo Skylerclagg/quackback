@@ -142,13 +142,14 @@ function SkillsPage() {
               {intl.formatMessage({ id: 'automation.skills.title', defaultMessage: 'Skills' })}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {intl.formatMessage({
-                id: 'automation.skills.description',
-                defaultMessage: withAssistantName(
-                  'Procedures Quinn follows for specific situations. Loaded only when relevant.',
-                  assistantName
-                ),
-              })}
+              {withAssistantName(
+                intl.formatMessage({
+                  id: 'automation.skills.description',
+                  defaultMessage:
+                    'Procedures Quinn follows for specific situations. Loaded only when relevant.',
+                }),
+                assistantName
+              )}
             </p>
           </div>
         </div>
@@ -219,13 +220,14 @@ function SkillsPage() {
         </SettingsCard>
       )}
       <p className="text-xs text-muted-foreground">
-        {intl.formatMessage({
-          id: 'automation.skills.footer',
-          defaultMessage: withAssistantName(
-            "Quinn always sees each skill's name and when to use it; the full instructions load only when a conversation calls for them.",
-            assistantName
-          ),
-        })}
+        {withAssistantName(
+          intl.formatMessage({
+            id: 'automation.skills.footer',
+            defaultMessage:
+              "Quinn always sees each skill's name and when to use it; the full instructions load only when a conversation calls for them.",
+          }),
+          assistantName
+        )}
       </p>
 
       <Dialog open={editor !== null} onOpenChange={(open) => !open && setEditor(null)}>
@@ -256,13 +258,14 @@ function SkillsPage() {
                 onChange={(e) => setWhenToUse(e.target.value)}
               />
               <p className="text-[11.5px] text-muted-foreground">
-                {intl.formatMessage({
-                  id: 'automation.skills.whenHint',
-                  defaultMessage: withAssistantName(
-                    'Always visible to Quinn. Keep it to one line; it decides when the skill loads.',
-                    assistantName
-                  ),
-                })}
+                {withAssistantName(
+                  intl.formatMessage({
+                    id: 'automation.skills.whenHint',
+                    defaultMessage:
+                      'Always visible to Quinn. Keep it to one line; it decides when the skill loads.',
+                  }),
+                  assistantName
+                )}
               </p>
             </div>
             <div className="space-y-1.5">

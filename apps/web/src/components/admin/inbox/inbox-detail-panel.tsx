@@ -36,6 +36,7 @@ import { getPortalUserFn } from '@/lib/server/functions/admin'
 import { conversationKeys } from '@/lib/client/queries/conversation-keys'
 import { useMediaQuery } from '@/lib/client/hooks/use-media-query'
 import { useCopilotTabGate } from '@/lib/client/hooks/use-copilot-tab-gate'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
 import { formatSlaCountdown, dueCountdownTone } from '@/lib/shared/conversation/sla'
 import { PriorityControl } from '@/components/admin/conversation/priority-control'
@@ -243,6 +244,7 @@ export const InboxDetailPanel = memo(function InboxDetailPanel({
     settings?: { featureFlags?: FeatureFlags } | null
   }
   const flags = settings?.featureFlags
+  const assistantName = useAssistantName()
   // The flag + copilot.use gate, shared with the inbox route's
   // `copilotAvailable` so the Ask Copilot affordances can never disagree
   // with the tab actually existing.
@@ -792,12 +794,12 @@ export const InboxDetailPanel = memo(function InboxDetailPanel({
           </Collapsible>
         )}
 
-        {/* 7. Quinn AI activity — conversation-only. */}
+        {/* 7. Assistant AI activity — conversation-only. */}
         {!isTicketItem && aiActivity && (
           <div className="space-y-2.5 border-t border-border/30 pt-4">
             <div className="flex items-center justify-between">
               <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <SparklesIcon className="h-4 w-4" /> Quinn AI
+                <SparklesIcon className="h-4 w-4" /> {assistantName} AI
               </p>
               <AiOutcomePill outcome={aiActivity.outcome} />
             </div>

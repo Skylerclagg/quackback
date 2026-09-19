@@ -45,6 +45,7 @@ import {
   type AttributeInputValue,
 } from '@/components/admin/conversation/attribute-value-input'
 import type { ConversationAttributeItem } from '@/lib/client/queries/conversation-attributes'
+import { useAssistantName } from '@/lib/client/hooks/use-assistant-name'
 import { useWorkflowEntities } from '../entities'
 import {
   CONDITION_FIELD_META,
@@ -333,6 +334,7 @@ function RuleRow({
     ? attributeItems.find((d) => attributeFieldForKey(d.key) === rule.field)
     : undefined
   const showAiHint = Boolean(selectedAiAttribute?.aiDetect)
+  const assistantName = useAssistantName()
 
   const setField = (field: ConditionField) => {
     if (isAttributeField(field)) {
@@ -458,7 +460,7 @@ function RuleRow({
       </div>
       {showAiHint && (
         <p className="text-[11px] text-muted-foreground">
-          Classified by Quinn when conversations settle. Requires Inbox AI.
+          Classified by {assistantName} when conversations settle. Requires Inbox AI.
         </p>
       )}
       <div className="flex items-center gap-1.5">

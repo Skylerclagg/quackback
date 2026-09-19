@@ -97,10 +97,13 @@ function AssistantCopilotSettings() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-foreground">
-              {intl.formatMessage({
-                id: 'automation.copilot.title',
-                defaultMessage: withAssistantName('Quinn Copilot', assistantName),
-              })}
+              {withAssistantName(
+                intl.formatMessage({
+                  id: 'automation.copilot.title',
+                  defaultMessage: 'Quinn Copilot',
+                }),
+                assistantName
+              )}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {intl.formatMessage({
