@@ -17,6 +17,7 @@ import { SINGLE_WORKSPACE_KEY } from '@/lib/server/workspaces/after-commit'
 import { getCurrentWorkspace } from '@/lib/server/workspaces/workspace-context'
 import { enqueueHookJobsWithIds } from './process'
 import { hydrateEvent, MAX_DEPTH, MAX_STRICT_RESOLVE_ATTEMPTS } from './outbox'
+import { registerAllResolvers } from './resolvers'
 import { resolveTargets } from './resolvers/registry'
 import { toLegacyEvent } from './to-legacy-event'
 import crypto from 'crypto'
@@ -176,6 +177,25 @@ export async function runEventDispatch(
   const degraded = job.attempts >= MAX_STRICT_RESOLVE_ATTEMPTS || lastAttempt
 
   try {
+    // Populate the resolver registry before resolving anything.
+    //
+    // `resolveTargets` is a loop over a module-level array that only
+    // `registerAllResolvers()` fills, and it does not self-register. The legacy
+    // adapter (targets.ts) called it; this relay did not — so in a worker
+    // process where nothing had touched that adapter, the array was empty,
+    // EVERY event resolved to zero targets, and this job published the row and
+    // reported success having fanned it to nobody. Workflows, notification
+    // bells, ticket-assignment emails and webhooks were all silently dead while
+    // the queue looked perfectly healthy.
+    //
+    // Idempotent (a latched boolean), so calling it per pass costs nothing.
+    // Imported STATICALLY, unlike the same call in targets.ts: this module is a
+    // registered job handler, and the tier opens a workspace scope around every
+    // pass, so a call-time import would run the resolver modules' top level
+    // under whichever workspace happened to reach it first
+    // (jobs/__tests__/handler-imports.test.ts enforces this).
+    registerAllResolvers()
+
     const targets = await resolve(event, degraded ? { bestEffort: true } : undefined)
 
     await db.transaction(async (tx) => {

@@ -16,6 +16,16 @@ import { remoteStatusPushResolver } from './remote-status-push.resolver'
 
 let registered = false
 
+/**
+ * Test-only: forget that registration happened, so a suite can prove a caller
+ * registers for itself. Pairs with `__resetResolversForTests`, which empties
+ * the array but leaves this latch set — resetting only one of the two leaves
+ * the registry permanently empty.
+ */
+export function __resetRegistrationForTests(): void {
+  registered = false
+}
+
 /** Idempotent: registers all resolvers exactly once. */
 export function registerAllResolvers(): void {
   if (registered) return

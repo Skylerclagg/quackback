@@ -288,3 +288,49 @@ describe('runEventDispatch', () => {
     expect(again.converted).toBe(0)
   })
 })
+
+/**
+ * The relay must populate the resolver registry itself.
+ *
+ * `resolveTargets` is a loop over a module-level array that only
+ * `registerAllResolvers()` fills, and it does not self-register. The legacy
+ * adapter (targets.ts) calls it; the relay imported `resolveTargets` and did
+ * not. In a worker process where nothing else touched the adapter, the array
+ * stayed empty, every event resolved to ZERO targets, and the dispatch job
+ * reported success — so workflows, notification bells, ticket-assignment
+ * emails and webhooks all silently never ran while the queue looked healthy.
+ *
+ * Asserting on the registry rather than on enqueued jobs keeps this pinned to
+ * the actual defect: a real event's target list legitimately varies with
+ * workspace data, but "the relay resolved against an empty registry" is the
+ * bug regardless of what any sink would have returned.
+ */
+describe('runEventDispatch resolver registration', () => {
+  it('registers the resolvers before resolving, without help from another caller', async () => {
+    const { __resetResolversForTests, listResolvers } = await import('../resolvers/registry')
+    const { __resetRegistrationForTests } = await import('../resolvers')
+
+    // Simulate a fresh worker process: nothing has registered anything yet.
+    __resetResolversForTests()
+    __resetRegistrationForTests()
+    expect(listResolvers()).toHaveLength(0)
+
+    // Observe the registry at the moment of resolution rather than letting the
+    // real resolvers run: several of them query workspace tables a bare test
+    // database has no rows for, and their success is not what this pins.
+    let sinksAtResolveTime: string[] = []
+    const eventId = await insertEvent({ owner: 'job', type: 'ticket.created' })
+    await runEventDispatch(job(eventId), {
+      resolve: async () => {
+        sinksAtResolveTime = listResolvers().map((r) => r.sink)
+        return []
+      },
+      enqueue: async () => {},
+    })
+
+    // Before the fix this was empty: the relay resolved against an empty
+    // registry and published the event having fanned it to nobody.
+    expect(sinksAtResolveTime.length).toBeGreaterThan(0)
+    expect(sinksAtResolveTime).toContain('workflow')
+  })
+})
