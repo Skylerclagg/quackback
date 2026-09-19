@@ -1848,6 +1848,7 @@ export function AgentConversationThread({
             <AssigneeControl
               conversationId={conversationId ?? INACTIVE_CONVERSATION_ID}
               assignedAgent={conversation.assignedAgent}
+              assignedTeamId={conversation.assignedTeamId}
               onChanged={refreshThread}
             />
             <StatusControl

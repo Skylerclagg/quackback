@@ -22,7 +22,7 @@ import type { ConversationPriority } from '@/lib/shared/db-types'
 import { DEFAULT_TICKET_STAGE_LABELS } from '@/lib/shared/tickets'
 import { priorityMeta } from '@/lib/shared/conversation/priority-meta'
 import { PriorityDot, PriorityMenuItems } from '@/components/admin/conversation/priority-control'
-import { AssigneeMenuItems } from '@/components/admin/conversation/assignee-control'
+import { AssigneeMenuItems, TeamMenuItems } from '@/components/admin/conversation/assignee-control'
 import { useTeamMembers } from '@/lib/client/hooks/use-team-members'
 import { useInboxTeams } from '@/components/admin/conversation/inbox-nav-sidebar'
 import { ticketQueries } from '@/lib/client/queries/inbox'
@@ -44,8 +44,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -172,35 +170,13 @@ export function TicketAssigneeControl({
           showUnassign={!!assignee.principalId}
           onSelect={(assignTo) => run({ assigneePrincipalId: assignTo })}
         />
-        {teams && teams.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
-              Teams
-            </DropdownMenuLabel>
-            {assignee.teamId && (
-              <DropdownMenuItem onClick={() => run({ assigneeTeamId: null })}>
-                Clear team
-              </DropdownMenuItem>
-            )}
-            {teams.map((t) => (
-              <DropdownMenuItem
-                key={t.id}
-                onClick={() => run({ assigneeTeamId: t.id })}
-                className="flex items-center gap-2"
-              >
-                <span
-                  className="inline-block size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: t.color }}
-                />
-                <span className="min-w-0 flex-1 truncate">{t.name}</span>
-                {assignee.teamId === t.id && (
-                  <CheckIcon className="ml-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                )}
-              </DropdownMenuItem>
-            ))}
-          </>
-        )}
+        {/* Shared with the conversation control so the two rosters cannot
+            drift apart again — see TeamMenuItems. */}
+        <TeamMenuItems
+          teams={teams}
+          selectedTeamId={assignee.teamId}
+          onSelect={(teamId) => run({ assigneeTeamId: teamId })}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -664,6 +664,7 @@ export const InboxDetailPanel = memo(function InboxDetailPanel({
                 <AssigneeControl
                   conversationId={conversation.id}
                   assignedAgent={conversation.assignedAgent}
+                  assignedTeamId={conversation.assignedTeamId}
                   onChanged={onChanged}
                 />
               )
