@@ -124,6 +124,7 @@ import {
 } from '@/lib/server/domains/tickets/ticket-type.service'
 import { linkTicketToConversation } from '@/lib/server/domains/tickets/ticket-conversation-link.service'
 import { getLinkedCustomerTicket } from '@/lib/server/domains/inbox/inbox.query'
+import { WORKFLOW_EVENT_SOURCE } from '@/lib/server/events/envelope'
 
 const log = logger.child({ component: 'workflow-action-executor' })
 
@@ -681,9 +682,15 @@ export async function applyAction(
             })
           ).ticketTypeId
         : ((await resolveCategoryDefaultType('customer'))?.id ?? null)
+      // Marked as the engine's own write. `ticket.created` now admits service
+      // actors (an AI-authored ticket must be able to trigger a routing
+      // workflow), so this marker is the whole of the loop guard: without it a
+      // convert_to_ticket action would re-enter the engine through any
+      // ticket.created workflow, which could convert again.
       const ticket = await ticketService.createTicketCore(
         { ticketTypeId, title, requesterPrincipalId },
-        linkActor
+        linkActor,
+        { eventService: WORKFLOW_EVENT_SOURCE }
       )
       await linkTicketToConversation(ticket.id, conversationId, linkActor)
       return label('converted to ticket')

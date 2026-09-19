@@ -257,7 +257,10 @@ describe('eventToWorkflowTrigger: ticket triggers', () => {
       subjectPrincipalId: null,
       message: null,
     })
-    expect(trigger?.allowServiceActor).toBeUndefined()
+    // Automated creators are admitted now (an AI-filed ticket must be able to
+    // reach a routing workflow); only the engine's own writes are refused, by
+    // their WORKFLOW_EVENT_SOURCE provenance. This event carries none.
+    expect(trigger?.allowServiceActor).toBe(true)
   })
 
   it('maps ticket.created to null when explicitly resolved to no linked conversation', () => {

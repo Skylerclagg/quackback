@@ -17,6 +17,22 @@ import type { EvtId } from '@quackback/ids'
  */
 export type EventActorType = 'user' | 'anonymous' | 'service' | 'support' | 'system'
 
+/**
+ * `context.source` for an event the workflow engine itself caused.
+ *
+ * Loop safety turns on this one value. A workflow action that writes through a
+ * domain service produces the same event a human would, under a service actor,
+ * and that event must not re-enter the engine. Marking the engine's own writes
+ * lets a trigger admit every OTHER automated actor — an AI-authored ticket, an
+ * integration — while still refusing its own tail.
+ *
+ * Shared rather than a string literal at each site: the producer (the actor
+ * that emits) and the consumer (the trigger mapping that refuses) are in
+ * different domains, and a typo in either silently restores the bug the
+ * marking exists to prevent.
+ */
+export const WORKFLOW_EVENT_SOURCE = 'workflow'
+
 export interface EventContext {
   /** Request/trace id; propagated across events caused by this one. */
   correlationId?: string

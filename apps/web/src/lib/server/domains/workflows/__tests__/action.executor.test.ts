@@ -972,7 +972,11 @@ describe('applyAction', () => {
           title: 'Cannot log in',
           requesterPrincipalId: 'principal_visitor',
         },
-        expect.objectContaining({ principalType: 'service' })
+        expect.objectContaining({ principalType: 'service' }),
+        // The loop marker: this tags the emitted ticket.created as the
+        // engine's own, which is the only thing stopping it re-entering a
+        // ticket.created workflow now that those admit service actors.
+        { eventService: 'workflow' }
       )
       expect(linkTicketToConversation).toHaveBeenCalledWith(
         'ticket_2',
@@ -994,7 +998,8 @@ describe('applyAction', () => {
       })
       expect(createTicketCore).toHaveBeenCalledWith(
         expect.objectContaining({ ticketTypeId: 'ticket_type_bug' }),
-        expect.anything()
+        expect.anything(),
+        { eventService: 'workflow' }
       )
     })
 
@@ -1021,7 +1026,8 @@ describe('applyAction', () => {
       await applyAction({ type: 'convert_to_ticket' }, ctx)
       expect(createTicketCore).toHaveBeenCalledWith(
         expect.objectContaining({ ticketTypeId: null }),
-        expect.anything()
+        expect.anything(),
+        { eventService: 'workflow' }
       )
     })
 
@@ -1037,7 +1043,8 @@ describe('applyAction', () => {
       await applyAction({ type: 'convert_to_ticket' }, ctx)
       expect(createTicketCore).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Hi, my account is locked' }),
-        expect.anything()
+        expect.anything(),
+        { eventService: 'workflow' }
       )
     })
   })

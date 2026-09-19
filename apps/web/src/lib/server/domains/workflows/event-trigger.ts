@@ -66,6 +66,7 @@ import { interruptWaitingRuns, resumeWorkflowRun } from './workflow.engine'
 import { logRunEvent } from './workflow-run-events'
 import { findWaitingCustomerFacingRun, readMessageBlockReply } from './dispatcher.guards'
 import { readCursor } from './workflow-wait-queue'
+import { WORKFLOW_EVENT_SOURCE } from '@/lib/server/events/envelope'
 
 /**
  * Placeholder conversationId returned ONLY when eventToWorkflowTrigger is
@@ -278,17 +279,29 @@ export function eventToWorkflowTrigger(
       }
     }
     case 'ticket.created': {
-      // Do NOT opt into allowServiceActor: a workflow's own set_ticket_status/
-      // convert_to_ticket action runs under the engine's bounded service actor
-      // (action.executor.ts's ticketActionActor), and ticket.created is never
-      // itself produced by an action, so no loop-safety opt-out is needed —
-      // the automated-actor gate simply blocks a service-authored ticket.created
-      // from ever reaching here (there isn't one in practice for this event).
+      // Admits automated creators, EXCEPT the engine itself.
+      //
+      // This used to refuse every service actor, on the reasoning that
+      // "ticket.created is never itself produced by an action (there isn't one
+      // in practice for this event)". Both halves were wrong. convert_to_ticket
+      // calls createTicketCore, which does emit ticket.created — so the loop
+      // was real. And the AI's create-ticket tool authors tickets under a
+      // service actor too, so the blanket refusal silently dropped exactly the
+      // case a routing workflow exists for: an agent files a ticket, nothing
+      // assigns it, and the team it should have reached is never told.
+      //
+      // The engine's own writes now carry WORKFLOW_EVENT_SOURCE as their
+      // provenance (action.executor.ts), so the loop can be refused precisely
+      // instead of by refusing all automation. Checked on both fields the
+      // provenance can arrive in: `service` as emitted, `displayName` after an
+      // outbox round-trip (to-legacy-event.ts maps context.source onto it).
       if (resolvedConversationId === null) return null
+      const provenance = event.actor?.service ?? event.actor?.displayName
       return {
         triggerType: event.type,
         conversationId: resolvedConversationId ?? UNRESOLVED_TICKET_CONVERSATION_ID,
         actorType,
+        allowServiceActor: provenance !== WORKFLOW_EVENT_SOURCE,
         subjectPrincipalId: null,
         message: null,
       }

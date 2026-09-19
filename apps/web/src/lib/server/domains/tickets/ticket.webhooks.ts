@@ -39,9 +39,17 @@ const log = logger.child({ component: 'ticket-webhooks' })
 /** The actor is the teammate/requester who acted, never the ticket's requester
  *  (they differ when a teammate files on someone's behalf). No author email is
  *  carried: unlike a conversation message, a ticket write has no author record. */
-function toEventActor(actor: Actor): EventActor {
+/**
+ * `service` names WHICH automation acted, and the outbox copies it into
+ * `context.source` (outbox-dispatch.ts). That is what lets a consumer tell the
+ * workflow engine's own writes apart from any other service actor — see
+ * WORKFLOW_EVENT_SOURCE. Omitted for a human actor, who has no provenance.
+ */
+function toEventActor(actor: Actor, service?: string): EventActor {
   const principalId = actor.principalId ?? undefined
-  if (actor.principalType === 'service') return { type: 'service', principalId }
+  if (actor.principalType === 'service') {
+    return { type: 'service', principalId, ...(service ? { service } : {}) }
+  }
   return { type: 'user', principalId }
 }
 
@@ -96,10 +104,12 @@ function messageAttachments(m: ConversationMessageDTO): EventTicketMessageAttach
 export async function emitTicketCreated(
   actor: Actor,
   ticket: Ticket,
-  status: { category: 'open' | 'pending' | 'closed'; stage: string | null }
+  status: { category: 'open' | 'pending' | 'closed'; stage: string | null },
+  /** Which automation created it, when one did. See {@link toEventActor}. */
+  opts?: { service?: string }
 ): Promise<void> {
   await safe('ticket.created', () =>
-    dispatchTicketCreated(toEventActor(actor), ticketData(ticket, status))
+    dispatchTicketCreated(toEventActor(actor, opts?.service), ticketData(ticket, status))
   )
 }
 

@@ -759,5 +759,58 @@ describe('dispatchWorkflowsForEvent', () => {
       // applies here.
       expect(mockDbSelect).toHaveBeenCalledTimes(1)
     })
+
+    /**
+     * Who may trigger a routing workflow by creating a ticket.
+     *
+     * The mapping used to refuse every service actor, which silently dropped
+     * the case these workflows exist for: an AI agent files a ticket and
+     * nothing routes it. It now admits automated creators and refuses only the
+     * engine's own writes, identified by their WORKFLOW_EVENT_SOURCE
+     * provenance — so convert_to_ticket still cannot re-enter the engine.
+     */
+    describe('ticket.created automated-creator gate', () => {
+      const serviceTicket = (actorExtra: Record<string, unknown>) =>
+        ({
+          ...ticketEvent('ticket.created'),
+          actor: { type: 'service' as const, principalId: 'principal_ai', ...actorExtra },
+        }) as unknown as EventData
+
+      it('lets an AI-authored ticket trigger a workflow', async () => {
+        mockTicketConversationRow.current = { conversationId: 'conversation_linked' }
+        await dispatchWorkflowsForEvent(serviceTicket({}))
+        expect(dispatchWorkflowTrigger).toHaveBeenCalledWith(
+          expect.objectContaining({ triggerType: 'ticket.created', allowServiceActor: true })
+        )
+      })
+
+      it('refuses the engine’s own convert_to_ticket, as emitted', async () => {
+        mockTicketConversationRow.current = { conversationId: 'conversation_linked' }
+        await dispatchWorkflowsForEvent(serviceTicket({ service: 'workflow' }))
+        expect(dispatchWorkflowTrigger).toHaveBeenCalledWith(
+          expect.objectContaining({ allowServiceActor: false })
+        )
+      })
+
+      it('refuses it after an outbox round-trip too, where provenance arrives as displayName', async () => {
+        // to-legacy-event.ts maps context.source onto displayName for a
+        // service actor, so the relay-delivered shape differs from the emitted
+        // one. Both must be refused or the loop guard has a hole on the only
+        // path that actually runs in production.
+        mockTicketConversationRow.current = { conversationId: 'conversation_linked' }
+        await dispatchWorkflowsForEvent(serviceTicket({ displayName: 'workflow' }))
+        expect(dispatchWorkflowTrigger).toHaveBeenCalledWith(
+          expect.objectContaining({ allowServiceActor: false })
+        )
+      })
+
+      it('still admits a human-created ticket', async () => {
+        mockTicketConversationRow.current = { conversationId: 'conversation_linked' }
+        await dispatchWorkflowsForEvent(ticketEvent('ticket.created'))
+        expect(dispatchWorkflowTrigger).toHaveBeenCalledWith(
+          expect.objectContaining({ actorType: 'user' })
+        )
+      })
+    })
   })
 })

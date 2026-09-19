@@ -124,7 +124,18 @@ export async function publishTicketUpdated(row: Ticket): Promise<TicketDTO> {
  * no-op here by construction. Agent/back-office creates (no flag) are
  * byte-identical to before — standalone, no backing conversation.
  */
-export async function createTicketCore(input: CreateTicketInput, actor: Actor): Promise<TicketDTO> {
+export async function createTicketCore(
+  input: CreateTicketInput,
+  actor: Actor,
+  /**
+   * Which automation is creating this, when one is. Carried onto the
+   * `ticket.created` event's provenance so a consumer can tell the workflow
+   * engine's own writes from any other service actor — see
+   * WORKFLOW_EVENT_SOURCE and the `ticket.created` case in
+   * workflows/event-trigger.ts.
+   */
+  opts?: { eventService?: string }
+): Promise<TicketDTO> {
   const title = input.title?.trim()
   if (!title) throw new ValidationError('VALIDATION_ERROR', 'Title is required')
   if (title.length > MAX_TITLE_LENGTH) {
@@ -416,10 +427,12 @@ export async function createTicketCore(input: CreateTicketInput, actor: Actor): 
   // the backing conversation's side effects above — a ticket.created dispatch
   // now always finds the link, closing the ordering race
   // workflows/event-trigger.ts's TICKET_CREATED_LINK_POLL worked around.
-  void emitTicketCreated(actor, created.ticket, {
-    category: defaultStatus.category,
-    stage: resolveStage(defaultStatus),
-  })
+  void emitTicketCreated(
+    actor,
+    created.ticket,
+    { category: defaultStatus.category, stage: resolveStage(defaultStatus) },
+    { service: opts?.eventService }
+  )
   // Realtime signal (unified inbox §3.2, M3): a fresh ticket is a new inbox
   // row, so the same 'ticket_updated' kind the update paths use below also
   // covers creation, mirroring how the conversation domain's 'conversation'
