@@ -479,6 +479,17 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
   },
   {
     file: 'packages/email/src/index.ts',
+    name: 'resendSendClient',
+    category: 'fleet-wide',
+    reason:
+      'Built from EMAIL_RESEND_API_KEY/RESEND_API_KEY. A transport, not an identity: one fleet ' +
+      'credential carries mail for every workspace, so a cross-workspace hit returns the same ' +
+      'client either workspace would have built. The per-workspace From is resolved separately ' +
+      'by getEmailFrom(), exactly as on the SMTP path. Distinct from inboundFetchClient beside ' +
+      'it, which holds the inbound key and carries nothing outbound.',
+  },
+  {
+    file: 'packages/email/src/index.ts',
     name: 'smtpTransporter',
     category: 'fleet-wide',
     reason:
