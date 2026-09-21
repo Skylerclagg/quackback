@@ -46,8 +46,9 @@ export const TICKETS_RECENCY_WINDOW_SQL = sql`now() - interval '180 days'`
 const TICKET_TITLE = 'Resolved ticket'
 
 /** Admin unified-inbox deep link for a closed ticket (team surface only —
- *  copilot is the sole consumer). `?i=` accepts a ticket id per the
- *  `?t=`→`?i=` alias in routes/admin/tickets.tsx. */
+ *  copilot is the sole consumer). `?i=` takes an item id of either kind and
+ *  resolves it through inboxItemRefFromId, so this link works whether or not
+ *  the standalone tickets page is switched on. */
 function ticketUrl(ticketId: string): string {
   return `/admin/inbox?i=${ticketId}`
 }
@@ -169,24 +170,22 @@ export const ticketsKnowledgeSource: KnowledgeSource = {
   sourceType: 'ticket',
   async retrieve(query, ceiling, opts) {
     const rows = await retrieveTicketSummaries(query, ceiling, { topK: opts.topK })
-    return rows.map(
-      (r): RetrievedItem => ({
+    return rows.map((r): RetrievedItem => ({
+      id: r.ticketId,
+      sourceType: 'ticket' as const,
+      title: TICKET_TITLE,
+      excerpt: r.summary.slice(0, KNOWLEDGE_SNIPPET_CHARS),
+      score: r.score,
+      updatedAt: r.createdAt.toISOString(),
+      citation: {
+        type: 'ticket' as const,
         id: r.ticketId,
-        sourceType: 'ticket' as const,
         title: TICKET_TITLE,
-        excerpt: r.summary.slice(0, KNOWLEDGE_SNIPPET_CHARS),
-        score: r.score,
-        updatedAt: r.createdAt.toISOString(),
-        citation: {
-          type: 'ticket' as const,
-          id: r.ticketId,
-          title: TICKET_TITLE,
-          url: ticketUrl(r.ticketId),
-          // A support ticket is never customer-facing knowledge: always
-          // flagged for the copilot leak gate, on every (team) surface.
-          internal: true,
-        },
-      })
-    )
+        url: ticketUrl(r.ticketId),
+        // A support ticket is never customer-facing knowledge: always
+        // flagged for the copilot leak gate, on every (team) surface.
+        internal: true,
+      },
+    }))
   },
 }

@@ -51,10 +51,12 @@ export function getNotificationTarget(
   }
 
   // A ticket ASSIGNMENT notifies a team member, so it deep-links into the admin
-  // unified inbox (which accepts a ticket id via `?i=`, per the `?t=`→`?i=` alias
-  // in routes/admin/tickets.tsx). Routing it to the portal thread would 404: that
-  // view is requester-only (getMyTicketFn gates on requesterPrincipalId === actor),
-  // and an assignee is never the requester.
+  // unified inbox, whose `?i=` takes an item id of either kind and resolves it
+  // through inboxItemRefFromId. (Not via routes/admin/tickets.tsx: that route
+  // is the standalone tickets page and is off unless `supportTickets` is on,
+  // so the inbox is the link that always resolves.) Routing it to the portal
+  // thread would 404: that view is requester-only (getMyTicketFn gates on
+  // requesterPrincipalId === actor), and an assignee is never the requester.
   if (notification.type === 'ticket_assigned' && notification.ticketId) {
     return { to: '/admin/inbox', search: { i: notification.ticketId } }
   }
