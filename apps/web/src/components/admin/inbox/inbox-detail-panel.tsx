@@ -60,6 +60,7 @@ import {
 import { TicketLinks } from '@/components/admin/inbox/ticket-links'
 import { TicketActivityTimeline } from '@/components/admin/inbox/ticket-activity-timeline'
 import { TicketTrackerLinks } from '@/components/admin/inbox/ticket-tracker-links'
+import { TicketConversationLinks } from '@/components/admin/inbox/ticket-conversation-links'
 import { ticketQueries } from '@/lib/client/queries/inbox'
 import { Badge } from '@/components/ui/badge'
 import { Avatar } from '@/components/ui/avatar'
@@ -746,6 +747,10 @@ export const InboxDetailPanel = memo(function InboxDetailPanel({
         {/* 5. Links. */}
         {isTicketItem && ticket && (
           <div className="space-y-4 border-t border-border/30 pt-4">
+            {/* The conversation side of Links: takes a reader from a ticket to
+                the thread it came from, the reverse of the Ticket card's
+                "Linked ticket" row above. */}
+            <TicketConversationLinks ticketId={ticket.id} onSelectItem={onSelectItem} />
             <TicketLinks ticket={ticket} onChanged={onChanged} />
             <TicketTrackerLinks ticketId={ticket.id} onChanged={onChanged} />
           </div>

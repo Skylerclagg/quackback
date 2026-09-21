@@ -26,6 +26,7 @@ import {
   listTicketMessagesFn,
   getTicketLinksFn,
   getTicketProvenanceConversationsFn,
+  listTicketConversationsFn,
   fetchTicketExternalLinksFn,
   getTicketWatchStatusFn,
   listTicketWatchersFn,
@@ -76,6 +77,8 @@ export const ticketKeys = {
   /** How many conversations a ticket was opened from (its provenance links). */
   provenanceConversations: (id: TicketId) =>
     [...ticketKeys.all(), 'provenance-conversations', id] as const,
+  /** The conversations a ticket links to, of both kinds, for the Links section. */
+  conversations: (id: TicketId) => [...ticketKeys.all(), 'conversations', id] as const,
   /** The caller's own watch status on a ticket (watching/reason/mutedUntil). */
   watch: (id: TicketId) => [...ticketKeys.all(), 'watch', id] as const,
   /** A ticket's full watcher list (admin watch control). */
@@ -141,6 +144,15 @@ export const ticketQueries = {
     queryOptions({
       queryKey: ticketKeys.provenanceConversations(id),
       queryFn: () => getTicketProvenanceConversationsFn({ data: { ticketId: id } }),
+      staleTime: 60_000,
+    }),
+
+  /** The conversations a ticket links to — the detail panel's "open the
+   *  conversation this came from" rows. */
+  conversations: (id: TicketId) =>
+    queryOptions({
+      queryKey: ticketKeys.conversations(id),
+      queryFn: () => listTicketConversationsFn({ data: { ticketId: id } }),
       staleTime: 60_000,
     }),
 

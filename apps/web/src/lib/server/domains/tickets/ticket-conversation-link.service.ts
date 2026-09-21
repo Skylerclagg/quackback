@@ -68,6 +68,7 @@ import {
   isNull,
   conversations,
   conversationMessages,
+  principal,
   ticketConversations,
   tickets,
   type Ticket,
@@ -235,6 +236,55 @@ export async function resolveProvenanceConversationIds(
       )
     )
   return links.map((link) => link.conversationId)
+}
+
+/** A conversation a ticket links to, with enough to render and open a row. */
+export interface LinkedConversationRef {
+  id: ConversationId
+  /** `pair` is the customer ticket's own conversation — one shared thread;
+   *  `provenance` is a conversation this ticket was merely opened from. */
+  kind: 'pair' | 'provenance'
+  /** The conversation's subject, falling back to the visitor's name. */
+  title: string
+  channel: string
+  status: string
+}
+
+/**
+ * Every conversation a ticket links to, of BOTH kinds — what a ticket surface
+ * needs to offer "open the conversation this came from".
+ *
+ * Deliberately wider than {@link resolveProvenanceConversationIds}, which
+ * exists to answer a different question (is there anywhere to share a note to?)
+ * and excludes the pair on purpose. Here the pair is included and LABELLED,
+ * because a reader opening it should know they are being sent to the same
+ * thread rather than a second one.
+ */
+export async function listTicketConversations(
+  ticketId: TicketId
+): Promise<LinkedConversationRef[]> {
+  const rows = await db
+    .select({
+      id: ticketConversations.conversationId,
+      linkedTicketType: ticketConversations.ticketType,
+      subject: conversations.subject,
+      channel: conversations.channel,
+      status: conversations.status,
+      visitorName: principal.displayName,
+    })
+    .from(ticketConversations)
+    .innerJoin(conversations, eq(ticketConversations.conversationId, conversations.id))
+    .leftJoin(principal, eq(conversations.visitorPrincipalId, principal.id))
+    .where(eq(ticketConversations.ticketId, ticketId))
+    .orderBy(asc(conversations.createdAt))
+
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.linkedTicketType === 'customer' ? ('pair' as const) : ('provenance' as const),
+    title: row.subject?.trim() || row.visitorName?.trim() || 'Conversation',
+    channel: row.channel,
+    status: row.status,
+  }))
 }
 
 /**

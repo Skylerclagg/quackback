@@ -688,6 +688,20 @@ export const getTicketProvenanceConversationsFn = createServerFn({ method: 'GET'
     return { count: ids.length }
   })
 
+/** The conversations this ticket links to, of both kinds — what the detail
+ *  panel needs to offer "open the conversation this ticket came from". Unlike
+ *  the count above, the customer pair IS included, labelled as such: it is the
+ *  same thread, and a reader following the link should be told so rather than
+ *  discover it. Reads on TICKET_VIEW. */
+export const listTicketConversationsFn = createServerFn({ method: 'GET' })
+  .validator(z.object({ ticketId: z.string() }))
+  .handler(async ({ data }) => {
+    await requireAuth({ permission: PERMISSIONS.TICKET_VIEW })
+    const { listTicketConversations } =
+      await import('@/lib/server/domains/tickets/ticket-conversation-link.service')
+    return listTicketConversations(data.ticketId as TicketId)
+  })
+
 export const listTicketMessagesFn = createServerFn({ method: 'GET' })
   .validator(z.object({ ticketId: z.string(), before: z.string().optional() }))
   .handler(async ({ data }) => {

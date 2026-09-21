@@ -1619,6 +1619,22 @@ export function AgentConversationThread({
             <TicketStatusChip status={panelTicket.status} />
           </span>
         ))}
+      {/* Switch to the ticket this conversation is linked to. The detail
+          panel's Ticket card already carries the reference, but it is an
+          xl-only surface and reads as a label rather than a way out — so the
+          crossing lives in the action bar, named, next to the status pill it
+          belongs with. The reverse crossing is the panel's Links section. */}
+      {!isTicket && panelTicket && (
+        <button
+          type="button"
+          title={`Open ticket ${panelTicket.reference}`}
+          onClick={() => onSelectItem(panelTicket.id)}
+          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <TicketIcon className="h-4 w-4" />
+          <span className="font-mono">{panelTicket.reference}</span>
+        </button>
+      )}
       {!isTicket && showTickets && !panelTicket && (
         <button
           type="button"
