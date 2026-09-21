@@ -1,45 +1,89 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 import { isValidTypeId } from '@quackback/ids'
+import type { TicketId } from '@quackback/ids'
+import type { TicketListFilter, TicketSort } from '@/lib/server/domains/tickets'
+import type { TicketType, TicketStatusCategory } from '@/lib/shared/db-types'
+import { TICKET_TYPES, TICKET_STATUS_CATEGORIES } from '@/lib/shared/db-types'
+import { ticketQueries, inboxQueries } from '@/lib/client/queries/inbox'
+import {
+  TicketsWorkspace,
+  scopeToAssignee,
+  type TicketsSearch,
+} from '@/components/admin/tickets/tickets-workspace'
+import type { TicketScope } from '@/components/admin/tickets/ticket-list-column'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
 
 /**
- * Retired route (UNIFIED-INBOX-SPEC.md §2.2/§4): tickets are now rows in the
- * unified `/admin/inbox` list, not a standalone page. This route is kept
- * permanently as a redirect (not deleted) so old bookmarks/links keep working:
- * `?t=<id>` deep-links become `?i=<id>`; a bare visit opens the Tickets >
- * Customer scope. Mirrors the `c=` → `i=` alias `/admin/inbox` itself accepts.
+ * The standalone tickets workspace, behind the `supportTickets` flag. With the
+ * flag off — the default — this route redirects exactly as it did when it was
+ * a pure redirect, so the surface is opt-in.
  *
- * The standalone ticket components (`TicketListColumn`, `TicketDetailPanel`, …)
- * are no longer imported here. `TicketDetail`/`ticket-thread.tsx` were deleted
- * in M4 (folded into the unified `agent-conversation-thread.tsx`); M5 folded
- * `TicketDetailPanel` into `inbox-detail-panel.tsx` and repurposed
- * `new-ticket-dialog.tsx` into `components/admin/inbox/create-ticket-dialog.tsx`
- * (still used, from the unified inbox); the rest are unused until M6 finishes
- * the cleanup pass (§4).
+ * Deliberately thin. The page itself lives in
+ * `components/admin/tickets/tickets-workspace.tsx`; this file is only the URL
+ * contract, the loader warm and the flag gate, so it stays small enough that a
+ * merge against it is trivial.
+ *
+ * The `?t=<id>&scope=&type=&status=&sort=` contract is the one this route
+ * carried before the unified inbox retired it, so old bookmarks and links keep
+ * working — and now open the ticket here rather than bouncing to the inbox.
  */
-interface TicketsRedirectSearch {
-  t?: string
+const SORTS: TicketSort[] = ['recent', 'oldest', 'created', 'priority']
+function isTicketSort(v: unknown): v is TicketSort {
+  return typeof v === 'string' && (SORTS as string[]).includes(v)
 }
 
 export const Route = createFileRoute('/admin/tickets')({
-  validateSearch: (search: Record<string, unknown>): TicketsRedirectSearch => ({
+  // Everything defining the view lives in the URL so a refresh restores the
+  // open ticket + filters and links are shareable.
+  validateSearch: (search: Record<string, unknown>): TicketsSearch => ({
     t: typeof search.t === 'string' && isValidTypeId(search.t, 'ticket') ? search.t : undefined,
+    scope: search.scope === 'mine' || search.scope === 'unassigned' ? search.scope : undefined,
+    type: TICKET_TYPES.includes(search.type as TicketType)
+      ? (search.type as TicketType)
+      : undefined,
+    status: TICKET_STATUS_CATEGORIES.includes(search.status as TicketStatusCategory)
+      ? (search.status as TicketStatusCategory)
+      : undefined,
+    sort: isTicketSort(search.sort) ? search.sort : undefined,
   }),
-  // Auth is enforced by the parent `/admin` guard; this route only redirects.
-  component: TicketsRedirectRoute,
+  loaderDeps: ({ search }) => ({
+    t: search.t,
+    scope: search.scope,
+    type: search.type,
+    status: search.status,
+    sort: search.sort,
+  }),
+  // Auth is enforced by the parent `/admin` guard, and `listTicketsFn`
+  // self-enforces TICKET_VIEW — this loader only warms the cache.
+  loader: async ({ deps, context }) => {
+    const flags = context.settings?.featureFlags as FeatureFlags | undefined
+    if (!flags?.supportTickets) return {}
+    const { queryClient } = context
+    const filter: TicketListFilter = {
+      type: deps.type,
+      statusCategory: deps.status,
+      assignee: scopeToAssignee((deps.scope ?? 'all') as TicketScope),
+      sort: deps.sort ?? 'recent',
+    }
+    const warm = (p: Promise<unknown>) => p.catch(() => undefined)
+    await Promise.all([
+      warm(queryClient.ensureQueryData(ticketQueries.list(filter))),
+      warm(queryClient.ensureQueryData(ticketQueries.statuses())),
+      deps.t
+        ? warm(queryClient.ensureQueryData(inboxQueries.ticketDetail(deps.t as TicketId)))
+        : undefined,
+    ])
+    return {}
+  },
+  component: TicketsRoute,
 })
 
-/** Gate on the `supportTickets` flag (matching today's behavior) and redirect
- *  into the unified inbox. */
-function TicketsRedirectRoute() {
+function TicketsRoute() {
   const { settings } = Route.useRouteContext()
-  const { t } = Route.useSearch()
+  const search = Route.useSearch()
   const flags = settings?.featureFlags as FeatureFlags | undefined
   if (!flags?.supportTickets) {
     return <Navigate to="/admin/feedback" />
   }
-  if (t) {
-    return <Navigate to="/admin/inbox" search={{ i: t }} replace />
-  }
-  return <Navigate to="/admin/inbox" search={{ view: 'tickets_customer' }} replace />
+  return <TicketsWorkspace search={search} />
 }
