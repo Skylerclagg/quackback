@@ -18,7 +18,10 @@ export const Route = createFileRoute('/api/track')({
 
       POST: async ({ request }) => {
         await recordPageView(request)
-        return new Response(null, { status: 204, headers: corsHeaders() })
+        return new Response(null, {
+          status: 204,
+          headers: { ...corsHeaders(), 'Cross-Origin-Resource-Policy': 'cross-origin' },
+        })
       },
     },
   },

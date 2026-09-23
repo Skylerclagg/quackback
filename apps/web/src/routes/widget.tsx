@@ -15,6 +15,8 @@ import { useBrandingFont } from '@/lib/client/hooks/use-branding-font'
 const setIframeHeaders = createServerFn({ method: 'GET' }).handler(async () => {
   setResponseHeader('Content-Security-Policy', 'frame-ancestors *')
   setResponseHeader('X-Frame-Options', 'ALLOWALL')
+  setResponseHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+  setResponseHeader('Cross-Origin-Embedder-Policy', 'require-corp')
 })
 
 /**

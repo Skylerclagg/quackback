@@ -37,6 +37,7 @@ function jsResponse(body: string, maxAge: number, acceptEncoding: string): Respo
   const headers: Record<string, string> = {
     'Content-Type': 'application/javascript; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
     // The body bakes in the workspace's base URL and widget config, so it varies by
     // Host as well as by encoding — see tenancy/http-cache.ts.
     ...publicWorkspaceCacheHeaders(maxAge, 'Accept-Encoding'),
