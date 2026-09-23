@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { PageHeader } from '@/components/shared/page-header'
 import { WarningBox } from '@/components/shared/warning-box'
 import { SettingsCard } from '@/components/admin/settings/settings-card'
@@ -20,6 +21,7 @@ import { WidgetLastDetected } from '@/components/admin/settings/widget/widget-la
 import { copyWithFallback } from '@/components/admin/activation-action-button'
 import { CopyAgentPromptButton } from '@/components/admin/settings/widget/copy-agent-prompt-button'
 import {
+  WIDGET_SECRET_ENV,
   WIDGET_SKILL_REPO,
   buildWidgetInstallPrompt,
   buildWidgetInstallSnippet,
@@ -31,6 +33,7 @@ import {
   widgetSdkUpdateDescription,
 } from '@/lib/shared/widget/sdk-version'
 import { settingsQueries } from '@/lib/client/queries/settings'
+import { useRegenerateWidgetSecret } from '@/lib/client/mutations/settings'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import { assertRoutePermission } from '@/lib/shared/route-permission'
@@ -67,6 +70,8 @@ function WidgetInstallPage() {
   })
   const [copying, setCopying] = useState<'snippet' | 'secret' | null>(null)
   const [identifyUsers, setIdentifyUsers] = useState(true)
+  const [rotateOpen, setRotateOpen] = useState(false)
+  const regenerateSecret = useRegenerateWidgetSecret()
   const snippet = useMemo(
     () =>
       buildWidgetInstallSnippet({
@@ -87,6 +92,20 @@ function WidgetInstallPage() {
     () => maskWidgetSecretInPrompt(agentPrompt, secretQuery.data),
     [agentPrompt, secretQuery.data]
   )
+
+  // A workspace has no signing secret until one is generated here, so without this button the
+  // identify path can never be set up. Rotating invalidates whatever the customer's server holds.
+  async function regenerate() {
+    const rotating = secretQuery.data !== null
+    try {
+      await regenerateSecret.mutateAsync()
+      toast.success(rotating ? 'Signing secret rotated' : 'Signing secret generated')
+    } catch {
+      toast.error('Could not generate a signing secret. Try again.')
+    } finally {
+      setRotateOpen(false)
+    }
+  }
 
   async function copy(kind: 'snippet' | 'secret', text: string) {
     setCopying(kind)
@@ -182,7 +201,49 @@ function WidgetInstallPage() {
               {copying === 'secret' ? 'Copying…' : 'Copy widget signing secret'}
             </Button>
           )}
+          {identifyUsers && !secretQuery.data && (
+            <Button
+              variant="outline"
+              onClick={() => void regenerate()}
+              disabled={regenerateSecret.isPending}
+            >
+              <ArrowPathIcon
+                className={regenerateSecret.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+              />
+              {regenerateSecret.isPending ? 'Generating…' : 'Generate signing secret'}
+            </Button>
+          )}
+          {identifyUsers && secretQuery.data && (
+            <Button
+              variant="ghost"
+              onClick={() => setRotateOpen(true)}
+              disabled={regenerateSecret.isPending}
+            >
+              <ArrowPathIcon className="h-4 w-4" />
+              Rotate signing secret
+            </Button>
+          )}
         </div>
+        {identifyUsers && !secretQuery.data && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            No signing secret exists yet. Generate one, then store it as {WIDGET_SECRET_ENV} on your
+            server. The copy button appears once it exists.
+          </p>
+        )}
+        <ConfirmDialog
+          open={rotateOpen}
+          onOpenChange={setRotateOpen}
+          title="Rotate the signing secret?"
+          description="A new secret replaces the current one immediately."
+          warning={{
+            title: 'Identify stops working until your server has the new secret',
+            description: `Tokens signed with the current secret are rejected from now on. Update ${WIDGET_SECRET_ENV} wherever your server mints them.`,
+          }}
+          confirmLabel="Rotate"
+          variant="destructive"
+          isPending={regenerateSecret.isPending}
+          onConfirm={regenerate}
+        />
       </SettingsCard>
 
       <SettingsCard
