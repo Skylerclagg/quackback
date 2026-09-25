@@ -403,10 +403,11 @@ export function CommentForm({
                 </Button>
               )}
               <Button
-                type="submit"
+                type="button"
                 size="sm"
                 disabled={isSubmitting}
                 className="h-9 sm:h-7 text-xs"
+                onClick={() => void form.handleSubmit(onSubmit)()}
               >
                 {isSubmitting
                   ? intl.formatMessage({
@@ -565,7 +566,12 @@ export function CommentForm({
               </Tooltip>
             </TooltipProvider>
           )}
-          <Button type="submit" size="sm" disabled={isSubmitting}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={isSubmitting}
+            onClick={() => void form.handleSubmit(onSubmit)()}
+          >
             {isSubmitting
               ? intl.formatMessage({
                   id: 'portal.commentForm.submitting',
