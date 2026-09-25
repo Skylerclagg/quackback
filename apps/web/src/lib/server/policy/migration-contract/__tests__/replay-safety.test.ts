@@ -304,6 +304,7 @@ describe('the real corpus', () => {
       '0276_changelog_category_collections.sql',
       '0277_roadmap_timeline.sql',
       '0279_changelog_sources.sql',
+      '0280_widget_session_scope.sql',
     ])
   })
 

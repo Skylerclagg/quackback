@@ -1800,6 +1800,13 @@
       "when": 1788825600000,
       "tag": "0279_changelog_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1789166954246,
+      "tag": "0280_widget_session_scope",
+      "breakpoints": true
     }
   ]
 }

@@ -282,6 +282,7 @@ describe('Auth schema definitions', () => {
       expect(columns).toContain('userId')
       expect(columns).toContain('token')
       expect(columns).toContain('expiresAt')
+      expect(columns).toContain('scope')
     })
   })
 
