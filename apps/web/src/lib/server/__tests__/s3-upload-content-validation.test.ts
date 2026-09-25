@@ -52,7 +52,8 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: vi.fn(async () => 'https://s3.amazonaws.com/presigned'),
 }))
 
-const { uploadImageFromFormData, uploadImageBuffer } = await import('@/lib/server/storage/s3')
+const { uploadImageFromFormData, uploadAttachmentFromFormData, uploadImageBuffer } =
+  await import('@/lib/server/storage/s3')
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
 const GIF_BYTES = new Uint8Array([...'GIF89a'].map((c) => c.charCodeAt(0)).concat([0, 0, 0, 0]))
@@ -125,5 +126,73 @@ describe('uploadImageBuffer — content-addressed keys', () => {
     mockSend.mockClear()
     await uploadImageBuffer(PNG, 'image/png', 'link-previews')
     expect(keyOf(0)).toMatch(/rehost-\d+\.png$/)
+  })
+})
+
+describe('uploadAttachmentFromFormData — documents resolve by extension and are byte-checked', () => {
+  const SQLITE_BYTES = new Uint8Array([
+    ...Buffer.from('SQLite format 3\0', 'latin1'),
+    ...new Array<number>(100).fill(0),
+  ])
+  const CSV_BYTES = new Uint8Array([...'team,number\n1,2\n'].map((c) => c.charCodeAt(0)))
+
+  it('stores a CSV as text/csv regardless of the multipart label', async () => {
+    mockSend.mockClear()
+    const res = await uploadAttachmentFromFormData(
+      formDataWith(CSV_BYTES, 'teams.csv', 'application/vnd.ms-excel'),
+      'p'
+    )
+    expect(res.status).toBe(200)
+    expect(mockSend).toHaveBeenCalledTimes(1)
+    const put = (
+      mockSend.mock.calls[0] as unknown as [{ input: { ContentType: string; Key: string } }]
+    )[0]
+    expect(put.input.ContentType).toBe('text/csv')
+    expect(put.input.Key).toContain('teams.csv')
+  })
+
+  it('stores a SQLite .db as application/vnd.sqlite3 after checking its header', async () => {
+    mockSend.mockClear()
+    const res = await uploadAttachmentFromFormData(formDataWith(SQLITE_BYTES, 'event.db', ''), 'p')
+    expect(res.status).toBe(200)
+    const put = (mockSend.mock.calls[0] as unknown as [{ input: { ContentType: string } }])[0]
+    expect(put.input.ContentType).toBe('application/vnd.sqlite3')
+  })
+
+  it('rejects text posing as a database and a binary posing as text', async () => {
+    mockSend.mockClear()
+    const asDb = await uploadAttachmentFromFormData(formDataWith(CSV_BYTES, 'event.db', ''), 'p')
+    expect(asDb.status).toBe(400)
+    const asCsv = await uploadAttachmentFromFormData(
+      formDataWith(PNG_BYTES, 'shot.csv', 'text/csv'),
+      'p'
+    )
+    expect(asCsv.status).toBe(400)
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('rejects HTML — served same-origin it would be a stored XSS', async () => {
+    mockSend.mockClear()
+    const res = await uploadAttachmentFromFormData(
+      formDataWith(HTML_BYTES, 'page.html', 'text/html'),
+      'p'
+    )
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: 'Invalid file type' })
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('still routes images through the image sniff', async () => {
+    mockSend.mockClear()
+    const ok = await uploadAttachmentFromFormData(
+      formDataWith(PNG_BYTES, 'a.png', 'image/png'),
+      'p'
+    )
+    expect(ok.status).toBe(200)
+    const spoofed = await uploadAttachmentFromFormData(
+      formDataWith(HTML_BYTES, 'a.png', 'image/png'),
+      'p'
+    )
+    expect(spoofed.status).toBe(400)
   })
 })

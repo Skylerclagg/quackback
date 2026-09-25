@@ -554,7 +554,7 @@
   "widget.messenger.system.ticketStatus": "Estado actualizado a {stageLabel}",
   "widget.messenger.system.viaWorkflow": "vía {workflowName}",
   "widget.messenger.typing": "{name} está escribiendo…",
-  "widget.messenger.upload.failed": "No se pudo subir la imagen. Inténtalo de nuevo.",
+  "widget.messenger.upload.failed": "No se pudo subir el archivo. Inténtalo de nuevo.",
   "widget.messenger.you": "Tú",
   "widget.vote.noAccess": "No tienes permiso para votar en esta categoría",
   "portal.feedback.toolbar.filter": "Filtrar",

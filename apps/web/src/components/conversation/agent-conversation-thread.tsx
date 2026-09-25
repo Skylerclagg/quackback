@@ -181,7 +181,8 @@ import type { JSONContent } from '@tiptap/core'
 import type { TiptapContent } from '@/lib/shared/db-types'
 import { isEmptyTiptapDoc } from '@/lib/shared/utils/is-empty-tiptap-doc'
 import { useConversationTyping } from '@/lib/client/hooks/use-conversation-typing'
-import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
+import { useAttachmentUpload, useImageUpload } from '@/lib/client/hooks/use-image-upload'
+import { ATTACHMENT_ACCEPT } from '@/lib/shared/storage-config'
 import { useConversationComposerAttachments } from '@/lib/client/hooks/use-conversation-composer-attachments'
 import { useDebouncedValue } from '@/lib/client/hooks/use-debounced-value'
 import { useCopilotInsert } from '@/lib/client/hooks/use-copilot-insert'
@@ -391,14 +392,17 @@ export function AgentConversationThread({
   const sendTyping = useTypingSender(isTicket ? null : conversationId)
   const { onLocalInput } = useConversationTyping(sendTyping)
 
+  // Inline editor images stay image-only; the paperclip tray also takes the
+  // document types visitors can send (CSV, logs, .db) via the attachment route.
   const { upload } = useImageUpload({ endpoint: '/api/upload/image', prefix: 'chat-images' })
+  const { upload: uploadAttachment } = useAttachmentUpload({ prefix: 'chat-images' })
   const {
     pending: pendingAttachments,
     addFiles,
     remove: removeAttachment,
     clear: clearAttachments,
     uploading,
-  } = useConversationComposerAttachments(upload)
+  } = useConversationComposerAttachments(uploadAttachment)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Both kind's thread queries are always called (rules of hooks) but only one
@@ -2023,7 +2027,7 @@ export function AgentConversationThread({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={ATTACHMENT_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {

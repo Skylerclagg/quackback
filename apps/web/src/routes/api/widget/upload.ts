@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { auth } from '@/lib/server/auth'
-import { isS3Usable, uploadImageFromFormData } from '@/lib/server/storage/s3'
+import { isS3Usable, uploadAttachmentFromFormData } from '@/lib/server/storage/s3'
 import { enforceWidgetQuota, widgetJsonError } from '@/lib/server/widget/public-endpoint'
 import { getSettings } from '@/lib/server/functions/workspace'
 
 export async function handleWidgetUpload({ request }: { request: Request }): Promise<Response> {
-  // Any valid widget session may attach images — identified or anonymous. We
+  // Any valid widget session may attach files — identified or anonymous. We
   // resolve the Bearer the same way server functions do: the better-auth bearer
   // plugin strips the token signature and looks up the session (a raw
   // `session.token` equality check fails because the bearer value is signed).
@@ -35,7 +35,9 @@ export async function handleWidgetUpload({ request }: { request: Request }): Pro
   } catch {
     return Response.json({ error: 'Invalid request body' }, { status: 400 })
   }
-  return uploadImageFromFormData(formData, 'widget-images')
+  // Images plus the document types visitors send support (CSV, logs, .db);
+  // the prefix stays so existing public-read rules keep applying.
+  return uploadAttachmentFromFormData(formData, 'widget-images')
 }
 
 export const Route = createFileRoute('/api/widget/upload')({

@@ -554,7 +554,7 @@
   "widget.messenger.system.ticketStatus": "Status updated to {stageLabel}",
   "widget.messenger.system.viaWorkflow": "via {workflowName}",
   "widget.messenger.typing": "{name} is typing…",
-  "widget.messenger.upload.failed": "Couldn't upload that image. Please try again.",
+  "widget.messenger.upload.failed": "Couldn't upload that file. Please try again.",
   "widget.messenger.you": "You",
   "widget.vote.noAccess": "You don't have access to vote on this board",
   "portal.feedback.toolbar.filter": "Filter",

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { ConversationAttachment } from '@/lib/shared/conversation/types'
 import { MAX_CONVERSATION_ATTACHMENTS } from '@/lib/shared/conversation/types'
+import { resolveAttachmentContentType } from '@/lib/shared/storage-config'
 
 /**
  * Manages pending attachments for a conversation composer: uploads picked files via the
@@ -29,7 +30,8 @@ export function useConversationComposerAttachments(upload: (file: File) => Promi
           list.map(async (f) => ({
             url: await upload(f),
             name: f.name,
-            contentType: f.type,
+            // Canonical type, not the browser's label — see resolveAttachmentContentType.
+            contentType: resolveAttachmentContentType(f) ?? f.type,
             size: f.size,
           }))
         )
