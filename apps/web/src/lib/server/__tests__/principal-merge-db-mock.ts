@@ -23,14 +23,18 @@ export const mockSelectFrom: Mock = vi.fn(() => ({ where: mockSelectWhere }))
 export const mockDeleteWhere: Mock = vi.fn()
 export const mockUpdateWhere: Mock = vi.fn()
 export const mockUpdateSet: Mock = vi.fn((_values?: unknown) => ({ where: mockUpdateWhere }))
+/** The merge target's principal row (mergeAnonymousToIdentified reads its role). */
+export const mockPrincipalFindFirst: Mock = vi.fn(async () => undefined)
 
 interface MockTx {
   select: (...args: unknown[]) => { from: Mock }
   delete: (table: { __name?: string }) => { where: Mock }
   update: (table: { __name?: string }) => { set: Mock }
+  query: { principal: { findFirst: Mock } }
 }
 
 export const mockTx: MockTx = {
+  query: { principal: { findFirst: mockPrincipalFindFirst } },
   select: (..._args: unknown[]) => ({ from: mockSelectFrom }),
   delete: (table: { __name?: string }) => {
     operations.push(`delete:${table.__name || 'unknown'}`)
@@ -53,6 +57,7 @@ export function resetDbMockState() {
   mockSelectWhere.mockResolvedValue([])
   mockDeleteWhere.mockResolvedValue(undefined)
   mockUpdateWhere.mockResolvedValue(undefined)
+  mockPrincipalFindFirst.mockResolvedValue(undefined)
 }
 
 /** Ops for one table, in issue order. */
