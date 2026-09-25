@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import type { UserId } from '@quackback/ids'
 import { auth } from '@/lib/server/auth'
 import { db, eq, principal } from '@/lib/server/db'
-import { isS3Configured, uploadImageFromFormData } from '@/lib/server/storage/s3'
+import { isS3Configured, uploadAttachmentFromFormData } from '@/lib/server/storage/s3'
 import { incrementBucket, bucketRetryAfter } from '@/lib/server/utils/rate-bucket'
 
 export async function handlePortalUpload({ request }: { request: Request }): Promise<Response> {
@@ -35,7 +35,9 @@ export async function handlePortalUpload({ request }: { request: Request }): Pro
   } catch {
     return Response.json({ error: 'Invalid request body' }, { status: 400 })
   }
-  return uploadImageFromFormData(formData, 'portal-images')
+  // Images plus the document types visitors send support (CSV, logs, .db);
+  // the prefix stays so existing public-read rules keep applying.
+  return uploadAttachmentFromFormData(formData, 'portal-images')
 }
 
 export const Route = createFileRoute('/api/portal/upload')({

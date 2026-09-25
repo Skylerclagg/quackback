@@ -186,6 +186,7 @@ vi.mock('@/lib/client/hooks/use-inbox-translation', () => ({
 vi.mock('@/lib/client/hooks/use-copilot-insert', () => ({ useCopilotInsert: () => vi.fn() }))
 vi.mock('@/lib/client/hooks/use-image-upload', () => ({
   useImageUpload: () => ({ upload: vi.fn() }),
+  useAttachmentUpload: () => ({ upload: vi.fn() }),
 }))
 vi.mock('@/lib/client/hooks/use-conversation-composer-attachments', () => ({
   useConversationComposerAttachments: () => ({

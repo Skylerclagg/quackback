@@ -421,11 +421,13 @@ export const INLINE_CLASSIFICATIONS: Record<string, Classification> = {
     roleBar: 'team',
     why: 'permission echo for portal UI affordances: non-team callers fail open to an empty permission list rather than an error',
   },
-  'routes/api/widget/identify.ts::POST::isTeamMember': {
-    intent: 'SECONDARY_GATE',
-    roleBar: 'team',
-    why: 'widget identify refuses to mint a widget-scoped session when the resolved identity is a staff/team member, so a dashboard-authorized session is never handed to an embedding origin',
-  },
+  'routes/api/widget/identify.ts::POST::isTeamMember': NOT_A_GATE(
+    'skips overwriting a teammate dashboard profile from the host-app JWT and withholds the portal handoff; identify still mints a widget-scoped customer session (session.scope keeps it off every team gate)'
+  ),
+  'lib/server/functions/widget-auth.ts::getWidgetSession::isTeamMember': NOT_A_GATE(
+    'sets canPortalHandoff from the stored role; the presented session role stays portal-tier'
+  ),
+
   'lib/server/functions/onboarding.ts::saveWorkspaceAndGoalFn::isAdmin': {
     intent: 'SECONDARY_GATE',
     roleBar: 'admin',

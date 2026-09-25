@@ -5,7 +5,7 @@ import { VisitorConversationThread } from '@/components/shared/conversation/visi
 import { useWidgetAuth } from './widget-auth-provider'
 import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { useConversationPresence, markAgentPresentInCache } from './use-messenger-presence'
-import { useWidgetImageUpload } from '@/lib/client/hooks/use-image-upload'
+import { useWidgetAttachmentUpload } from '@/lib/client/hooks/use-image-upload'
 
 interface WidgetMessengerProps {
   /** Whether the help center is available (gates in-conversation article suggestions). */
@@ -36,7 +36,7 @@ export function WidgetMessenger({
   // Presence (online/offline + office hours) comes from the one shared query —
   // SSR-seeded, polled once, and shared with every other widget surface.
   const presence = useConversationPresence(true)
-  const { upload } = useWidgetImageUpload()
+  const { upload } = useWidgetAttachmentUpload()
 
   const onAgentActivity = useCallback(() => markAgentPresentInCache(queryClient), [queryClient])
 
@@ -65,7 +65,7 @@ export function WidgetMessenger({
       ensureSession={ensureSession}
       sessionVersion={sessionVersion}
       currentUser={user}
-      uploadImage={upload}
+      uploadAttachment={upload}
       presence={presence}
       onAgentActivity={onAgentActivity}
       helpSearch={helpSearch}

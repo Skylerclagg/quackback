@@ -554,7 +554,7 @@
   "widget.messenger.system.ticketStatus": "狀態已更新為 {stageLabel}",
   "widget.messenger.system.viaWorkflow": "透過 {workflowName}",
   "widget.messenger.typing": "{name} 正在輸入…",
-  "widget.messenger.upload.failed": "無法上傳該圖片，請再試一次。",
+  "widget.messenger.upload.failed": "無法上傳該檔案，請再試一次。",
   "widget.messenger.you": "你",
   "widget.vote.noAccess": "你沒有權限在這個看板投票",
   "portal.feedback.toolbar.filter": "篩選",

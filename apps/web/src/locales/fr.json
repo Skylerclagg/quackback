@@ -554,7 +554,7 @@
   "widget.messenger.system.ticketStatus": "Statut mis à jour : {stageLabel}",
   "widget.messenger.system.viaWorkflow": "via {workflowName}",
   "widget.messenger.typing": "{name} est en train d'écrire…",
-  "widget.messenger.upload.failed": "Impossible de téléverser cette image. Veuillez réessayer.",
+  "widget.messenger.upload.failed": "Impossible de téléverser ce fichier. Veuillez réessayer.",
   "widget.messenger.you": "Vous",
   "widget.vote.noAccess": "Vous n'avez pas l'autorisation de voter dans cette catégorie",
   "portal.feedback.toolbar.filter": "Filtrer",

@@ -76,3 +76,41 @@ export function sniffImageMime(buf: Buffer): string | null {
   }
   return null
 }
+
+/** SQLite 3 database file header: the 16-byte string "SQLite format 3\0". */
+export function isSqliteHeader(buf: Buffer): boolean {
+  return buf.length >= 16 && buf.subarray(0, 16).toString('latin1') === 'SQLite format 3\0'
+}
+
+/**
+ * True when the leading bytes read as text rather than a binary blob: no NUL
+ * byte in the first 8 KiB, unless the file opens with a UTF-16 byte-order
+ * mark (Notepad's "Unicode" encoding interleaves NULs). Deliberately not a
+ * UTF-8 validity check — Excel writes CSVs in the Windows ANSI code page, and
+ * those must still pass. Enough to catch a renamed binary without decoding a
+ * multi-megabyte log.
+ */
+export function looksLikePlainText(buf: Buffer): boolean {
+  if (buf.length === 0) return false
+  if (
+    buf.length >= 2 &&
+    ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))
+  ) {
+    return true
+  }
+  return !buf.subarray(0, 8192).includes(0)
+}
+
+/**
+ * Whether an attachment's bytes are plausible for the type it will be stored
+ * and served under (see DOCUMENT_ATTACHMENT_TYPES). Text and JSON must look
+ * like text; SQLite must carry its header. Image types are the image
+ * sniffer's job, so they return false here.
+ */
+export function attachmentBytesMatchType(buf: Buffer, contentType: string): boolean {
+  if (contentType === 'application/vnd.sqlite3') return isSqliteHeader(buf)
+  if (contentType.startsWith('text/') || contentType === 'application/json') {
+    return looksLikePlainText(buf)
+  }
+  return false
+}

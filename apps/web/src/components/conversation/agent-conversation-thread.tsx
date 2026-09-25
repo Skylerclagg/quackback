@@ -181,7 +181,8 @@ import type { JSONContent } from '@tiptap/core'
 import type { TiptapContent } from '@/lib/shared/db-types'
 import { isEmptyTiptapDoc } from '@/lib/shared/utils/is-empty-tiptap-doc'
 import { useConversationTyping } from '@/lib/client/hooks/use-conversation-typing'
-import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
+import { useAttachmentUpload, useImageUpload } from '@/lib/client/hooks/use-image-upload'
+import { ATTACHMENT_ACCEPT } from '@/lib/shared/storage-config'
 import { useConversationComposerAttachments } from '@/lib/client/hooks/use-conversation-composer-attachments'
 import { useDebouncedValue } from '@/lib/client/hooks/use-debounced-value'
 import { useCopilotInsert } from '@/lib/client/hooks/use-copilot-insert'
@@ -227,10 +228,14 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn, tomorrowAt, inHours, nextMondayAt } from '@/lib/shared/utils'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
+import { useMediaQuery } from '@/lib/client/hooks/use-media-query'
 
 // "Jump to message" tuning: how long the flash plays (must match the
 // flash-highlight keyframe duration) and how many older pages we'll auto-pull
@@ -391,15 +396,24 @@ export function AgentConversationThread({
   const sendTyping = useTypingSender(isTicket ? null : conversationId)
   const { onLocalInput } = useConversationTyping(sendTyping)
 
+  // Inline editor images stay image-only; the paperclip tray also takes the
+  // document types visitors can send (CSV, logs, .db) via the attachment route.
   const { upload } = useImageUpload({ endpoint: '/api/upload/image', prefix: 'chat-images' })
+  const { upload: uploadAttachment } = useAttachmentUpload({ prefix: 'chat-images' })
   const {
     pending: pendingAttachments,
     addFiles,
     remove: removeAttachment,
     clear: clearAttachments,
     uploading,
-  } = useConversationComposerAttachments(upload)
+  } = useConversationComposerAttachments(uploadAttachment)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Below `sm` the header cannot fit the triage pills and the secondary
+  // actions beside the identity block: they overflow and overlap it. On a
+  // phone the pills get their own row under the header and the secondary
+  // actions fold into the ⋯ menu. False on the server and the first client
+  // render (hydration-safe), so a phone paints the wide layout for one frame.
+  const compactHeader = useMediaQuery('(max-width: 639px)')
 
   // Both kind's thread queries are always called (rules of hooks) but only one
   // is ever `enabled` — the conversation adapter is unchanged from before the
@@ -1603,6 +1617,33 @@ export function AgentConversationThread({
   const headerIconButtonClass =
     'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50'
 
+  // Snooze presets, shared by the header's snooze icon menu (sm+) and the
+  // ⋯ menu's Snooze sub-menu on a phone.
+  const snoozeMenuItems = (
+    <>
+      <DropdownMenuItem onClick={() => snooze(inHours(4).toISOString())}>
+        Later today
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => snooze(tomorrowAt(9).toISOString())}>
+        Tomorrow
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => snooze(nextMondayAt(9).toISOString())}>
+        Next week
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => snooze(null)}>Until they reply</DropdownMenuItem>
+      <DropdownMenuItem
+        onSelect={() => {
+          setSnoozeCustomDate(tomorrowAt(9))
+          // Let the menu finish closing before the dialog grabs focus,
+          // so the two Radix overlays don't fight over it.
+          requestAnimationFrame(() => setSnoozeCustomOpen(true))
+        }}
+      >
+        Pick a date &amp; time…
+      </DropdownMenuItem>
+    </>
+  )
+
   // The unified action bar's icon cluster + overflow + primary button —
   // identical JSX for both kinds, gated internally by `isTicket`/capabilities.
   const headerActions = (
@@ -1619,106 +1660,90 @@ export function AgentConversationThread({
             <TicketStatusChip status={panelTicket.status} />
           </span>
         ))}
-      {/* Switch to the ticket this conversation is linked to. The detail
+      {/* Secondary actions: hidden on a phone, where they fold into the ⋯
+          menu (see compactHeader); `sm:contents` keeps them direct flex
+          children of the cluster at sm+. */}
+      <div className="hidden sm:contents">
+        {/* Switch to the ticket this conversation is linked to. The detail
           panel's Ticket card already carries the reference, but it is an
           xl-only surface and reads as a label rather than a way out — so the
           crossing lives in the action bar, named, next to the status pill it
           belongs with. The reverse crossing is the panel's Links section. */}
-      {!isTicket && panelTicket && (
-        <button
-          type="button"
-          title={`Open ticket ${panelTicket.reference}`}
-          onClick={() => onSelectItem(panelTicket.id)}
-          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <TicketIcon className="h-4 w-4" />
-          <span className="font-mono">{panelTicket.reference}</span>
-        </button>
-      )}
-      {!isTicket && showTickets && !panelTicket && (
-        <button
-          type="button"
-          title="Create ticket"
-          aria-label="Create ticket"
-          onClick={() => setCreateTicketOpen(true)}
-          className={headerIconButtonClass}
-        >
-          <TicketIcon className="h-4 w-4" />
-        </button>
-      )}
-      {lastMessage && (
-        <button
-          type="button"
-          title="Save for later"
-          aria-label="Save for later"
-          aria-pressed={lastMessageFlagged}
-          onClick={toggleSaveForLater}
-          className={headerIconButtonClass}
-        >
-          {lastMessageFlagged ? (
-            <BookmarkSolidIcon className="h-4 w-4 text-amber-500" />
-          ) : (
-            <BookmarkIcon className="h-4 w-4" />
-          )}
-        </button>
-      )}
-      {!isTicket && conversation && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              title="Snooze"
-              aria-label="Snooze"
-              disabled={snoozeMutation.isPending}
-              className={headerIconButtonClass}
-            >
-              <MoonIcon className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => snooze(inHours(4).toISOString())}>
-              Later today
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => snooze(tomorrowAt(9).toISOString())}>
-              Tomorrow
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => snooze(nextMondayAt(9).toISOString())}>
-              Next week
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => snooze(null)}>Until they reply</DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                setSnoozeCustomDate(tomorrowAt(9))
-                // Let the menu finish closing before the dialog grabs focus,
-                // so the two Radix overlays don't fight over it.
-                requestAnimationFrame(() => setSnoozeCustomOpen(true))
-              }}
-            >
-              Pick a date &amp; time…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-      {/* P2-D.1 inbox translation: manual per-conversation toggle. */}
-      {inboxTranslationEnabled && conversation && (
-        <button
-          type="button"
-          onClick={inboxTranslation.toggleEnabled}
-          disabled={inboxTranslation.togglePending}
-          aria-pressed={inboxTranslation.enabled}
-          title={
-            inboxTranslation.enabled
-              ? 'Translation is on for this conversation'
-              : 'Turn on translation for this conversation'
-          }
-          className={cn(
-            headerIconButtonClass,
-            inboxTranslation.enabled && 'bg-primary/10 text-primary hover:text-primary'
-          )}
-        >
-          <LanguageIcon className="h-4 w-4" />
-        </button>
-      )}
+        {!isTicket && panelTicket && (
+          <button
+            type="button"
+            title={`Open ticket ${panelTicket.reference}`}
+            onClick={() => onSelectItem(panelTicket.id)}
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <TicketIcon className="h-4 w-4" />
+            <span className="font-mono">{panelTicket.reference}</span>
+          </button>
+        )}
+        {!isTicket && showTickets && !panelTicket && (
+          <button
+            type="button"
+            title="Create ticket"
+            aria-label="Create ticket"
+            onClick={() => setCreateTicketOpen(true)}
+            className={headerIconButtonClass}
+          >
+            <TicketIcon className="h-4 w-4" />
+          </button>
+        )}
+        {lastMessage && (
+          <button
+            type="button"
+            title="Save for later"
+            aria-label="Save for later"
+            aria-pressed={lastMessageFlagged}
+            onClick={toggleSaveForLater}
+            className={headerIconButtonClass}
+          >
+            {lastMessageFlagged ? (
+              <BookmarkSolidIcon className="h-4 w-4 text-amber-500" />
+            ) : (
+              <BookmarkIcon className="h-4 w-4" />
+            )}
+          </button>
+        )}
+        {!isTicket && conversation && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                title="Snooze"
+                aria-label="Snooze"
+                disabled={snoozeMutation.isPending}
+                className={headerIconButtonClass}
+              >
+                <MoonIcon className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">{snoozeMenuItems}</DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {/* P2-D.1 inbox translation: manual per-conversation toggle. */}
+        {inboxTranslationEnabled && conversation && (
+          <button
+            type="button"
+            onClick={inboxTranslation.toggleEnabled}
+            disabled={inboxTranslation.togglePending}
+            aria-pressed={inboxTranslation.enabled}
+            title={
+              inboxTranslation.enabled
+                ? 'Translation is on for this conversation'
+                : 'Turn on translation for this conversation'
+            }
+            className={cn(
+              headerIconButtonClass,
+              inboxTranslation.enabled && 'bg-primary/10 text-primary hover:text-primary'
+            )}
+          >
+            <LanguageIcon className="h-4 w-4" />
+          </button>
+        )}
+      </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -1730,6 +1755,52 @@ export function AgentConversationThread({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {/* Phone: the secondary actions the header dropped (compactHeader). */}
+          {compactHeader && (
+            <>
+              {!isTicket && panelTicket && (
+                <DropdownMenuItem onClick={() => onSelectItem(panelTicket.id)}>
+                  <TicketIcon className="h-3.5 w-3.5" />
+                  Open ticket <span className="font-mono">{panelTicket.reference}</span>
+                </DropdownMenuItem>
+              )}
+              {!isTicket && showTickets && !panelTicket && (
+                <DropdownMenuItem onClick={() => setCreateTicketOpen(true)}>
+                  <TicketIcon className="h-3.5 w-3.5" />
+                  Create ticket
+                </DropdownMenuItem>
+              )}
+              {lastMessage && (
+                <DropdownMenuItem onClick={toggleSaveForLater}>
+                  {lastMessageFlagged ? (
+                    <BookmarkSolidIcon className="h-3.5 w-3.5 text-amber-500" />
+                  ) : (
+                    <BookmarkIcon className="h-3.5 w-3.5" />
+                  )}
+                  {lastMessageFlagged ? 'Saved for later' : 'Save for later'}
+                </DropdownMenuItem>
+              )}
+              {!isTicket && conversation && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger disabled={snoozeMutation.isPending}>
+                    <MoonIcon className="h-3.5 w-3.5" />
+                    Snooze
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>{snoozeMenuItems}</DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              {inboxTranslationEnabled && conversation && (
+                <DropdownMenuItem
+                  onClick={inboxTranslation.toggleEnabled}
+                  disabled={inboxTranslation.togglePending}
+                >
+                  <LanguageIcon className="h-3.5 w-3.5" />
+                  {inboxTranslation.enabled ? 'Turn off translation' : 'Turn on translation'}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem onClick={() => void exportTranscript()}>
             <ArrowDownTrayIcon className="h-3.5 w-3.5" />
             {exporting ? 'Exporting…' : 'Export transcript'}
@@ -1796,6 +1867,36 @@ export function AgentConversationThread({
     </div>
   )
 
+  // The below-xl triage pills, rendered inline in the header at sm+ and in
+  // their own row under it on a phone.
+  const triageControls: ReactNode =
+    isTicket && ticket ? (
+      <>
+        <TicketPriorityControl ticket={ticket} onChanged={onChanged} />
+        <TicketAssigneeControl ticket={ticket} onChanged={onChanged} />
+      </>
+    ) : conversation ? (
+      <>
+        <PriorityControl
+          conversationId={conversationId ?? INACTIVE_CONVERSATION_ID}
+          value={conversation.priority}
+          onChanged={refreshThread}
+        />
+        <AssigneeControl
+          conversationId={conversationId ?? INACTIVE_CONVERSATION_ID}
+          assignedAgent={conversation.assignedAgent}
+          assignedTeamId={conversation.assignedTeamId}
+          onChanged={refreshThread}
+        />
+        <StatusControl
+          conversationId={conversationId ?? INACTIVE_CONVERSATION_ID}
+          status={conversation.status}
+          snoozedUntil={conversation.snoozedUntil}
+          onChanged={refreshThread}
+        />
+      </>
+    ) : null
+
   const header: ReactNode =
     isTicket && ticket ? (
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3 sm:px-5">
@@ -1811,11 +1912,11 @@ export function AgentConversationThread({
           </div>
         </div>
         {/* Narrow-viewport fallback: Properties live in the detail panel at
-            xl+; below that, priority/assignee stay reachable here. */}
-        <div className="flex shrink-0 items-center gap-1.5 xl:hidden">
-          <TicketPriorityControl ticket={ticket} onChanged={onChanged} />
-          <TicketAssigneeControl ticket={ticket} onChanged={onChanged} />
-        </div>
+            xl+; below that, priority/assignee stay reachable here — on a
+            phone in their own row under the header (see compactHeader). */}
+        {!compactHeader && (
+          <div className="flex shrink-0 items-center gap-1.5 xl:hidden">{triageControls}</div>
+        )}
         {headerActions}
       </div>
     ) : (
@@ -1853,27 +1954,10 @@ export function AgentConversationThread({
           </div>
         </div>
         {/* Triage controls live in the detail panel at xl+; below that
-            (panel hidden) they stay in the header. */}
-        {conversation && (
-          <div className="flex shrink-0 items-center gap-1.5 xl:hidden">
-            <PriorityControl
-              conversationId={conversationId ?? INACTIVE_CONVERSATION_ID}
-              value={conversation.priority}
-              onChanged={refreshThread}
-            />
-            <AssigneeControl
-              conversationId={conversationId ?? INACTIVE_CONVERSATION_ID}
-              assignedAgent={conversation.assignedAgent}
-              assignedTeamId={conversation.assignedTeamId}
-              onChanged={refreshThread}
-            />
-            <StatusControl
-              conversationId={conversationId ?? INACTIVE_CONVERSATION_ID}
-              status={conversation.status}
-              snoozedUntil={conversation.snoozedUntil}
-              onChanged={refreshThread}
-            />
-          </div>
+            (panel hidden) they stay in the header — on a phone in their own
+            row under it (see compactHeader). */}
+        {triageControls && !compactHeader && (
+          <div className="flex shrink-0 items-center gap-1.5 xl:hidden">{triageControls}</div>
         )}
         {headerActions}
       </div>
@@ -1883,6 +1967,15 @@ export function AgentConversationThread({
     <div className="flex h-full flex-1 min-w-0">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {header}
+
+        {/* Phone-width home for the triage controls (see compactHeader): a
+            wrapping row under the header instead of a third cluster squeezed
+            beside the actions. */}
+        {compactHeader && triageControls && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border/50 px-4 py-2">
+            {triageControls}
+          </div>
+        )}
 
         {/* Conversation labels — xl+ shows them in the detail panel. Tickets
             have no tags surface (§2.5's capability matrix — "tags,
@@ -2023,7 +2116,7 @@ export function AgentConversationThread({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={ATTACHMENT_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {

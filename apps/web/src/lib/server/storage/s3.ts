@@ -72,7 +72,8 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import type { WorkspaceId } from '@quackback/ids'
 import { config } from '@/lib/server/config'
-import { sniffImageMime } from '@/lib/server/content/magic-bytes'
+import { attachmentBytesMatchType, sniffImageMime } from '@/lib/server/content/magic-bytes'
+import { resolveAttachmentContentType } from '@/lib/shared/storage-config'
 import {
   getCurrentWorkspace,
   getWorkspaceStorageCredential,
@@ -879,6 +880,51 @@ export async function uploadImageFromFormData(
       return Response.json({ error: 'File content does not match its type' }, { status: 400 })
     }
     const publicUrl = await uploadObject(key, body, file.type)
+    return Response.json({ publicUrl })
+  } catch {
+    return Response.json({ error: 'Upload failed' }, { status: 500 })
+  }
+}
+
+/**
+ * Validate and upload a conversation attachment from a parsed multipart
+ * FormData body: any allowed image (delegated to uploadImageFromFormData and
+ * its byte sniff) or one of the document types in DOCUMENT_ATTACHMENT_TYPES.
+ * A document's type comes from its extension, never the multipart label —
+ * browsers report CSV / .log / .db types inconsistently — and the bytes are
+ * checked against that type before storing, for the same reason images are.
+ *
+ * @param formData - Already-parsed request FormData (must contain a `file` field)
+ * @param storagePrefix - Bucket prefix, e.g. "widget-images"
+ */
+export async function uploadAttachmentFromFormData(
+  formData: FormData,
+  storagePrefix: string
+): Promise<Response> {
+  const file = formData.get('file')
+  if (!(file instanceof File)) {
+    return Response.json({ error: 'No file provided' }, { status: 400 })
+  }
+  if (isAllowedImageType(file.type)) {
+    return uploadImageFromFormData(formData, storagePrefix)
+  }
+  const contentType = resolveAttachmentContentType(file)
+  if (!contentType) {
+    return Response.json({ error: 'Invalid file type' }, { status: 400 })
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return Response.json(
+      { error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+      { status: 400 }
+    )
+  }
+  try {
+    const key = generateStorageKey(storagePrefix, file.name)
+    const body = Buffer.from(await file.arrayBuffer())
+    if (!attachmentBytesMatchType(body, contentType)) {
+      return Response.json({ error: 'File content does not match its type' }, { status: 400 })
+    }
+    const publicUrl = await uploadObject(key, body, contentType)
     return Response.json({ publicUrl })
   } catch {
     return Response.json({ error: 'Upload failed' }, { status: 500 })

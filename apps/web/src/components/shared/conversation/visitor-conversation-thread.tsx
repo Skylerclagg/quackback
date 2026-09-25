@@ -68,6 +68,7 @@ import { getConversationLinkedTicketFn } from '@/lib/server/functions/tickets'
 import { getWidgetCapabilitiesFn } from '@/lib/server/functions/widget-capabilities'
 import { TicketHeaderCard } from './ticket-header-card'
 import type { RequesterTicketDTO } from '@/lib/server/domains/tickets'
+import { ATTACHMENT_ACCEPT, isAllowedAttachmentFile } from '@/lib/shared/storage-config'
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -138,7 +139,7 @@ export interface VisitorConversationThreadProps {
   currentUser?: { name?: string | null; avatarUrl?: string | null } | null
   /** Upload one image file, resolving to its public URL. Rejections surface as
    *  inline composer errors. */
-  uploadImage: (file: File) => Promise<string>
+  uploadAttachment: (file: File) => Promise<string>
   /** Team availability (online agents / office hours), owned by the surface so
    *  every sibling view shares one poll. */
   presence: VisitorConversationThreadPresence
@@ -179,7 +180,7 @@ export function VisitorConversationThread({
   ensureSession = ALWAYS_READY,
   sessionVersion = 0,
   currentUser,
-  uploadImage,
+  uploadAttachment,
   presence,
   onAgentActivity,
   helpSearch,
@@ -273,20 +274,21 @@ export function VisitorConversationThread({
   } = useAssistantTurn()
 
   // No toast on visitor surfaces, so upload failures render as inline composer
-  // text. uploadImage rejects on failure; the wrapper records the message.
+  // text. uploadAttachment rejects on failure; the wrapper records the message.
   const [uploadError, setUploadError] = useState<string | null>(null)
   const upload = useCallback(
     async (file: File): Promise<string> => {
       try {
-        return await uploadImage(file)
+        return await uploadAttachment(file)
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : 'Upload failed')
         throw err
       }
     },
-    [uploadImage]
+    [uploadAttachment]
   )
-  // Image attachments use the shared tray (thumbnails + zoom) — same as admin.
+  // Attachments (images + the document types in ATTACHMENT_ACCEPT) use the
+  // shared tray (thumbnails + zoom for images, a chip otherwise) — same as admin.
   const {
     pending: pendingAttachments,
     addFiles,
@@ -310,7 +312,7 @@ export function VisitorConversationThread({
         setUploadError(
           intl.formatMessage({
             id: 'widget.messenger.upload.failed',
-            defaultMessage: "Couldn't upload that image. Please try again.",
+            defaultMessage: "Couldn't upload that file. Please try again.",
           })
         )
         return
@@ -338,29 +340,26 @@ export function VisitorConversationThread({
     [composer.onChange, onLocalInput]
   )
 
-  // Pasting/dropping an image routes to the attachment tray, matching the
+  // Pasting/dropping a file routes to the attachment tray, matching the
   // paperclip button — RichTextEditor has no onImageUpload wired for visitors
   // (images stay tray-only here, never inlined), so this replicates what the
-  // old composer's own paste/drop interception did.
+  // old composer's own paste/drop interception did. Files the picker would
+  // refuse are left to the browser so an unsupported drop is a visible no-op.
   const handleComposerPaste = useCallback(
     (e: React.ClipboardEvent<HTMLDivElement>) => {
-      const images = Array.from(e.clipboardData?.files ?? []).filter((f) =>
-        f.type.startsWith('image/')
-      )
-      if (images.length === 0) return
+      const files = Array.from(e.clipboardData?.files ?? []).filter(isAllowedAttachmentFile)
+      if (files.length === 0) return
       e.preventDefault()
-      void handleAddFiles(images)
+      void handleAddFiles(files)
     },
     [handleAddFiles]
   )
   const handleComposerDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      const images = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
-        f.type.startsWith('image/')
-      )
-      if (images.length === 0) return
+      const files = Array.from(e.dataTransfer?.files ?? []).filter(isAllowedAttachmentFile)
+      if (files.length === 0) return
       e.preventDefault()
-      void handleAddFiles(images)
+      void handleAddFiles(files)
     },
     [handleAddFiles]
   )
@@ -1316,7 +1315,7 @@ export function VisitorConversationThread({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={ATTACHMENT_ACCEPT}
             multiple
             className="hidden"
             onChange={(e) => {

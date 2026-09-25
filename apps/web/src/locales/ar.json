@@ -554,7 +554,7 @@
   "widget.messenger.system.ticketStatus": "تم تحديث الحالة إلى {stageLabel}",
   "widget.messenger.system.viaWorkflow": "عبر {workflowName}",
   "widget.messenger.typing": "{name} يكتب الآن…",
-  "widget.messenger.upload.failed": "تعذّر رفع الصورة. يُرجى المحاولة مرة أخرى.",
+  "widget.messenger.upload.failed": "تعذّر رفع الملف. يُرجى المحاولة مرة أخرى.",
   "widget.messenger.you": "أنت",
   "widget.vote.noAccess": "ليست لديك صلاحية التصويت في هذه الفئة",
   "portal.feedback.toolbar.filter": "تصفية",
