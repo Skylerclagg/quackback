@@ -65,6 +65,9 @@ interface WidgetAuthContextValue {
   metadata: WidgetMetadata | null
   /** Increments when the session token changes — use in query keys to trigger refetch */
   sessionVersion: number
+  /** The live session version, for code that needs the value after an await
+   *  (a render-time `sessionVersion` is stale once ensureSession has minted). */
+  getSessionVersion: () => number
 }
 
 const WidgetAuthContext = createContext<WidgetAuthContextValue | null>(null)
@@ -450,6 +453,8 @@ export function WidgetAuthProvider({
     return () => window.removeEventListener('message', handleMessage)
   }, [storeToken, applyIdentifyResult])
 
+  const getSessionVersion = useCallback(() => sessionVersionRef.current, [])
+
   const contextValue = useMemo(
     () => ({
       user,
@@ -463,6 +468,7 @@ export function WidgetAuthProvider({
       emitEvent,
       metadata: widgetMetadata,
       sessionVersion,
+      getSessionVersion,
     }),
     [
       user,
@@ -475,6 +481,7 @@ export function WidgetAuthProvider({
       emitEvent,
       widgetMetadata,
       sessionVersion,
+      getSessionVersion,
     ]
   )
 

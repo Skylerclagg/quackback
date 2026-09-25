@@ -36,6 +36,24 @@ const ATTACHMENT_KIND: UploadKind = {
     `Invalid file type: ${file.type || file.name}. Allowed types: images, ${DOCUMENT_ATTACHMENT_LABEL}.`,
 }
 
+/** Client-side type/size check for an image upload; null when uploadable. */
+export function validateImageFile(file: File): Error | null {
+  return validateFor(IMAGE_KIND, file)
+}
+
+/** Client-side type/size check for a conversation attachment; null when uploadable. */
+export function validateAttachmentFile(file: File): Error | null {
+  return validateFor(ATTACHMENT_KIND, file)
+}
+
+function validateFor(kind: UploadKind, file: File): Error | null {
+  if (!kind.contentType(file)) return new Error(kind.describe(file))
+  if (file.size > MAX_FILE_SIZE) {
+    return new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`)
+  }
+  return null
+}
+
 function useUpload(kind: UploadKind, options: UseImageUploadOptions) {
   const {
     prefix = 'uploads',
@@ -48,18 +66,12 @@ function useUpload(kind: UploadKind, options: UseImageUploadOptions) {
 
   const upload = useCallback(
     async (file: File): Promise<string> => {
-      const contentType = kind.contentType(file)
-      if (!contentType) {
-        const error = new Error(kind.describe(file))
-        onError?.(error)
-        throw error
+      const invalid = validateFor(kind, file)
+      if (invalid) {
+        onError?.(invalid)
+        throw invalid
       }
-
-      if (file.size > MAX_FILE_SIZE) {
-        const error = new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`)
-        onError?.(error)
-        throw error
-      }
+      const contentType = kind.contentType(file)!
 
       onStart?.()
 
@@ -125,15 +137,8 @@ export function usePortalImageUpload(
   return useImageUpload({ ...options, endpoint: '/api/portal/upload' })
 }
 
-export function useWidgetImageUpload(
-  options: Omit<UseImageUploadOptions, 'prefix' | 'endpoint' | 'extraHeaders'> = {}
-) {
-  return useImageUpload({
-    ...options,
-    endpoint: '/api/widget/upload',
-    extraHeaders: getWidgetAuthHeaders,
-  })
-}
+// The widget image flavour lives in `@/components/widget/use-widget-image-upload`:
+// it needs the widget auth context to mint a session before uploading.
 
 /**
  * Conversation attachments: images plus the documents in
