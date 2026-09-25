@@ -502,7 +502,7 @@ export function WidgetHomeAnimated({
             transition={{ duration: 0.2 }}
           >
             <AnimatePresence>
-              {expanded && boards.length > 1 && (
+              {expanded && boards.length > 0 && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
