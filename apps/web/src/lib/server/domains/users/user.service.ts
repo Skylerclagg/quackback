@@ -45,6 +45,7 @@ import { NotFoundError, InternalError } from '@/lib/shared/errors'
 import { realEmail } from '@/lib/shared/anonymous-email'
 import { logger } from '@/lib/server/logger'
 import { resolveUserAvatarUrl } from '@/lib/server/domains/principals/principal-display'
+import { EXTERNAL_ID_KEY } from '@/lib/server/domains/users/user.attributes'
 
 const log = logger.child({ component: 'users' })
 import type {
@@ -472,6 +473,19 @@ export async function removePortalUser(principalId: PrincipalId): Promise<void> 
         .where(eq(conversations.visitorPrincipalId, principalId))
       if (userId) {
         await tx.delete(session).where(eq(session.userId, userId))
+        // Widget identity is not membership: `user.external_id` (the verified
+        // JWT `sub`) and metadata `_externalUserId` are unique keys for
+        // POST /api/widget/identify, so release them here or the next ssoToken
+        // with this `sub` resurrects the husk — often with a stale email. The
+        // email stays so a same-address portal re-join can remint a principal.
+        await tx
+          .update(user)
+          .set({
+            externalId: null,
+            metadata: sql`(coalesce(nullif(${user.metadata}, ''), '{}')::jsonb - ${EXTERNAL_ID_KEY}::text)::text`,
+            updatedAt: new Date(),
+          })
+          .where(eq(user.id, userId))
       }
       // Delete principal record (user record is retained; the FK cascades the
       // other way, from user to principal)
