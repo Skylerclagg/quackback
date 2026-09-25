@@ -78,11 +78,17 @@ services:
       start_period: 40s
 
   minio:
-    # Pulled from quay.io: MinIO no longer publishes the server or `mc`
-    # images to Docker Hub — the `minio/minio` and `minio/mc` repositories
-    # there now return "repository does not exist", which fails every
-    # pull. quay.io carries the same release tags.
+    # MinIO was archived upstream in 2026: the `minio/minio` and `minio/mc`
+    # repositories are gone from Docker Hub, quay.io and GHCR, and dl.min.io
+    # answers 410 Gone for every release binary. The only copy of this image
+    # is the one already in the deployment host's Docker cache from the last
+    # successful deploy. `pull_policy: never` keeps the pre-deploy
+    # `docker compose pull` from asking a registry (that request fails the
+    # whole deploy) and makes `up` use the cached image. If the host ever
+    # loses it, the stack needs a replacement object store — see
+    # deploy/coolify/README.md, "Object storage".
     image: quay.io/minio/minio:${MINIO_IMAGE_TAG:-RELEASE.2025-04-22T22-12-26Z}
+    pull_policy: never
     container_name: quackback-minio
     restart: unless-stopped
     environment:
@@ -99,7 +105,12 @@ services:
 
   # Creates the upload bucket once MinIO is healthy, then exits.
   minio-init:
-    image: quay.io/minio/mc:${MC_IMAGE_TAG:-RELEASE.2025-04-16T18-13-26Z}
+    # Runs from the server image, which bundles `mc` and a POSIX shell: the
+    # separate `minio/mc` image is no longer obtainable, and the server image
+    # is the one the running container keeps in use, so image pruning never
+    # removes it.
+    image: quay.io/minio/minio:${MINIO_IMAGE_TAG:-RELEASE.2025-04-22T22-12-26Z}
+    pull_policy: never
     container_name: quackback-minio-init
     depends_on:
       minio:

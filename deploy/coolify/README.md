@@ -189,8 +189,20 @@ contains the `postgres` service and reattaches the old volume untouched),
 restore the old `POSTGRES_*` variables if you deleted them, and deploy.
 Anything written to the new database after the switch is not in the old one.
 
-## Later
+## Object storage
 
-MinIO can move out of the stack the same way, to any S3-compatible store;
-uploads are referenced by key, not by host, so nothing in the app needs it to
-stay local.
+MinIO was archived upstream in 2026: `minio/minio` and `minio/mc` are gone
+from Docker Hub, quay.io and GHCR, and dl.min.io answers 410 Gone for every
+release binary. The stack therefore runs MinIO from the image already in this
+host's Docker cache — `docker images quay.io/minio/minio` on the server should
+list `RELEASE.2025-04-22T22-12-26Z` — with `pull_policy: never` on both MinIO
+services so a deploy never asks a registry for it, and the bucket-init job runs
+from that same server image (it bundles `mc`). Do not prune that image, and do
+not change `MINIO_IMAGE_TAG`: no other tag can be pulled from anywhere.
+
+If the image is ever lost (a deploy then fails with "No such image"), move
+uploads to another S3-compatible store: Cloudflare R2 is the natural fit for a
+site already behind Cloudflare, or a maintained self-hosted server. Uploads are
+referenced by key, not by host, so the app only needs the new `S3_*` variables;
+copy the existing objects across first (`mc mirror` from a still-running MinIO
+container, or rclone against the volume) and keep the bucket name.
