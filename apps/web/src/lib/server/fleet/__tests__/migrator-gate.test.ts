@@ -357,6 +357,7 @@ describe('replayGateVerdict', () => {
       '0278_post_tags_internal',
       '0279_changelog_sources',
       '0280_widget_session_scope',
+      '0281_two_factor_lockout',
     ])
     const verdict = replayGateVerdict(before, verdictsFor(replaySetFor(before)), false)
     expect(verdict.ok).toBe(false)

@@ -13,7 +13,16 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import type { EditorFeatures } from '../rich-text-editor'
-import { buildExtensions, generateContentHTML, hasActiveSuggestion } from '../rich-text-editor'
+import {
+  buildExtensions,
+  generateContentHTML,
+  hasActiveSuggestion,
+  markdownFromEditor,
+  plaintextFromTiptapJson,
+  seedMarkdownFallback,
+  stopEnterFromReachingParentForm,
+} from '../rich-text-editor'
+import { COMMENT_EDITOR_FEATURES } from '@/components/public/comment-editor-features'
 
 // Full widget feature set (worst-case for duplicates)
 const WIDGET_FEATURES: EditorFeatures = {
@@ -276,34 +285,141 @@ describe('submitOnEnter (onSubmit)', () => {
 describe('markdown serialization optimization', () => {
   it('skips markdown serialization when onChange has arity < 3', () => {
     const getMarkdown = vi.fn(() => '# hello')
-    const getJSON = vi.fn(() => ({ type: 'doc', content: [] }))
-    const getHTML = vi.fn(() => '<p></p>')
-    const mockEditor = { getMarkdown, getJSON, getHTML }
+    const editor = { getMarkdown }
 
-    // Simulate the onUpdate logic
-    function runOnUpdate(
-      editor: typeof mockEditor,
-      onChange: ((...args: unknown[]) => void) | undefined
-    ) {
-      if (!onChange) return
-      const json = editor.getJSON()
-      const html = editor.getHTML()
-      const markdown = onChange.length >= 3 ? (editor.getMarkdown?.() ?? '') : ''
-      onChange(json, html, markdown)
-    }
-
-    // 2-arg onChange (widget/portal) — should NOT call getMarkdown
-    const twoArgCallback = vi.fn((_json: unknown, _html: unknown) => {})
-    runOnUpdate(mockEditor, twoArgCallback)
+    expect(markdownFromEditor(editor, 2)).toBe('')
     expect(getMarkdown).not.toHaveBeenCalled()
-    expect(twoArgCallback).toHaveBeenCalledWith(expect.any(Object), expect.any(String), '')
 
-    // 3-arg onChange (changelog) — SHOULD call getMarkdown
-    getMarkdown.mockClear()
-    const threeArgCallback = vi.fn((_json: unknown, _html: unknown, _md: unknown) => {})
-    runOnUpdate(mockEditor, threeArgCallback)
+    expect(markdownFromEditor(editor, 3)).toBe('# hello')
     expect(getMarkdown).toHaveBeenCalledOnce()
-    expect(threeArgCallback).toHaveBeenCalledWith(expect.any(Object), expect.any(String), '# hello')
+  })
+
+  it('returns empty markdown when the serializer throws with no prior value', () => {
+    const editor = {
+      getMarkdown: () => {
+        throw new Error('unknown node')
+      },
+    }
+    expect(markdownFromEditor(editor, 3)).toBe('')
+  })
+
+  it('keeps the last successful markdown when the serializer throws', () => {
+    const editor = {
+      getMarkdown: () => {
+        throw new Error('unknown node')
+      },
+    }
+    expect(markdownFromEditor(editor, 3, '- GIF per link')).toBe('- GIF per link')
+  })
+
+  it('projects current JSON text when the serializer throws mid-edit', () => {
+    const editor = {
+      getMarkdown: () => {
+        throw new Error('unknown node')
+      },
+    }
+    const json = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'new edit' }] }],
+    }
+    expect(markdownFromEditor(editor, 3, 'old markdown', json)).toBe('new edit')
+  })
+
+  it('seeds markdown fallback from JSON text when the serializer has not run', () => {
+    const json = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Existing comment' }] }],
+    }
+    expect(plaintextFromTiptapJson(json)).toBe('Existing comment')
+    expect(seedMarkdownFallback(json)).toBe('Existing comment')
+    expect(seedMarkdownFallback('already markdown')).toBe('already markdown')
+  })
+
+  it('keeps newlines between blocks, including paragraphs nested in a blockquote', () => {
+    expect(
+      plaintextFromTiptapJson({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'First' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Second' }] },
+        ],
+      })
+    ).toBe('First\nSecond')
+    expect(
+      plaintextFromTiptapJson({
+        type: 'doc',
+        content: [
+          {
+            type: 'blockquote',
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'First' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Second' }] },
+            ],
+          },
+        ],
+      })
+    ).toBe('First\nSecond')
+  })
+
+  it('keeps JSON plaintext when initial getMarkdown throws', () => {
+    const json = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Existing comment' }] }],
+    }
+    const editor = {
+      getMarkdown: () => {
+        throw new Error('unknown node')
+      },
+    }
+    expect(seedMarkdownFallback(json, editor)).toBe('Existing comment')
+  })
+})
+
+describe('COMMENT_EDITOR_FEATURES', () => {
+  it('registers enterAsHardBreak (plain Enter is a newline), never submitOnEnter', () => {
+    const names = buildExtensions(COMMENT_EDITOR_FEATURES, { placeholder: '' }).map(
+      (e) => (e as { name: string }).name
+    )
+    expect(names).toContain('enterAsHardBreak')
+    expect(names).not.toContain('submitOnEnter')
+  })
+})
+
+describe('stopEnterFromReachingParentForm', () => {
+  function keyEvent(
+    key: string,
+    mods: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean } = {}
+  ) {
+    return {
+      key,
+      metaKey: !!mods.metaKey,
+      ctrlKey: !!mods.ctrlKey,
+      shiftKey: !!mods.shiftKey,
+      stopPropagation: vi.fn(),
+    } as unknown as KeyboardEvent
+  }
+
+  it('stops plain Enter and Shift+Enter so a parent form cannot implicitly submit', () => {
+    for (const event of [keyEvent('Enter'), keyEvent('Enter', { shiftKey: true })]) {
+      expect(stopEnterFromReachingParentForm(event)).toBe(false)
+      expect(event.stopPropagation).toHaveBeenCalledOnce()
+    }
+  })
+
+  it('leaves Cmd/Ctrl+Enter alone for wrapper keyboard-submit handlers', () => {
+    for (const event of [
+      keyEvent('Enter', { metaKey: true }),
+      keyEvent('Enter', { ctrlKey: true }),
+    ]) {
+      expect(stopEnterFromReachingParentForm(event)).toBe(false)
+      expect(event.stopPropagation).not.toHaveBeenCalled()
+    }
+  })
+
+  it('ignores keys other than Enter', () => {
+    const event = keyEvent('Escape')
+    expect(stopEnterFromReachingParentForm(event)).toBe(false)
+    expect(event.stopPropagation).not.toHaveBeenCalled()
   })
 })
 
