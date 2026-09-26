@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ChatBubbleOvalLeftEllipsisIcon } from '@heroicons/react/24/solid'
+import { ArrowTopRightOnSquareIcon, InboxIcon } from '@heroicons/react/24/outline'
 import type { ConversationId } from '@quackback/ids'
 import { getMyConversationsFn } from '@/lib/server/functions/conversation'
 import { conversationKeys } from '@/lib/client/queries/conversation-keys'
@@ -24,6 +25,10 @@ interface WidgetMessagesProps {
   canStartConversation?: boolean
   /** Open a conversation: an id opens that thread, 'new' starts a fresh one. */
   onOpenMessenger: (target?: ConversationId | 'new') => void
+  /** Dashboard inbox URL, set only for teammates. This tab lists the
+   *  visitor's OWN threads, so a teammate looking for customers to answer
+   *  needs a way out to the inbox rather than an empty list. */
+  teamInboxHref?: string | null
 }
 
 /**
@@ -38,6 +43,7 @@ export function WidgetMessages({
   assistant,
   canStartConversation = true,
   onOpenMessenger,
+  teamInboxHref = null,
 }: WidgetMessagesProps) {
   const intl = useIntl()
   const reduceMotion = useReducedMotion()
@@ -66,6 +72,31 @@ export function WidgetMessages({
 
   return (
     <div className="relative flex h-full flex-col">
+      {teamInboxHref && (
+        <div
+          data-testid="widget-team-inbox-notice"
+          className="mx-3 mt-2 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+        >
+          <InboxIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 text-xs text-muted-foreground">
+            <p>
+              <FormattedMessage
+                id="widget.messages.team.notice"
+                defaultMessage="You're on the support team — customer conversations are answered from the inbox."
+              />
+            </p>
+            <a
+              href={teamInboxHref}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 font-medium text-primary hover:underline"
+            >
+              <FormattedMessage id="widget.messages.team.openInbox" defaultMessage="Open inbox" />
+              <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      )}
       <ScrollArea scrollBarClassName="w-1.5" className="flex-1 min-h-0 h-full">
         {conversations.length > 0 ? (
           <ul className="px-3 pt-1 pb-24">

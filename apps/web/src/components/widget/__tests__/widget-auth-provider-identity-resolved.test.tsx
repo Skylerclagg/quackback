@@ -36,10 +36,11 @@ function Probe() {
 }
 
 function HandoffProbe() {
-  const { canPortalHandoff, identityResolved } = useWidgetAuth()
+  const { canPortalHandoff, isTeammate, identityResolved } = useWidgetAuth()
   return (
     <span data-testid="handoff">
-      {identityResolved ? 'resolved' : 'pending'}:{canPortalHandoff ? 'handoff' : 'veto'}
+      {identityResolved ? 'resolved' : 'pending'}:{canPortalHandoff ? 'handoff' : 'veto'}:
+      {isTeammate ? 'teammate' : 'visitor'}
     </span>
   )
 }
@@ -49,6 +50,7 @@ function renderWidget(
     portalSessionToken?: string | null
     portalUser?: { id: string; name: string; email: string; avatarUrl: string | null } | null
     canPortalHandoff?: boolean
+    isTeammate?: boolean
     probe?: ReactNode
   } = {}
 ) {
@@ -59,6 +61,7 @@ function renderWidget(
         portalSessionToken={props.portalSessionToken ?? null}
         portalUser={props.portalUser ?? null}
         canPortalHandoff={props.canPortalHandoff}
+        isTeammate={props.isTeammate}
       >
         {props.probe ?? <Probe />}
       </WidgetAuthProvider>
@@ -162,6 +165,7 @@ describe('WidgetAuthProvider — canPortalHandoff follows the current identity',
           sessionToken: 'tok',
           user: { id: 'cust', name: 'Customer', email: 'c@example.com', avatarUrl: null },
           canPortalHandoff: true,
+          isTeammate: false,
         }),
       })
     )
@@ -169,12 +173,17 @@ describe('WidgetAuthProvider — canPortalHandoff follows the current identity',
       portalSessionToken: 'dashboard-tok',
       portalUser: { id: 'admin', name: 'Admin', email: 'a@example.com', avatarUrl: null },
       canPortalHandoff: false,
+      isTeammate: true,
       probe: <HandoffProbe />,
     })
-    await waitFor(() => expect(screen.getByTestId('handoff').textContent).toBe('resolved:veto'))
+    await waitFor(() =>
+      expect(screen.getByTestId('handoff').textContent).toBe('resolved:veto:teammate')
+    )
 
     postFromHost({ id: 'cust', ssoToken: 'sso' })
-    await waitFor(() => expect(screen.getByTestId('handoff').textContent).toBe('resolved:handoff'))
+    await waitFor(() =>
+      expect(screen.getByTestId('handoff').textContent).toBe('resolved:handoff:visitor')
+    )
   })
 
   it('vetoes the handoff when identify says the identity is a teammate', async () => {
@@ -186,11 +195,16 @@ describe('WidgetAuthProvider — canPortalHandoff follows the current identity',
           sessionToken: 'tok',
           user: { id: 'staff', name: 'Staff', email: 's@example.com', avatarUrl: null },
           canPortalHandoff: false,
+          isTeammate: true,
         }),
       })
     )
     renderWidget({ probe: <HandoffProbe /> })
+    // Nothing identifies us yet, so the flag sits at its visitor default.
+    expect(screen.getByTestId('handoff').textContent).toBe('pending:handoff:visitor')
     postFromHost({ id: 'staff', ssoToken: 'sso' })
-    await waitFor(() => expect(screen.getByTestId('handoff').textContent).toBe('resolved:veto'))
+    await waitFor(() =>
+      expect(screen.getByTestId('handoff').textContent).toBe('resolved:veto:teammate')
+    )
   })
 })

@@ -25,6 +25,8 @@ import { useChangelogUnread } from './use-changelog-unread'
 import { useTicketStageBadge } from './use-ticket-stage-badge'
 
 import { type WidgetTab, type EnabledTabs, visibleTabsForVisitor } from './widget-nav'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { InboxIcon } from '@heroicons/react/24/outline'
 export type { WidgetTab }
 
 const TAB_CONFIG: {
@@ -186,7 +188,8 @@ export function WidgetShell({
         reduceMotion || expanded ? { duration: 0 } : { duration: 0.16, ease: 'easeIn' as const },
     }),
   }
-  const { user, isIdentified, hmacRequired, canPortalHandoff, closeWidget } = useWidgetAuth()
+  const { user, isIdentified, hmacRequired, canPortalHandoff, isTeammate, closeWidget } =
+    useWidgetAuth()
 
   const onHome = activeTab === 'home' && !onBack
 
@@ -312,7 +315,16 @@ export function WidgetShell({
               <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
             </button>
           )}
-          {user && <UserAvatarPopover user={user} />}
+          {user && (
+            <UserAvatarPopover
+              user={user}
+              // Teammates get a jump to the dashboard inbox: the widget shows
+              // them the visitor side only, and replying to customers is an
+              // inbox action. Relative when no portal origin is configured —
+              // the iframe is served from the Quackback origin itself.
+              inboxHref={isTeammate ? `${portalOrigin ?? ''}/admin/inbox` : null}
+            />
+          )}
           {expandControl && (
             <button
               type="button"
@@ -467,54 +479,61 @@ export function WidgetShell({
 
 function UserAvatarPopover({
   user,
+  inboxHref,
 }: {
   user: { name: string; email: string; avatarUrl: string | null }
+  /** Dashboard inbox URL for teammates; null for everyone else. */
+  inboxHref: string | null
 }) {
   const intl = useIntl()
-  const [open, setOpen] = useState(false)
-  const popoverRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
 
   return (
-    <div className="relative" ref={popoverRef}>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex h-8 w-8 items-center justify-center rounded-full hover:ring-2 hover:ring-primary/20 transition-all"
-        aria-label={intl.formatMessage({
-          id: 'widget.shell.aria.userMenu',
-          defaultMessage: 'User menu',
-        })}
-      >
-        <Avatar src={user.avatarUrl} name={user.name} className="size-8 text-xs" />
-      </button>
-
-      {open && (
-        <div className="absolute end-0 top-full mt-1.5 z-50 w-56 rounded-lg border border-border bg-card shadow-lg">
-          <div className="px-3 py-3">
-            <div className="flex items-center gap-2.5">
-              <Avatar src={user.avatarUrl} name={user.name} className="size-9 text-sm" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
-              </div>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-8 w-8 items-center justify-center rounded-full hover:ring-2 hover:ring-primary/20 transition-all"
+          aria-label={intl.formatMessage({
+            id: 'widget.shell.aria.userMenu',
+            defaultMessage: 'User menu',
+          })}
+        >
+          <Avatar src={user.avatarUrl} name={user.name} className="size-8 text-xs" />
+        </button>
+      </PopoverTrigger>
+      {/* Portaled to the iframe body. Rendered inline, the menu lived inside
+          the header's stacking context and the content pane below — an
+          equal-z sibling later in the DOM — painted over it. */}
+      <PopoverContent align="end" sideOffset={6} className="w-56 p-0">
+        <div className="px-3 py-3">
+          <div className="flex items-center gap-2.5">
+            <Avatar src={user.avatarUrl} name={user.name} className="size-9 text-sm" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+              <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
             </div>
           </div>
-          <div className="border-t border-border px-3 py-2.5">
-            <UserStatsBar compact headers={getWidgetAuthHeaders()} />
-          </div>
         </div>
-      )}
-    </div>
+        {inboxHref && (
+          <div className="border-t border-border px-2 py-1.5">
+            <a
+              href={inboxHref}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              <InboxIcon className="h-4 w-4 text-muted-foreground" />
+              <FormattedMessage
+                id="widget.shell.userMenu.openInbox"
+                defaultMessage="Open support inbox"
+              />
+            </a>
+          </div>
+        )}
+        <div className="border-t border-border px-3 py-2.5">
+          <UserStatsBar compact headers={getWidgetAuthHeaders()} />
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
