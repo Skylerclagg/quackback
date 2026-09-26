@@ -447,6 +447,8 @@ export const Route = createFileRoute('/api/widget/identify')({
           // Teammates may use the widget as customers but must not mint a
           // portal OTT — that cookie would replace a dashboard login.
           canPortalHandoff: !isTeamMember(principalRecord.role),
+          // The widget surfaces a jump to the dashboard inbox for teammates.
+          isTeammate: isTeamMember(principalRecord.role),
         })
       },
     },

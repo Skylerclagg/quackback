@@ -54,6 +54,12 @@ interface WidgetAuthContextValue {
    * teammates so "Go to portal" / "View on board" do not replace a dashboard login.
    */
   canPortalHandoff: boolean
+  /**
+   * Whether the identified visitor is a workspace teammate (admin/member).
+   * The widget still shows them the visitor side; this only surfaces jumps
+   * to the dashboard inbox, where customer conversations are answered.
+   */
+  isTeammate: boolean
   /** Ensures a session exists (identified or anonymous). Returns true if ready. */
   ensureSession: () => Promise<boolean>
   /** Ensures a session exists before performing a write action. Creates anonymous session if needed. */
@@ -84,6 +90,8 @@ interface WidgetAuthProviderProps {
   hmacRequired?: boolean
   /** False when the same-origin portal cookie belongs to a workspace teammate. */
   canPortalHandoff?: boolean
+  /** True when the same-origin portal cookie belongs to a workspace teammate. */
+  isTeammate?: boolean
   /** Locale resolved on the server (Accept-Language header + ?locale=
    *  override). Deriving it from navigator at render time diverges from
    *  SSR and triggers React hydration error #418 — see issue #133. An SDK
@@ -101,6 +109,7 @@ export function WidgetAuthProvider({
   portalSessionToken,
   hmacRequired,
   canPortalHandoff: canPortalHandoffFromPortal,
+  isTeammate: isTeammateFromPortal,
   initialLocale,
   initialMessages,
   children,
@@ -108,6 +117,7 @@ export function WidgetAuthProvider({
   const queryClient = useQueryClient()
   const [user, setUser] = useState<WidgetUser | null>(null)
   const [canPortalHandoff, setCanPortalHandoff] = useState(canPortalHandoffFromPortal ?? true)
+  const [isTeammate, setIsTeammate] = useState(isTeammateFromPortal ?? false)
   const [sessionVersion, setSessionVersion] = useState(0)
   const [identityResolved, setIdentityResolved] = useState(false)
   const isIdentified = user !== null
@@ -259,6 +269,7 @@ export function WidgetAuthProvider({
       user: WidgetUser
       votedPostIds?: string[]
       canPortalHandoff?: boolean
+      isTeammate?: boolean
     }) => {
       storeToken(result.sessionToken)
       // Any anonymous session was merged into this identified user server-side,
@@ -267,6 +278,7 @@ export function WidgetAuthProvider({
       clearPersistedToken()
       setUser(result.user)
       setCanPortalHandoff(result.canPortalHandoff !== false)
+      setIsTeammate(result.isTeammate === true)
       if (result.votedPostIds) {
         queryClient.setQueryData(
           widgetQueryKeys.votedPosts.bySession(sessionVersionRef.current),
@@ -299,11 +311,12 @@ export function WidgetAuthProvider({
     if (portalUser) {
       setUser(portalUser)
       setCanPortalHandoff(canPortalHandoffFromPortal !== false)
+      setIsTeammate(isTeammateFromPortal === true)
       sendToHost({ type: 'quackback:identify-result', success: true, user: portalUser })
       sendToHost({ type: 'quackback:auth-change', user: portalUser })
     }
     setIdentityResolved(true)
-  }, [portalSessionToken, portalUser, canPortalHandoffFromPortal, storeToken])
+  }, [portalSessionToken, portalUser, canPortalHandoffFromPortal, isTeammateFromPortal, storeToken])
 
   // Restore a persisted anonymous session on mount so a returning visitor's
   // conversation is visible immediately, without waiting for a write. Skipped
@@ -379,6 +392,7 @@ export function WidgetAuthProvider({
       // on first write action (vote, comment, post) via ensureSessionThen.
       setUser(null)
       setCanPortalHandoff(true)
+      setIsTeammate(false)
       setIdentityResolved(true)
       sendToHost({ type: 'quackback:identify-result', success: true, user: null })
       sendToHost({ type: 'quackback:auth-change', user: null })
@@ -457,6 +471,7 @@ export function WidgetAuthProvider({
       identityResolved,
       hmacRequired: hmacRequired ?? false,
       canPortalHandoff,
+      isTeammate,
       ensureSession,
       ensureSessionThen,
       closeWidget,
@@ -469,6 +484,7 @@ export function WidgetAuthProvider({
       isIdentified,
       identityResolved,
       canPortalHandoff,
+      isTeammate,
       ensureSession,
       ensureSessionThen,
       closeWidget,
