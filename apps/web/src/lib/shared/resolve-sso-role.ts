@@ -24,13 +24,19 @@ export function getNestedClaim(claims: Claims, path: string): unknown {
   return getClaimByPath(claims, path)
 }
 
-function matchesRule(claim: unknown, whenContains: string): boolean {
-  const needle = whenContains.toLowerCase()
+/**
+ * Whether a claim value carries `needle`: an array is scanned member-wise, a
+ * scalar compared whole, both case-insensitively. The one matcher behind every
+ * rule that reads a claim, so a group id matches the same way whether it is
+ * granting a role or admitting an account.
+ */
+export function claimContains(claim: unknown, needle: string): boolean {
+  const wanted = needle.toLowerCase()
   if (Array.isArray(claim)) {
-    return claim.some((entry) => typeof entry === 'string' && entry.toLowerCase() === needle)
+    return claim.some((entry) => typeof entry === 'string' && entry.toLowerCase() === wanted)
   }
   if (typeof claim === 'string') {
-    return claim.toLowerCase() === needle
+    return claim.toLowerCase() === wanted
   }
   return false
 }
@@ -43,7 +49,7 @@ export function resolveSsoRoleMatch(
   const claim = getNestedClaim(claims, mapping.claimPath)
   for (let i = 0; i < mapping.rules.length; i++) {
     const rule = mapping.rules[i]
-    if (rule && matchesRule(claim, rule.whenContains)) {
+    if (rule && claimContains(claim, rule.whenContains)) {
       return { role: rule.role, ruleIndex: i }
     }
   }

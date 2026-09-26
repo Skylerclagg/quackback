@@ -115,6 +115,15 @@ vi.mock('@/lib/server/functions/sso', () => ({
   removeVerifiedDomainFn: vi.fn(),
 }))
 
+// The sign-up group rule's Entra mode reaches the directory through these;
+// the default provider here is Okta, so they answer only the Entra case.
+vi.mock('@/lib/server/functions/entra', () => ({
+  getEntraAvailabilityFn: vi.fn(async () => ({ available: true })),
+  searchEntraGroupsFn: vi.fn(async () => []),
+  getEntraGroupByIdFn: vi.fn(async () => null),
+  previewEntraGroupFn: vi.fn(),
+}))
+
 vi.mock('@/lib/client/queries/settings', () => ({
   settingsQueries: {
     identityProviders: () => ({
@@ -802,5 +811,65 @@ describe('<ProviderDetailPage> remove', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith({ data: { id: 'idp_x' } }))
     await waitFor(() => expect(state.navigate).toHaveBeenCalled())
+  })
+})
+
+/**
+ * The group rule: which members may have an account created. It shares the
+ * column with the role section, so "write one, keep the other" holds here too.
+ */
+describe('<ProviderDetailPage> sign-up group rule', () => {
+  it('opens with the configured groups and persists an edit beside the role section', async () => {
+    renderPage(
+      makeProvider({
+        claimMapping: {
+          role: { claimPath: 'groups', rules: [{ whenContains: 'a', role: 'admin' }] },
+          access: { claimPath: 'groups', anyOf: ['11111111-2222'] },
+        },
+      })
+    )
+    expect(screen.getByRole('combobox', { name: 'Allowed group (1)' })).toHaveTextContent(
+      '11111111-2222'
+    )
+    saveMapping()
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalled())
+    const sent = lastUpsert().claimMapping as {
+      access?: { claimPath: string; anyOf: string[] }
+      role?: { claimPath?: string }
+    }
+    expect(sent.access).toEqual({ claimPath: 'groups', anyOf: ['11111111-2222'] })
+    expect(sent.role?.claimPath).toBe('groups')
+  })
+
+  it('sends no access section once the last group is removed', async () => {
+    renderPage(makeProvider({ claimMapping: { access: { claimPath: 'groups', anyOf: ['x'] } } }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove group' }))
+    saveMapping()
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalled())
+    expect(lastUpsert().claimMapping).toBeNull()
+  })
+
+  it('explains, for a non-Entra provider, that values match the way role rules do', () => {
+    renderPage(makeProvider({ claimMapping: { access: { claimPath: 'groups', anyOf: ['x'] } } }))
+    expect(screen.getByText(/matched the way role rules are/)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Group claim path' })).toBeInTheDocument()
+  })
+})
+
+describe('<ProviderDetailPage> sign-up group rule on an Entra provider', () => {
+  it('picks groups by name and explains the directory check instead of the claim path', async () => {
+    renderPage(
+      makeProvider({
+        kind: 'entra',
+        claimMapping: {
+          access: { claimPath: 'groups', anyOf: ['11111111-2222-3333-4444-555555555555'] },
+        },
+      })
+    )
+    await waitFor(() =>
+      expect(screen.getByText(/checked against your directory/)).toBeInTheDocument()
+    )
+    expect(screen.queryByRole('combobox', { name: 'Group claim path' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Allowed group (1)' })).not.toBeInTheDocument()
   })
 })

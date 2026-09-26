@@ -32,6 +32,11 @@ export type AuthBlockCode =
   | 'oauth_signin_error'
   | 'not_team_member'
   | 'reserved_email_domain'
+  // Sign-up through an identity provider that admits only a group's members
+  // (`claimMapping.access`); thrown by the account-creation gate.
+  | 'sso_group_required'
+  | 'sso_groups_overage'
+  | 'sso_group_check_failed'
   // Better-Auth OAuth/OIDC callback codes (redirectOnError in the
   // generic-oauth plugin and the linking pipeline). These arrive as
   // `?error=<code>` on the errorCallbackURL, not from our pre-checks.
@@ -65,6 +70,12 @@ export const AUTH_BLOCK_MESSAGES: Record<AuthBlockCode, string> = {
   rate_limited: 'Too many sign-in attempts. Please wait a moment and try again.',
   reserved_email_domain:
     'That email domain is reserved and cannot be used to sign in. Use your own email address.',
+  sso_group_required:
+    "Your account isn't in a group that's allowed to sign up here. Ask an administrator to add you to the group, or to invite you directly.",
+  sso_groups_overage:
+    "Your identity provider couldn't list your groups — you're in too many for the sign-in token. Ask an administrator to limit the app's groups claim to groups assigned to the application.",
+  sso_group_check_failed:
+    "We couldn't confirm your group membership with your identity provider just now. Please try again in a minute, or ask an administrator to invite you directly.",
   verified_domain_requires_sso:
     'Your email is on a domain that requires single sign-on. Use the SSO option to continue.',
   require_two_factor: 'Two-factor authentication is required. Please verify your second factor.',

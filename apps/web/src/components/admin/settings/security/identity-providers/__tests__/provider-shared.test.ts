@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import {
   identityMappingIssue,
   mergeClaimMapping,
+  normalizeAccessRule,
   normalizeRoleMapping,
   withAllowMissingEmail,
 } from '../provider-shared'
@@ -119,5 +120,58 @@ describe('identityMappingIssue', () => {
     expect(
       identityMappingIssue({ role: { claimPath: 'groups', rules: [], syncOnEverySignIn: true } })
     ).toMatch(/no rules/i)
+  })
+})
+
+describe('normalizeAccessRule', () => {
+  it('persists nothing for an absent or value-less rule', () => {
+    expect(normalizeAccessRule(null)).toBeUndefined()
+    expect(normalizeAccessRule({ claimPath: 'groups', anyOf: [] })).toBeUndefined()
+    expect(normalizeAccessRule({ claimPath: 'groups', anyOf: ['', '  '] })).toBeUndefined()
+  })
+
+  it('drops the blank rows an admin added and never filled', () => {
+    expect(normalizeAccessRule({ claimPath: ' groups ', anyOf: [' a ', '', 'b'] })).toEqual({
+      claimPath: 'groups',
+      anyOf: ['a', 'b'],
+    })
+  })
+
+  it('falls back to the groups claim when the path was cleared', () => {
+    expect(normalizeAccessRule({ claimPath: '', anyOf: ['a'] })).toEqual({
+      claimPath: 'groups',
+      anyOf: ['a'],
+    })
+  })
+})
+
+describe('mergeClaimMapping with the access section', () => {
+  it('drops an access section written as undefined and keeps the rest', () => {
+    const next = mergeClaimMapping(
+      { access: { claimPath: 'groups', anyOf: ['a'] }, profile: { allowMissingEmail: true } },
+      { access: undefined }
+    )
+    expect(next).toEqual({ profile: { allowMissingEmail: true } })
+  })
+
+  it('writes the access section beside an untouched role section', () => {
+    const next = mergeClaimMapping(
+      { role: { claimPath: 'groups', rules: [{ whenContains: 'a', role: 'admin' }] } },
+      { access: { claimPath: 'groups', anyOf: ['a'] } }
+    )
+    expect(next?.role?.rules).toHaveLength(1)
+    expect(next?.access).toEqual({ claimPath: 'groups', anyOf: ['a'] })
+  })
+})
+
+describe('identityMappingIssue for the access section', () => {
+  it('flags a rule with no values or no path', () => {
+    expect(identityMappingIssue({ access: { claimPath: 'groups', anyOf: [''] } })).toBe(
+      'Sign-up group rule has no values'
+    )
+    expect(identityMappingIssue({ access: { claimPath: ' ', anyOf: ['a'] } })).toBe(
+      'Sign-up group rule has no claim path'
+    )
+    expect(identityMappingIssue({ access: { claimPath: 'groups', anyOf: ['a'] } })).toBeNull()
   })
 })

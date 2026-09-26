@@ -10,6 +10,7 @@
  *
  *   profile     which claim holds the account id, the email, the display name
  *   role        the former attribute_mapping, unchanged in behaviour
+ *   access      who may have an account created (members of a group)
  *   attributes  claim to user-attribute copying
  *
  * Every accessor here tolerates a null, malformed, or partially-filled column.
@@ -45,6 +46,19 @@ export interface ClaimRoleMapping {
   syncOnEverySignIn?: boolean
 }
 
+/**
+ * Who may have an account created through this provider: only people whose
+ * claim contains one of the listed values (an Entra ID group object id, an
+ * Okta group name, ...). Decides account creation only — see signup-policy.ts
+ * — never whether an existing account may sign in.
+ */
+export interface ClaimAccessRule {
+  /** Dotted path, or a URL-shaped namespaced claim used as a single key. */
+  claimPath: string
+  /** Any one of these, matched the way role rules match. */
+  anyOf: string[]
+}
+
 export interface IdentityProviderClaimMapping {
   profile?: {
     sources?: IdentitySource[]
@@ -53,6 +67,7 @@ export interface IdentityProviderClaimMapping {
     allowMissingEmail?: boolean
   }
   role?: ClaimRoleMapping
+  access?: ClaimAccessRule
   attributes?: {
     map?: Array<{ claimPath: string; attributeKey: string }>
     /** Off: a claim only fills an attribute that is empty. */
@@ -119,6 +134,22 @@ function readRole(value: unknown): ClaimRoleMapping | undefined {
   return role
 }
 
+function readAccess(value: unknown): ClaimAccessRule | undefined {
+  if (!isRecord(value)) return undefined
+  const claimPath = usablePath(value.claimPath)
+  if (!claimPath) return undefined
+  const anyOf = Array.isArray(value.anyOf)
+    ? value.anyOf.flatMap((v) => {
+        const s = usablePath(v)
+        return s ? [s] : []
+      })
+    : []
+  // An empty list could only refuse everyone, which is not what an admin who
+  // left it empty meant. Treated as not configured, like a rule-less role map.
+  if (anyOf.length === 0) return undefined
+  return { claimPath, anyOf }
+}
+
 function readAttributes(value: unknown): IdentityProviderClaimMapping['attributes'] {
   if (!isRecord(value)) return undefined
   const map = Array.isArray(value.map)
@@ -144,6 +175,8 @@ export function claimMappingFor(stored: unknown): IdentityProviderClaimMapping {
   if (profile) mapping.profile = profile
   const role = readRole(stored.role)
   if (role) mapping.role = role
+  const access = readAccess(stored.access)
+  if (access) mapping.access = access
   const attributes = readAttributes(stored.attributes)
   if (attributes) mapping.attributes = attributes
   return mapping
@@ -157,6 +190,11 @@ export function profileClaimFor(stored: unknown, field: ProfileField): string | 
 /** The role section, or undefined when the workspace has not configured one. */
 export function roleMappingFor(stored: unknown): ClaimRoleMapping | undefined {
   return claimMappingFor(stored).role
+}
+
+/** The sign-up access rule, or undefined when the provider admits by domain. */
+export function accessRuleFor(stored: unknown): ClaimAccessRule | undefined {
+  return claimMappingFor(stored).access
 }
 
 /** Whether this provider may mint placeholder addresses. Off unless set. */

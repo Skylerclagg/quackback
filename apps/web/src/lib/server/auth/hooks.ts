@@ -700,20 +700,38 @@ export async function handleAutoProvisionAfter(
   // check. An explicit claim match is the IdP attesting THIS user's role — a
   // per-user signal stronger than domain ownership — so it provisions even when
   // the email is not at one of the provider's verified domains.
-  const { roleMappingFor } = await import('@/lib/shared/oidc-claim-mapping')
+  const { roleMappingFor, accessRuleFor } = await import('@/lib/shared/oidc-claim-mapping')
   const roleMapping = roleMappingFor(provider.claimMapping)
+  const accessRule = accessRuleFor(provider.claimMapping)
   let claimRole: Role | null = null
-  if (roleMapping) {
+  let admittedByGroup = false
+  if (roleMapping || accessRule) {
     const claims = await readSsoClaims(userIdTyped, providerId)
-    const { resolveSsoRole } = await import('./resolve-sso-role')
-    claimRole = resolveSsoRole(claims, roleMapping)
+    if (roleMapping) {
+      const { resolveSsoRole } = await import('./resolve-sso-role')
+      claimRole = resolveSsoRole(claims, roleMapping)
+    }
+    if (accessRule) {
+      // The same answer the account-creation gate got (cached directory
+      // lookups included), so the two never disagree about this person.
+      const { resolveSsoAdmission } = await import('./sso-admission')
+      admittedByGroup = (await resolveSsoAdmission(provider, email, claims))?.kind === 'allowed'
+    }
   }
 
   // The default role (no claim matched) is NOT a per-user attestation, so it
   // stays scoped to the CALLBACK provider's own verified domains: without the
   // IdP asserting this user's role, mere inbox control isn't enough to claim
-  // team membership. A claim-matched role bypasses this gate.
-  if (claimRole === null && findProviderForDomainEmail(email, [provider]) === null) return
+  // team membership. A claim-matched role bypasses this gate, and so does a
+  // sign-up the provider's group rule admitted: the IdP vouched for THIS
+  // person's membership, the same per-user attestation, and the gate that
+  // let the account exist (signup-policy.ts) read the very same rule.
+  if (
+    claimRole === null &&
+    !admittedByGroup &&
+    findProviderForDomainEmail(email, [provider]) === null
+  )
+    return
 
   const targetRole: Role = claimRole ?? provider.autoProvisionRole ?? 'member'
 

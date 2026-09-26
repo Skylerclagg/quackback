@@ -585,6 +585,8 @@ export type IdentityProviderClaimMapping = {
     allowMissingEmail?: boolean
   }
   role?: ClaimRoleMapping
+  /** Only people whose claim contains one of `anyOf` may have an account created. */
+  access?: { claimPath: string; anyOf: string[] }
   /** Claim to user-attribute copying. */
   attributes?: {
     map?: Array<{ claimPath: string; attributeKey: string }>

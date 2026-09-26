@@ -19,6 +19,7 @@
 import { ForbiddenError, InternalError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import { WorkspaceKeyedCache } from '@/lib/server/workspaces/workspace-keyed'
+import { isEntraProviderShape } from '@/lib/shared/entra-provider'
 
 const log = logger.child({ component: 'entra-graph' })
 
@@ -194,16 +195,7 @@ export function isEntraProvider(provider: {
   issuer: string | null
   tokenUrl: string | null
 }): boolean {
-  if (provider.kind === 'entra') return true
-  if (provider.kind && provider.kind !== 'other') return false
-  const urls = [provider.discoveryUrl, provider.issuer, provider.tokenUrl]
-  return urls.some(
-    (u) =>
-      !!u &&
-      (u.includes('login.microsoftonline.com') ||
-        u.includes('.ciamlogin.com') ||
-        u.includes('sts.windows.net'))
-  )
+  return isEntraProviderShape(provider)
 }
 
 /**

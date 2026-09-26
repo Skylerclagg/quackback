@@ -94,6 +94,8 @@ type CallOpts = {
   email?: string
   ssoOidc?: Partial<SsoOidc>
   registeredIds?: Set<string>
+  /** The whole claim_mapping column, when a test needs more than the role section. */
+  claimMapping?: Record<string, unknown> | null
 }
 
 const callHandlerWith = async (opts: CallOpts = {}) => {
@@ -136,7 +138,8 @@ const callHandlerWith = async (opts: CallOpts = {}) => {
         enabled: true,
         autoCreateUsers: ssoOidc.autoCreateUsers,
         autoProvisionRole: ssoOidc.autoProvisionRole ?? null,
-        claimMapping: ssoOidc.roleMapping ? { role: ssoOidc.roleMapping } : null,
+        claimMapping:
+          opts.claimMapping ?? (ssoOidc.roleMapping ? { role: ssoOidc.roleMapping } : null),
         domains: [
           {
             id: 'domain_1',
@@ -445,5 +448,44 @@ describe('handleAutoProvisionAfter -- returning user whose principal was soft-re
     })
     expect(mockInsertValues).not.toHaveBeenCalled()
     expect(mockSet).not.toHaveBeenCalled()
+  })
+})
+
+describe('handleAutoProvisionAfter -- a sign-up the group rule admitted', () => {
+  const GROUP = '11111111-2222-3333-4444-555555555555'
+  const access = { claimPath: 'groups', anyOf: [GROUP] }
+
+  it('assigns the default role outside the verified domain when the group admitted them', async () => {
+    // The gate that let this account exist (signup-policy.ts) read the same
+    // rule; the promoter must agree, or the group member lands as a plain
+    // portal user on a closed portal.
+    mockFindFirst.mockResolvedValue({ role: 'user' })
+    mockIdTokenClaims({ groups: [GROUP] })
+    await callHandlerWith({
+      email: 'guest@partner.org',
+      claimMapping: { access },
+      ssoOidc: { autoProvisionRole: 'member' },
+    })
+    expect(mockSet).toHaveBeenCalledWith({ role: 'member' })
+  })
+
+  it('still withholds the default role outside the verified domain when the group did not match', async () => {
+    mockFindFirst.mockResolvedValue({ role: 'user' })
+    mockIdTokenClaims({ groups: ['other'] })
+    await callHandlerWith({ email: 'guest@partner.org', claimMapping: { access } })
+    expect(mockSet).not.toHaveBeenCalled()
+  })
+
+  it('lets a role rule on the same claim still choose the role', async () => {
+    mockFindFirst.mockResolvedValue({ role: 'user' })
+    mockIdTokenClaims({ groups: [GROUP] })
+    await callHandlerWith({
+      email: 'guest@partner.org',
+      claimMapping: {
+        access,
+        role: { claimPath: 'groups', rules: [{ whenContains: GROUP, role: 'admin' }] },
+      },
+    })
+    expect(mockSet).toHaveBeenCalledWith({ role: 'admin' })
   })
 })

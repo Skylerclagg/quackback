@@ -4,6 +4,7 @@ import {
   claimMappingFor,
   profileClaimFor,
   roleMappingFor,
+  accessRuleFor,
   allowsMissingEmail,
   getClaimByPath,
   type IdentityProviderClaimMapping,
@@ -141,5 +142,40 @@ describe('attributes section', () => {
     expect(m.attributes?.map).toEqual([{ claimPath: 'department', attributeKey: 'dept' }])
     expect(m.attributes?.overrideExisting).toBe(true)
     expect(m.attributes?.syncOnSignIn).toBe(true)
+  })
+})
+
+describe('accessRuleFor', () => {
+  it('reads a configured group rule', () => {
+    expect(accessRuleFor({ access: { claimPath: 'groups', anyOf: ['11111111-aaaa'] } })).toEqual({
+      claimPath: 'groups',
+      anyOf: ['11111111-aaaa'],
+    })
+  })
+
+  it('treats an empty or blank list as not configured, never as "refuse everyone"', () => {
+    expect(accessRuleFor({ access: { claimPath: 'groups', anyOf: [] } })).toBeUndefined()
+    expect(accessRuleFor({ access: { claimPath: 'groups', anyOf: ['', '  '] } })).toBeUndefined()
+  })
+
+  it('drops blank values and trims the rest', () => {
+    expect(accessRuleFor({ access: { claimPath: ' groups ', anyOf: [' a ', '', 'b'] } })).toEqual({
+      claimPath: 'groups',
+      anyOf: ['a', 'b'],
+    })
+  })
+
+  it('needs a claim path, like the role section', () => {
+    expect(accessRuleFor({ access: { claimPath: '', anyOf: ['a'] } })).toBeUndefined()
+    expect(accessRuleFor({ access: { anyOf: ['a'] } })).toBeUndefined()
+  })
+
+  it('ignores a malformed section without disturbing the others', () => {
+    const m = claimMappingFor({
+      access: 'nope',
+      role: { claimPath: 'groups', rules: [{ whenContains: 'a', role: 'admin' }] },
+    })
+    expect(m.access).toBeUndefined()
+    expect(m.role?.rules).toHaveLength(1)
   })
 })
