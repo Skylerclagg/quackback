@@ -30,6 +30,9 @@ export const ROLES: Role[] = ['admin', 'member', 'user']
 /** The role section of `claim_mapping` — the claim→role rules. */
 export type RoleMapping = NonNullable<IdentityProviderClaimMapping['role']>
 
+/** The access section of `claim_mapping` — which group may sign up. */
+export type AccessRule = NonNullable<IdentityProviderClaimMapping['access']>
+
 /** All OIDC providers register under the genericOAuth callback path. The
  *  admin copies this into their IdP's allowed-redirect list. */
 export function redirectUriFor(baseUrl: string | undefined, registrationId: string): string {
@@ -52,8 +55,7 @@ export function newRegistrationId(): string {
  *  enforcement on. Mirrors the server-side
  *  `isSsoEnforcementUnlocked(provider, null)` predicate. */
 export type ConnectionTestState =
-  | { kind: 'unsaved' | 'untested' | 'stale' }
-  | { kind: 'verified'; testedAt: string }
+  { kind: 'unsaved' | 'untested' | 'stale' } | { kind: 'verified'; testedAt: string }
 
 export function getConnectionTestState(provider: IdentityProvider | null): ConnectionTestState {
   if (!provider) return { kind: 'unsaved' }
@@ -89,6 +91,7 @@ export function mergeClaimMapping(
 ): IdentityProviderClaimMapping | null {
   const next: IdentityProviderClaimMapping = { ...(current ?? {}), ...patch }
   if (!next.role) delete next.role
+  if (!next.access) delete next.access
   if (!next.profile || Object.keys(next.profile).length === 0) delete next.profile
   if (!next.attributes || Object.keys(next.attributes).length === 0) delete next.attributes
   return Object.keys(next).length > 0 ? next : null
@@ -122,6 +125,18 @@ export function normalizeRoleMapping(mapping: RoleMapping | null): RoleMapping |
 }
 
 /**
+ * An access rule with no values admits nobody by group — and the reader treats
+ * it as not configured — so it is persisted as absent. Blank rows the admin
+ * added and never filled are dropped rather than saved as a value of "".
+ */
+export function normalizeAccessRule(rule: AccessRule | null): AccessRule | undefined {
+  if (!rule) return undefined
+  const anyOf = rule.anyOf.map((v) => v.trim()).filter((v) => v !== '')
+  if (anyOf.length === 0) return undefined
+  return { claimPath: rule.claimPath.trim() || 'groups', anyOf }
+}
+
+/**
  * A short reason the claim mapping will not do what it looks like it does, or
  * null when it is fine. Surfaced as a header pill because identity resolution
  * runs on every sign-in: a rule that can never match is indistinguishable from
@@ -130,6 +145,11 @@ export function normalizeRoleMapping(mapping: RoleMapping | null): RoleMapping |
 export function identityMappingIssue(
   claimMapping: IdentityProviderClaimMapping | null | undefined
 ): string | null {
+  const access = claimMapping?.access
+  if (access) {
+    if (access.claimPath.trim() === '') return 'Sign-up group rule has no claim path'
+    if (access.anyOf.every((v) => v.trim() === '')) return 'Sign-up group rule has no values'
+  }
   const role = claimMapping?.role
   if (!role) return null
   if (role.rules.some((r) => r.whenContains.trim() === '')) return 'A role rule has no value'

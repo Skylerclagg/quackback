@@ -33,10 +33,10 @@ import {
 import type { FieldOperator } from '@/lib/shared/segment-builtin-fields'
 import { SearchableInput } from '@/components/ui/searchable-input'
 import { fetchSegmentAttributeValuesFn } from '@/lib/server/functions/admin'
-import { getEntraAvailabilityFn, previewEntraGroupFn } from '@/lib/server/functions/entra'
+import { previewEntraGroupFn } from '@/lib/server/functions/entra'
+import { useEntraAvailability } from '@/lib/client/hooks/use-entra-availability'
 import { EntraGroupPicker } from '@/components/admin/segments/entra-group-picker'
 import { SegmentImportSection } from '@/components/admin/segments/segment-import-section'
-import { useQuery } from '@tanstack/react-query'
 
 // Attributes with DB-backed value typeahead. Matches SEARCHABLE_ATTRIBUTES
 // in segment-attribute-values.ts; kept duplicated here to avoid pulling
@@ -133,21 +133,6 @@ function getOperatorsForAttribute(
     { value: 'is_set', label: 'is set' },
     { value: 'is_not_set', label: 'is not set' },
   ]
-}
-
-/**
- * Whether the workspace has an enabled Entra identity provider — gates the
- * `entra_group` rule attribute in the picker. Called per condition row; React
- * Query dedupes to one request. Saved entra_group rows still render when
- * unavailable (via BUILTIN_FIELD_MAP), they just can't be newly picked.
- */
-function useEntraAvailability(): boolean {
-  const { data } = useQuery({
-    queryKey: ['admin', 'entra-availability'],
-    queryFn: () => getEntraAvailabilityFn(),
-    staleTime: 5 * 60 * 1000,
-  })
-  return data?.available ?? false
 }
 
 interface EntraPreview {

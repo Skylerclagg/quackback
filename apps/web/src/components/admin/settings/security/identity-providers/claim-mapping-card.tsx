@@ -6,9 +6,9 @@
  * accounts, so packaging it under "create accounts for new people" would hide
  * a live control from exactly the workspaces most likely to need it.
  *
- * It writes two sections of the shared `claim_mapping` column (`profile` and
- * `role`) through `mergeClaimMapping`, which carries `attributes` — and the
- * parts of `profile` that have no UI — through verbatim.
+ * It writes three sections of the shared `claim_mapping` column (`profile`,
+ * `role` and `access`) through `mergeClaimMapping`, which carries `attributes`
+ * — and the parts of `profile` that have no UI — through verbatim.
  */
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -16,17 +16,22 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { SettingsCard } from '@/components/admin/settings/settings-card'
 import type { IdentityProvider } from '@/lib/server/domains/settings/identity-providers.service'
 import { ClaimMappingEditor } from './claim-mapping-editor'
+import { SignupAccessEditor } from './signup-access-editor'
 import {
   mergeClaimMapping,
+  normalizeAccessRule,
   normalizeRoleMapping,
   withAllowMissingEmail,
+  type AccessRule,
   type RoleMapping,
 } from './provider-shared'
 import { useProviderSave } from './use-provider-save'
+import { isEntraProviderShape } from '@/lib/shared/entra-provider'
 
 export function ClaimMappingCard({ provider }: { provider: IdentityProvider }) {
   const { saving, save } = useProviderSave(provider)
   const [mapping, setMapping] = useState<RoleMapping | null>(provider.claimMapping?.role ?? null)
+  const [access, setAccess] = useState<AccessRule | null>(provider.claimMapping?.access ?? null)
   const [allowMissingEmail, setAllowMissingEmail] = useState(
     provider.claimMapping?.profile?.allowMissingEmail === true
   )
@@ -36,6 +41,7 @@ export function ClaimMappingCard({ provider }: { provider: IdentityProvider }) {
       {
         claimMapping: mergeClaimMapping(provider.claimMapping, {
           role: normalizeRoleMapping(mapping),
+          access: normalizeAccessRule(access),
           profile: withAllowMissingEmail(provider.claimMapping?.profile, allowMissingEmail),
         }),
       },
@@ -77,6 +83,15 @@ export function ClaimMappingCard({ provider }: { provider: IdentityProvider }) {
           registrationId={provider.registrationId}
           canTest
           onChange={setMapping}
+        />
+
+        <SignupAccessEditor
+          rule={access}
+          disabled={saving}
+          registrationId={provider.registrationId}
+          canTest
+          entra={isEntraProviderShape(provider)}
+          onChange={setAccess}
         />
 
         <div className="flex justify-end border-t border-border/40 pt-5">

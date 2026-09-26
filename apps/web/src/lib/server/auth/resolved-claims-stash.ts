@@ -48,14 +48,25 @@ function key(providerId: string, accountId: string): string {
   return `${providerId}\u0000${accountId}`
 }
 
+// The account-creation gate runs before any account row exists and knows the
+// address but not the subject, so the same entry is reachable by email too.
+// The `email:` prefix keeps an address from colliding with a subject.
+function emailKey(providerId: string, email: string): string {
+  return `${providerId}\u0000email:${email.trim().toLowerCase()}`
+}
+
 /** Record the claims that just resolved for this identity. */
 export function stashResolvedClaims(
   providerId: string,
   accountId: string,
-  claims: Record<string, unknown>
+  claims: Record<string, unknown>,
+  email?: string
 ): void {
   const k = key(providerId, accountId)
-  entries.set(k, { claims, ts: Date.now() })
+  const ek = email ? emailKey(providerId, email) : null
+  const entry: Entry = { claims, ts: Date.now() }
+  entries.set(k, entry)
+  if (ek) entries.set(ek, entry)
   // Self-cleaning, so a sign-in that never reaches provisioning (blocked by
   // policy, say) cannot leave claims resident.
   //
@@ -65,8 +76,10 @@ export function stashResolvedClaims(
   // delete an unrelated one. Same reasoning as the magic-link stash's sweep.
   const scope = getWorkspaceScope()
   const sweep = () => {
-    const held = entries.get(k)
-    if (held && Date.now() - held.ts >= TTL_MS) entries.delete(k)
+    for (const sk of ek ? [k, ek] : [k]) {
+      const held = entries.get(sk)
+      if (held && Date.now() - held.ts >= TTL_MS) entries.delete(sk)
+    }
   }
   setTimeout(() => (scope ? runWithWorkspaceScope(scope, sweep) : sweep()), TTL_MS).unref?.()
 }
@@ -81,5 +94,19 @@ export function takeResolvedClaims(
   if (!held) return null
   entries.delete(k)
   if (Date.now() - held.ts >= TTL_MS) return null
+  return held.claims
+}
+
+/**
+ * Read — without consuming — the claims resolved for this address in this
+ * request. For the account-creation gate, which runs before the account row
+ * exists and must leave the entry for role provisioning to take afterwards.
+ */
+export function peekResolvedClaimsByEmail(
+  providerId: string,
+  email: string
+): Record<string, unknown> | null {
+  const held = entries.get(emailKey(providerId, email))
+  if (!held || Date.now() - held.ts >= TTL_MS) return null
   return held.claims
 }

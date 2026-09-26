@@ -273,8 +273,8 @@ async function createAuth() {
     fetchUserInfo: (url, accessToken) => fetchJson(url, { authorization: `Bearer ${accessToken}` }),
     // Observe-then-enforce: log the discrepancy so its real rate is known
     // before any release starts refusing sign-ins over it.
-    onResolved: (registrationId, accountId, claims) => {
-      stashResolvedClaims(registrationId, accountId, claims)
+    onResolved: (registrationId, accountId, claims, email) => {
+      stashResolvedClaims(registrationId, accountId, claims, email)
     },
     onResolutionWarning: (registrationId, warnings) => {
       log.warn({ registrationId, warnings }, 'identity resolution discrepancy observed')

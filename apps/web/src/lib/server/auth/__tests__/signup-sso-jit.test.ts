@@ -44,6 +44,7 @@ const hoisted = vi.hoisted(() => ({
   findHumanAdmin: vi.fn(),
   isOpenToBootstrapClaim: vi.fn(),
   listIdentityProviders: vi.fn(),
+  groupMembers: vi.fn(),
 }))
 
 vi.mock('@/lib/server/db', async (importOriginal) => ({
@@ -69,10 +70,19 @@ vi.mock('@/lib/server/domains/settings/identity-providers.service', () => ({
   listIdentityProviders: (...a: unknown[]) => hoisted.listIdentityProviders(...a),
 }))
 
+// The directory half of the group rule. Real predicate, stubbed Graph: an Okta
+// row never reaches it, an Entra row reaches whatever `groupMembers` says.
+vi.mock('@/lib/server/integrations/entra/graph', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/server/integrations/entra/graph')>()),
+  resolveEntraDirectoryAccess: async () => ({ clientId: 'c' }),
+  getEntraGroupMemberEmails: (...a: unknown[]) => hoisted.groupMembers(...a),
+}))
+
 // `findProviderForDomainEmail` stays REAL: it is the domain match the whole
 // exemption turns on, and a stub for it could not tell a verified domain from
 // an unverified one.
 const { guardBetterAuthUserCreation } = await import('../signup-policy')
+const { stashResolvedClaims } = await import('../resolved-claims-stash')
 
 const OIDC_CALLBACK = '/oauth2/callback/:providerId'
 // A real TLD, because `normalizeDomain` rejects the RFC 6761 reserved
@@ -250,5 +260,117 @@ describe('an IdP configured to create users, on its own callback', () => {
     await creationAllowed(EMPLOYEE, { path: '/sign-in/email-otp' })
 
     expect(hoisted.listIdentityProviders).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A group rule on the provider (`claimMapping.access`). The IdP's statement
+ * that THIS person is in the group replaces the domain as the attestation, so
+ * the four-sided scope above gains a fifth side: the rule, when set, decides —
+ * except that an invitation an admin wrote still admits its recipient.
+ */
+describe('a provider that admits only a group', () => {
+  const GROUP = '11111111-2222-3333-4444-555555555555'
+  const callback = { path: OIDC_CALLBACK, params: { providerId: 'acme-idp' } }
+  const withGroupRule = () =>
+    hoisted.listIdentityProviders.mockResolvedValue([
+      makeProvider({ claimMapping: { access: { claimPath: 'groups', anyOf: [GROUP] } } }),
+    ])
+  // What the resolver stashes during the callback, moments before the gate
+  // runs; keyed by the address the account is about to be created under.
+  const resolved = (email: string, claims: Record<string, unknown>) =>
+    stashResolvedClaims('acme-idp', 'subject-1', claims, email)
+
+  /** null when the account may be created; otherwise the refusal's code. */
+  async function refusal(email: string): Promise<string | null> {
+    try {
+      const r = await guardBetterAuthUserCreation({ email }, callback)
+      return r === undefined ? null : 'aborted'
+    } catch (err) {
+      return (err as { body?: { code?: string } }).body?.code ?? 'thrown'
+    }
+  }
+
+  it('lets a member of the group through, even outside the verified domain', async () => {
+    withGroupRule()
+    resolved('guest@partner.org', { groups: ['other', GROUP] })
+    expect(await refusal('guest@partner.org')).toBeNull()
+  })
+
+  it('refuses an employee at the verified domain who is not in the group, and says why', async () => {
+    withGroupRule()
+    resolved(EMPLOYEE, { groups: ['other'] })
+    expect(await refusal(EMPLOYEE)).toBe('sso_group_required')
+  })
+
+  it('fails closed when the resolver stashed nothing for this address', async () => {
+    withGroupRule()
+    expect(await refusal(EMPLOYEE)).toBe('sso_group_required')
+  })
+
+  it("names Entra's overage so the admin knows to limit the claim", async () => {
+    withGroupRule()
+    resolved(EMPLOYEE, { _claim_names: { groups: 'src1' }, _claim_sources: { src1: {} } })
+    expect(await refusal(EMPLOYEE)).toBe('sso_groups_overage')
+  })
+
+  it('still honours an invitation an admin wrote for someone outside the group', async () => {
+    withGroupRule()
+    resolved(EMPLOYEE, { groups: ['other'] })
+    hoisted.invitationFindFirst.mockResolvedValue({ id: 'inv_1' })
+    expect(await refusal(EMPLOYEE)).toBeNull()
+  })
+
+  it('leaves a provider without a rule on the domain attestation it always had', async () => {
+    resolved(EMPLOYEE, { groups: ['other'] })
+    expect(await refusal(EMPLOYEE)).toBeNull()
+  })
+})
+
+/**
+ * The same rule on an Entra provider, where the directory can answer when the
+ * token cannot — the workspace already pulls these groups for its segments.
+ */
+describe('an Entra provider that admits only a group', () => {
+  const GROUP = '11111111-2222-3333-4444-555555555555'
+  const callback = { path: OIDC_CALLBACK, params: { providerId: 'acme-idp' } }
+  const withEntraGroupRule = () =>
+    hoisted.listIdentityProviders.mockResolvedValue([
+      makeProvider({
+        kind: 'entra',
+        discoveryUrl: 'https://login.microsoftonline.com/t/v2.0/.well-known/openid-configuration',
+        claimMapping: { access: { claimPath: 'groups', anyOf: [GROUP] } },
+      }),
+    ])
+
+  async function refusal(email: string): Promise<string | null> {
+    try {
+      const r = await guardBetterAuthUserCreation({ email }, callback)
+      return r === undefined ? null : 'aborted'
+    } catch (err) {
+      return (err as { body?: { code?: string } }).body?.code ?? 'thrown'
+    }
+  }
+
+  it('admits a directory member whose token carried no groups claim at all', async () => {
+    withEntraGroupRule()
+    hoisted.groupMembers.mockResolvedValue(['guest@partner.org'])
+    stashResolvedClaims('acme-idp', 'subject-2', { sub: 'subject-2' }, 'guest@partner.org')
+    expect(await refusal('guest@partner.org')).toBeNull()
+    expect(hoisted.groupMembers).toHaveBeenCalledWith(GROUP)
+  })
+
+  it('refuses when neither the token nor the directory places them in the group', async () => {
+    withEntraGroupRule()
+    hoisted.groupMembers.mockResolvedValue(['someone@else.org'])
+    stashResolvedClaims('acme-idp', 'subject-2', { groups: ['other'] }, EMPLOYEE)
+    expect(await refusal(EMPLOYEE)).toBe('sso_group_required')
+  })
+
+  it('says the check failed, not that they are out, when Graph is unreachable', async () => {
+    withEntraGroupRule()
+    hoisted.groupMembers.mockRejectedValue(new Error('graph down'))
+    stashResolvedClaims('acme-idp', 'subject-2', { groups: ['other'] }, EMPLOYEE)
+    expect(await refusal(EMPLOYEE)).toBe('sso_group_check_failed')
   })
 })

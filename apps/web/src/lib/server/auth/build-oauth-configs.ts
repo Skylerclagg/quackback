@@ -124,8 +124,15 @@ export interface BuildGenericOAuthConfigsArgs {
    *  this module needs no audit or DB imports. */
   onResolutionWarning?: (registrationId: string, warnings: readonly string[]) => void
   /** Called with the claims behind a successful resolution, so downstream
-   *  consumers need not re-derive them from stored tokens. */
-  onResolved?: (registrationId: string, accountId: string, claims: Record<string, unknown>) => void
+   *  consumers need not re-derive them from stored tokens. `email` is the
+   *  address the account will be created under (a minted placeholder
+   *  included), for the consumer that runs before any account row exists. */
+  onResolved?: (
+    registrationId: string,
+    accountId: string,
+    claims: Record<string, unknown>,
+    email: string | undefined
+  ) => void
   /**
    * Returns the placeholder address to use for a provider that released none.
    *
@@ -233,10 +240,6 @@ export async function buildGenericOAuthConfigs({
       if (warnings?.length && onResolutionWarning) {
         onResolutionWarning(provider.registrationId, warnings)
       }
-      // Hand the freshly-validated claims to role provisioning, which would
-      // otherwise re-read the stored ID token — and find nothing for a provider
-      // that resolves identity from userinfo or an access token.
-      onResolved?.(provider.registrationId, id, claims)
 
       // Gap-fill runs LAST, after every real source has been tried, so it can
       // never shadow something the provider actually sent.
@@ -250,6 +253,13 @@ export async function buildGenericOAuthConfigs({
       if (!resolvedEmail && allowsMissingEmail(provider.claimMapping) && placeholderEmailFor) {
         resolvedEmail = await placeholderEmailFor(provider.registrationId, id)
       }
+
+      // Hand the freshly-validated claims to role provisioning and to the
+      // account-creation gate, which would otherwise re-read the stored ID
+      // token — and find nothing for a provider that resolves identity from
+      // userinfo or an access token. After gap-fill, so the address is the one
+      // the account gets.
+      onResolved?.(provider.registrationId, id, claims, resolvedEmail)
 
       // Raw claims first, mapped fields last: the mapped values are the
       // resolved answer and must not be shadowed by a same-named raw claim.

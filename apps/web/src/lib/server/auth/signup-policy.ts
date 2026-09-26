@@ -317,8 +317,18 @@ export async function guardBetterAuthUserCreation(
   const email = typeof user.email === 'string' ? user.email : ''
   const { isSyntheticAnonEmail } = await import('@/lib/shared/anonymous-email')
   if (isSyntheticAnonEmail(email)) return undefined
-  if (await isSsoAutoProvisionGrant(email, ctx)) return undefined
+  const sso = await isSsoAutoProvisionGrant(email, ctx)
+  if (sso.granted) return undefined
   if (await isAccountCreationAllowed(email, 'portal')) return undefined
+  if (sso.refusal) {
+    // Refused by the provider's group rule, and no other door admits them.
+    // Thrown rather than aborted with `false`: the OAuth callback turns a
+    // thrown APIError's message into `?error=<message>` on the sign-in page,
+    // so the message IS the code (see auth-block-messages.ts), where a bare
+    // abort lands as the generic `unable_to_create_user`.
+    const { APIError } = await import('better-auth/api')
+    throw new APIError('FORBIDDEN', { code: sso.refusal, message: sso.refusal })
+  }
   log.warn(
     { email_domain: email.split('@')[1] ?? null },
     'account creation blocked: workspace is not accepting new accounts'
@@ -386,38 +396,88 @@ const OIDC_CALLBACK_PATH = '/oauth2/callback/:providerId'
  * Provider-scoped for the same reason the promoter is: a sign-in via provider X
  * is only X's attestation, so X's domains are the only ones it can speak for.
  *
+ * ## The group rule, when the administrator set one
+ *
+ * `claimMapping.access` names a claim and the values that admit an account —
+ * for Entra ID, the `groups` claim and the object ids of the groups allowed to
+ * sign up. When it is set it is the attestation instead of the domain: the IdP
+ * says THIS person is in the group, a per-user statement where a verified
+ * domain is a statement about the inbox. The claims come from the resolver's
+ * stash, indexed by the address about to be created (there is no account row
+ * to read a token from yet), and a miss fails closed. A refusal by the rule is
+ * reported as its own code so the sign-in page can say why — but only after
+ * the portal's own doors have had their say, because an invitation an admin
+ * wrote still outranks a group someone is not in.
+ *
  * ## What this deliberately does not cover
  *
- * `handleAutoProvisionAfter`'s other trust path assigns a role from an IdP's
- * claims and does not require a domain match. That one cannot be mirrored here:
- * the claims are read from the account row, which does not exist yet when this
- * runs. So an IdP that maps roles from claims for people outside its verified
- * domains is still governed by the portal's answer, and on a closed portal
- * those users need an invitation.
+ * `handleAutoProvisionAfter`'s claim-to-ROLE rules do not require a domain
+ * match either, but they are not mirrored here: a role rule says what someone
+ * should be, not whether they may exist. An IdP that maps roles from claims
+ * for people outside its verified domains, with no group rule, is still
+ * governed by the portal's answer, and on a closed portal those users need an
+ * invitation — or a group rule.
  */
+type SsoRefusal = 'sso_group_required' | 'sso_groups_overage' | 'sso_group_check_failed'
+type SsoGrant = { granted: true } | { granted: false; refusal?: SsoRefusal }
+
 async function isSsoAutoProvisionGrant(
   email: string,
   ctx?: { path?: string; params?: Record<string, unknown> } | null
-): Promise<boolean> {
+): Promise<SsoGrant> {
   // Path first, so the portal's own doors never pay for the registry read.
-  if (ctx?.path !== OIDC_CALLBACK_PATH) return false
+  if (ctx?.path !== OIDC_CALLBACK_PATH) return { granted: false }
   const providerId = ctx.params?.providerId
-  if (typeof providerId !== 'string' || providerId === '') return false
+  if (typeof providerId !== 'string' || providerId === '') return { granted: false }
 
   const { listIdentityProviders } =
     await import('@/lib/server/domains/settings/identity-providers.service')
   const provider = (await listIdentityProviders()).find((p) => p.registrationId === providerId)
-  if (!provider?.autoCreateUsers) return false
+  if (!provider?.autoCreateUsers) return { granted: false }
+
+  const emailDomain = email.split('@')[1] ?? null
+  const { peekResolvedClaimsByEmail } = await import('./resolved-claims-stash')
+  const { resolveSsoAdmission } = await import('./sso-admission')
+  const admission = await resolveSsoAdmission(
+    provider,
+    email,
+    peekResolvedClaimsByEmail(providerId, email)
+  )
+  if (admission) {
+    if (admission.kind === 'allowed') {
+      log.info(
+        {
+          provider_id: providerId,
+          email_domain: emailDomain,
+          via: admission.via,
+          matched: admission.matched,
+        },
+        'account creation allowed: identity provider admits this group'
+      )
+      return { granted: true }
+    }
+    log.warn(
+      { provider_id: providerId, email_domain: emailDomain, verdict: admission.kind },
+      'account creation refused by the identity provider group rule'
+    )
+    const refusal: SsoRefusal =
+      admission.kind === 'overage'
+        ? 'sso_groups_overage'
+        : admission.kind === 'unavailable'
+          ? 'sso_group_check_failed'
+          : 'sso_group_required'
+    return { granted: false, refusal }
+  }
 
   // The real domain match, not a substring test: it normalises the address's
   // domain and requires `verifiedAt`, so a row somebody typed but never proved
   // grants nothing.
   const { findProviderForDomainEmail } = await import('./provider-ids')
-  if (findProviderForDomainEmail(email, [provider]) === null) return false
+  if (findProviderForDomainEmail(email, [provider]) === null) return { granted: false }
 
   log.info(
-    { provider_id: providerId, email_domain: email.split('@')[1] ?? null },
+    { provider_id: providerId, email_domain: emailDomain },
     'account creation allowed: identity provider auto-creates users at this domain'
   )
-  return true
+  return { granted: true }
 }

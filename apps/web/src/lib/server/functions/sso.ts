@@ -178,6 +178,9 @@ const claimMappingSchema = z.object({
     })
     .optional(),
   role: claimRoleSchema.optional(),
+  access: z
+    .object({ claimPath: z.string().max(256), anyOf: z.array(z.string().max(256)).max(50) })
+    .optional(),
   attributes: z
     .object({
       map: z.array(z.object({ claimPath: z.string(), attributeKey: z.string() })).optional(),
