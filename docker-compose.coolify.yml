@@ -78,11 +78,14 @@ services:
       start_period: 40s
 
   minio:
-    # Pulled from quay.io: MinIO no longer publishes the server or `mc`
-    # images to Docker Hub — the `minio/minio` and `minio/mc` repositories
-    # there now return "repository does not exist", which fails every
-    # pull. quay.io carries the same release tags.
-    image: quay.io/minio/minio:${MINIO_IMAGE_TAG:-RELEASE.2025-04-22T22-12-26Z}
+    # PGSTY Silo, the maintained community fork of MinIO. MinIO itself was
+    # archived upstream in 2026: `minio/minio` and `minio/mc` are gone from
+    # Docker Hub, quay.io and GHCR, and dl.min.io answers 410 Gone for every
+    # release binary. Silo keeps the S3 API, the `MINIO_*` variables and the
+    # on-disk format, so the existing data volume carries over; its client
+    # ships as `mcli`. Treat each tag as a downstream upgrade — see
+    # deploy/coolify/README.md, "Object storage".
+    image: docker.io/pgsty/silo:${MINIO_IMAGE_TAG:-RELEASE.2026-09-16T00-00-00Z}
     container_name: quackback-minio
     restart: unless-stopped
     environment:
@@ -92,14 +95,15 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test: ['CMD', 'mcli', 'ready', 'local']
       interval: 5s
       timeout: 5s
       retries: 5
 
   # Creates the upload bucket once MinIO is healthy, then exits.
   minio-init:
-    image: quay.io/minio/mc:${MC_IMAGE_TAG:-RELEASE.2025-04-16T18-13-26Z}
+    # Runs from the server image, which bundles the `mcli` client.
+    image: docker.io/pgsty/silo:${MINIO_IMAGE_TAG:-RELEASE.2026-09-16T00-00-00Z}
     container_name: quackback-minio-init
     depends_on:
       minio:
@@ -110,8 +114,8 @@ services:
       S3_BUCKET: ${S3_BUCKET:-quackback}
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" &&
-      mc mb --ignore-existing local/\"$$S3_BUCKET\"
+      mcli alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" &&
+      mcli mb --ignore-existing local/\"$$S3_BUCKET\"
       "
     restart: 'no'
 

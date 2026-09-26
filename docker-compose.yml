@@ -35,11 +35,11 @@ services:
       retries: 5
 
   minio:
-    # Pulled from quay.io: MinIO no longer publishes the server or `mc`
-    # images to Docker Hub — the `minio/minio` and `minio/mc` repositories
-    # there now return "repository does not exist", which fails every
-    # pull. quay.io carries the same release tags.
-    image: quay.io/minio/minio:latest
+    # PGSTY Silo, the maintained community fork of MinIO (MinIO itself is
+    # archived and no registry serves its images any more). Same S3 API,
+    # `MINIO_*` variables and on-disk format; the client is `mcli`. Pinned to
+    # the release the prod stacks run.
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: quackback-minio
     restart: unless-stopped
     environment:
@@ -52,7 +52,7 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test: ['CMD', 'mcli', 'ready', 'local']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -70,18 +70,19 @@ services:
       timeout: 5s
       retries: 5
 
-  # Creates MinIO bucket and sets public download policy on startup
+  # Creates the bucket and sets a public download policy on startup. Runs
+  # from the server image, which bundles the `mcli` client.
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: quackback-minio-init
     depends_on:
       minio:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 minioadmin minioadmin;
-      mc mb local/quackback --ignore-existing;
-      mc anonymous set download local/quackback;
+      mcli alias set local http://minio:9000 minioadmin minioadmin;
+      mcli mb local/quackback --ignore-existing;
+      mcli anonymous set download local/quackback;
       exit 0;
       "
     restart: 'no'

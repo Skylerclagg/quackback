@@ -189,8 +189,41 @@ contains the `postgres` service and reattaches the old volume untouched),
 restore the old `POSTGRES_*` variables if you deleted them, and deploy.
 Anything written to the new database after the switch is not in the old one.
 
-## Later
+## Object storage
 
-MinIO can move out of the stack the same way, to any S3-compatible store;
-uploads are referenced by key, not by host, so nothing in the app needs it to
-stay local.
+The stack runs **PGSTY Silo** (`docker.io/pgsty/silo`), the maintained
+community fork of MinIO. MinIO itself was archived upstream in 2026 —
+`minio/minio` and `minio/mc` are gone from Docker Hub, quay.io and GHCR, and
+dl.min.io answers 410 Gone for every release binary — so no MinIO image can be
+pulled from anywhere any more. Silo keeps the S3 API, the `MINIO_*` variables
+and the on-disk format, so the existing `minio_data` volume carries over
+unchanged; the bundled client is `mcli` (same commands as `mc`).
+
+Treat every Silo tag as a downstream upgrade: read its release notes
+(<https://silo.pgsty.com/tags/silo/>), bump `MINIO_IMAGE_TAG` deliberately, and
+keep the previous image on the host as the rollback target. Never run
+`docker compose down -v` — `-v` deletes the data volume.
+
+To try the image against a copy of the data first (or afterwards, to be
+sure), on the server:
+
+```bash
+VOL=$(docker volume ls -q | grep minio_data)
+docker volume create silo-check
+docker run --rm -v "$VOL":/from:ro -v silo-check:/to alpine cp -a /from/. /to/
+docker run -d --name silo-check -v silo-check:/data \
+  -e MINIO_ROOT_USER=... -e MINIO_ROOT_PASSWORD=... \
+  docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data
+docker exec silo-check mcli alias set local http://127.0.0.1:9000 <user> <password>
+docker exec silo-check mcli ls local/quackback        # existing uploads listed
+docker rm -f silo-check && docker volume rm silo-check
+```
+
+Rollback: the last MinIO image (`quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`)
+is only available from this host's Docker cache. Silo's format-changing
+options are off by default, so pointing `image:` back at it works while that
+image still exists — do not prune it until the switch has run for a while.
+
+Uploads are referenced by key, not by host, so the store can also move out of
+the stack to any S3-compatible service (Cloudflare R2, for instance): copy the
+objects across (`mcli mirror`), keep the bucket name, and point `S3_*` at it.
